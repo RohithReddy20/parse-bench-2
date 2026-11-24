@@ -1,0 +1,26 @@
+pyproject.toml
+  s_a13908d8c3ae20::t_2a1bb7b963020b 32
+tests/evalkit/test_splits.py
+  s_a13908d8c3ae20::t_2a1bb7b963020b 1-82
+src/evalkit/splits.py
+  s_a13908d8c3ae20::t_6bc5793e4b95d4 1-31,33-113
+  s_a13908d8c3ae20::t_2a1bb7b963020b 32
+src/evalkit/splits_data/v1.json
+  s_a13908d8c3ae20::t_2a1bb7b963020b 1-4322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f45a0715aa6baeae5ad98cdf484d1e9fd31924bd",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
