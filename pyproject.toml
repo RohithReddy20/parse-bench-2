@@ -29,6 +29,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docparse", "src/evalkit"]
+artifacts = ["src/evalkit/splits_data/*.json"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
