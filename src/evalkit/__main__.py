@@ -133,6 +133,24 @@ def _cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_losses(args: argparse.Namespace) -> int:
+    from evalkit.ledger import Ledger
+    from evalkit.report import loss_report, scores_markdown, subsets_markdown
+
+    ledger = Ledger(paths.ledger_path())
+    body, problems = loss_report(ledger, args.run_id, args.fold)
+    ref = pins.BOARD_OCRIA if ledger.run(args.run_id).pipeline == pins.OCRIA_PIPELINE else None
+    text = "\n\n".join([scores_markdown(ledger, args.run_id, ref), subsets_markdown(ledger, args.run_id), body])
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+    else:
+        print(text)
+    for line in problems[:20]:
+        print("MISMATCH", line)
+    return 1 if problems else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="evalkit")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -161,6 +179,11 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--baseline", default="")
     sc.add_argument("--notes", default="")
     sc.set_defaults(func=_cmd_score)
+    lo = sub.add_parser("losses", help="loss table of a run in the ledger")
+    lo.add_argument("--run-id", required=True)
+    lo.add_argument("--fold", choices=["all", "dev", "check"], default="all")
+    lo.add_argument("--out", default="")
+    lo.set_defaults(func=_cmd_losses)
     st = sub.add_parser("standin", help="import OCRia-1's published outputs into the cache as stand-in readings")
     st.add_argument("--workers", type=int, default=8)
     st.set_defaults(func=_cmd_standin)

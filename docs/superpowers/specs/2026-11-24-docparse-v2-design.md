@@ -340,7 +340,7 @@ table, not from this table.
   thresholds). 20% are a check slice: scored on every run, pages not inspected. Group by source document
   (forms by template) and stratify by subset. A case's fold is a seeded hash of its group key, so cases
   added in later dataset releases get a fold without moving existing ones. Assignments are recorded in
-  `evalkit/splits/v1.json`.
+  `evalkit/splits_data/v1.json`.
 - **Final score:** all pages of the release in use at M8 (4,317 today).
 - **Overfitting signal:** when a milestone's check-slice gain is under half its development gain, the
   milestone's new thresholds are reviewed and the simplest kept.
