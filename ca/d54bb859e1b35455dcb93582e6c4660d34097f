@@ -1,0 +1,25 @@
+tests/evalkit/test_losses.py
+  s_a13908d8c3ae20::t_a3c41a3aae26e2 1-85
+serve/executors.py
+  s_a13908d8c3ae20::t_46af6542f502a8 1-118
+tests/serve/test_executors.py
+  s_a13908d8c3ae20::t_46af6542f502a8 1-109
+src/evalkit/losses.py
+  s_a13908d8c3ae20::t_e2a8f8737e5c37 1-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cad54bb859e1b35455dcb93582e6c4660d34097f",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
