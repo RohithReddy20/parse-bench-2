@@ -59,7 +59,12 @@ def _wait_ready(proc: subprocess.Popen, base: str, timeout: float = 1800.0) -> N
     raise RuntimeError("vllm did not become ready in time")
 
 
-@app.function(image=image, gpu=GPU, volumes={"/hf": hf_cache, "/manifests": manifests}, timeout=8 * 3600)
+@app.function(
+    image=image,
+    gpu=GPU,
+    volumes={"/hf": hf_cache, "/manifests": manifests},
+    timeout=int(os.environ.get("DOCPARSE_MODAL_TIMEOUT", str(8 * 3600))),
+)
 def run(manifest: str, workers: int = 32, limit: int = 0) -> dict:
     """Serve OCRia-1 with vLLM, run the manifest at /manifests/<manifest>, append to its results.jsonl."""
     import sys

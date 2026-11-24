@@ -119,6 +119,14 @@ def _cmd_score(args: argparse.Namespace) -> int:
 
     gt = fetch.fetch_ground_truth()
     run_dir = paths.runs_dir() / args.run_id
+    ids = None
+    if args.pilot:  # score only the pilot pages: the harness sees a ground-truth folder holding just those cases
+        from evalkit.compare import gt_view
+        from evalkit.pilot import pilot_ids
+        from evalkit.run import list_examples
+
+        ids = pilot_ids(list_examples(gt))
+        gt = gt_view(gt, ids, run_dir / "gt_view")
     score = score_output(run_dir / "output" / "parsebench-2", args.name, gt, run_dir / "reports")
     ledger = Ledger(paths.ledger_path())
     config_hash = Config.load(args.config).config_hash() if args.config else ""
@@ -133,7 +141,18 @@ def _cmd_score(args: argparse.Namespace) -> int:
     if args.baseline:
         base = ledger.run(args.baseline)
         baseline = {"overall": base.overall, **base.dimensions}
-    print_scores(score, baseline, "baseline")
+    if ids is None:
+        print_scores(score, baseline, "baseline")
+        return 0
+    from evalkit.compare import compare_runs
+
+    out = compare_runs(ledger, args.run_id, args.baseline, ids)
+    print(f"{'dimension':12}{'ours':>8}{'baseline':>10}{'delta':>8}   (the same {len(ids)} pages in both runs)")
+    for dim, v in out["dimensions"].items():
+        print(f"{dim:12}{v['ours']:8.2f}{v['baseline']:10.2f}{v['ours'] - v['baseline']:+8.2f}")
+    for row in out["slots"]:
+        print(f"  {row['subset']:26}{row['metric']:28}{row['pages']:3d}{row['ours']:8.2f}{row['baseline']:8.2f}"
+              f"{row['delta']:+8.2f}")  # fmt: skip
     return 0
 
 
@@ -183,6 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--config", default="")
     sc.add_argument("--baseline", default="")
     sc.add_argument("--notes", default="")
+    sc.add_argument("--pilot", action="store_true", help="score only the pilot pages (needs --baseline)")
     sc.set_defaults(func=_cmd_score)
     lo = sub.add_parser("losses", help="loss table of a run in the ledger")
     lo.add_argument("--run-id", required=True)
