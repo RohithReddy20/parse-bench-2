@@ -90,6 +90,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     run_dir = paths.runs_dir() / args.run_id
     subsets = tuple(args.subsets.split(",")) if args.subsets else None
     ids = list_examples(gt, subsets)
+    if args.pilot:
+        from evalkit.pilot import pilot_ids
+
+        ids = pilot_ids(ids)
     if args.limit:
         ids = ids[:: max(1, len(ids) // args.limit)][: args.limit]
     manifest = run_dir / "manifest" if args.plan else None
@@ -169,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--run-id", required=True)
     r.add_argument("--subsets", default="")
     r.add_argument("--limit", type=int, default=0)
+    r.add_argument("--pilot", action="store_true", help="only the fixed pilot sample of development-part pages")
     r.add_argument("--workers", type=int, default=8)
     r.add_argument("--plan", action="store_true", help="turn cache misses into a manifest instead of errors")
     r.set_defaults(func=_cmd_run)

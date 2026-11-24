@@ -1,0 +1,10 @@
+# M1: our own OCRia-1 run, with the settings of the harness's ocria_1 pipeline (design §5.3).
+# page_runtime is part of every call key: it must name the vLLM version that serves the calls.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: dae83aa51ecd0a8574d415d929a4d9e79348fd2a
+  dtype: bf16
+page_runtime: vllm-0.34.0
+prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38   # sha256 of prompt.txt at the pinned revision
+dpi: 300
+layout: none
