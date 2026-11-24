@@ -59,7 +59,8 @@ started, so it cost nothing.
 
 ## Plan for the full run
 
-- New calls: 4,247 OCRia-1 page reads (4,317 cases; 70 share a page image with another case). 46 are cached.
+- New calls: 4,201 OCRia-1 page reads. The 4,317 cases need 4,247 (70 share a page image with another case),
+  and the 46 pilot calls are cached.
 - Tokens: about 40 million in and 9.5–11.5 million out, from the pilot's per-page figures and the length of
   the published readings.
 - Time on one A100-40GB: about 3.0–3.4 hours at the throughput above. More parallel requests may help (the
