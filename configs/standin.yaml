@@ -1,0 +1,10 @@
+# M0: OCRia-1's published outputs as stand-in page readings, every corrector off.
+# Scores from this config must equal the published OCRia-1 baseline (design §5.4, round-trip rule).
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+layout: from_page_read

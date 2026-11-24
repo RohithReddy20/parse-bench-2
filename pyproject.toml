@@ -19,6 +19,7 @@ eval = [
     "huggingface-hub>=0.25",
     "httpx>=0.28",
     "openai>=1.0",
+    "llama-cloud>=1.4.1",  # the harness reads every ParseOutput layout through its LlamaParse adapter
 ]
 dev = ["pytest>=8", "ruff>=0.6"]
 

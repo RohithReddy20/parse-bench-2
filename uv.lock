@@ -136,6 +136,15 @@ wheels = [
 ]
 
 [[package]]
+name = "distro"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722, upload-time = "2023-12-24T09:54:32.31Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277, upload-time = "2023-12-24T09:54:30.421Z" },
+]
+
+[[package]]
 name = "docparse"
 version = "2.0.0.dev0"
 source = { editable = "." }
@@ -156,6 +165,7 @@ dev = [
 eval = [
     { name = "httpx" },
     { name = "huggingface-hub" },
+    { name = "llama-cloud" },
     { name = "openai" },
     { name = "parse-bench" },
 ]
@@ -178,6 +188,7 @@ dev = [
 eval = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "huggingface-hub", specifier = ">=0.25" },
+    { name = "llama-cloud", specifier = ">=1.4.1" },
     { name = "openai", specifier = ">=1.0" },
     { name = "parse-bench", git = "https://github.com/run-llama/ParseBench?rev=6e4479ad9bda4347a81f7fe86dcf674071c352f9" },
 ]
@@ -434,6 +445,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1b/72/36c99c1055889473ac7d0cdc0f8a182a81bb63c58fd37f4e7feeb9742f89/levenshtein-0.27.5-cp312-cp312-win32.whl", hash = "sha256:663c3700c29e5eae29bb75e36e1c123dcb54958f4c14909747a9c459ace32efa", size = 274693, upload-time = "2026-09-12T20:05:07.257Z" },
     { url = "https://files.pythonhosted.org/packages/99/21/126f09f1997c1c7114b19f93df6c60e31c015e5e7e3224af2bbf69d89edd/levenshtein-0.27.5-cp312-cp312-win_amd64.whl", hash = "sha256:11986243a7cef0e17dcf28976c66075acf99f2664dec78e42e12b750d3b50ee2", size = 283200, upload-time = "2026-09-12T20:05:08.658Z" },
     { url = "https://files.pythonhosted.org/packages/90/ce/91c3facfdda770ea452b33ac072070704509586e7fa2e8067c586ca242a5/levenshtein-0.27.5-cp312-cp312-win_arm64.whl", hash = "sha256:6c0a96bb98136ddde0b878860ee1f1272315a2092ed251babea7a5dbcd7aef57", size = 447176, upload-time = "2026-09-12T20:05:10.348Z" },
+]
+
+[[package]]
+name = "llama-cloud"
+version = "2.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d4/1e/4f07785a9621066ac0e9a6e3eebcf42cad24c1089837e9380172f68528e9/llama_cloud-2.20.0.tar.gz", hash = "sha256:8a78db29764a50c0ef72987960806549df306892a19bb4f6ebcd5c048f22c186", size = 3632171, upload-time = "2026-11-20T19:51:33.849Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/d5/c883ba3d949db51fd0bde3c759f99f3b8deeaea3a24577f39fd8679fe429/llama_cloud-2.20.0-py3-none-any.whl", hash = "sha256:23b6893539cc7ea7d5a279d8832c0f17587e29087d90a73b7f44a48bd1985c7a", size = 569929, upload-time = "2026-11-20T19:51:32.299Z" },
 ]
 
 [[package]]

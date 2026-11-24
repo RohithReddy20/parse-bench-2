@@ -80,6 +80,59 @@ def _cmd_standin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_run(args: argparse.Namespace) -> int:
+    from docparse.core.config import Config
+    from evalkit import fetch
+    from evalkit.run import list_examples, run_pipeline
+
+    gt = fetch.fetch_ground_truth()
+    config = Config.load(args.config)
+    run_dir = paths.runs_dir() / args.run_id
+    subsets = tuple(args.subsets.split(",")) if args.subsets else None
+    ids = list_examples(gt, subsets)
+    if args.limit:
+        ids = ids[:: max(1, len(ids) // args.limit)][: args.limit]
+    manifest = run_dir / "manifest" if args.plan else None
+    summary = run_pipeline(config, args.name, run_dir / "output" / "parsebench-2", gt, paths.cache_dir(), ids,
+                           manifest_dir=manifest, workers=args.workers)  # fmt: skip
+    print(f"run {args.run_id} ({args.name}, config {config.config_hash()}): {summary.written} written, "
+          f"{summary.pending} pending ({summary.new_calls} new calls), {len(summary.errors)} errors")  # fmt: skip
+    for example_id, error in summary.errors[:20]:
+        print(f"  error {example_id}: {error}")
+    if summary.lint:
+        print(f"  lint: {dict(summary.lint)}")
+    if manifest and summary.new_calls:
+        print(f"  manifest: {manifest}  (python -m docparse cache plan --manifest ... before any GPU run)")
+    return 1 if summary.errors else 0
+
+
+def _cmd_score(args: argparse.Namespace) -> int:
+    from docparse.core.config import Config
+    from docparse.models.cache import Cache
+    from evalkit import fetch
+    from evalkit.ledger import Ledger, RunRow, code_sha, ingest
+    from evalkit.score import score_output
+
+    gt = fetch.fetch_ground_truth()
+    run_dir = paths.runs_dir() / args.run_id
+    score = score_output(run_dir / "output" / "parsebench-2", args.name, gt, run_dir / "reports")
+    ledger = Ledger(paths.ledger_path())
+    config_hash = Config.load(args.config).config_hash() if args.config else ""
+    run = RunRow(
+        run_id=args.run_id, kind="pipeline", pipeline=args.name, harness_commit=pins.HARNESS_COMMIT,
+        data_revision=pins.DATA_REVISION, overall=score.overall, dimensions=score.dimensions, code_sha=code_sha(),
+        config_hash=config_hash, cache_snapshot=Cache(paths.cache_dir()).snapshot_hash(), notes=args.notes,
+    )  # fmt: skip
+    cases = ingest(score, run, ledger)
+    print(f"run {args.run_id}: {cases} case rows in {paths.ledger_path()}")
+    baseline = None
+    if args.baseline:
+        base = ledger.run(args.baseline)
+        baseline = {"overall": base.overall, **base.dimensions}
+    print_scores(score, baseline, "baseline")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="evalkit")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -92,6 +145,22 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--revision", default=pins.RESULTS_REVISION)
     s.add_argument("--run-id", default="")
     s.set_defaults(func=_cmd_score_published)
+    r = sub.add_parser("run", help="parse benchmark cases with the pipeline and write result records")
+    r.add_argument("--config", required=True)
+    r.add_argument("--name", required=True, help="pipeline name of the output folders")
+    r.add_argument("--run-id", required=True)
+    r.add_argument("--subsets", default="")
+    r.add_argument("--limit", type=int, default=0)
+    r.add_argument("--workers", type=int, default=8)
+    r.add_argument("--plan", action="store_true", help="turn cache misses into a manifest instead of errors")
+    r.set_defaults(func=_cmd_run)
+    sc = sub.add_parser("score", help="score a run with the harness and add it to the ledger")
+    sc.add_argument("--run-id", required=True)
+    sc.add_argument("--name", required=True)
+    sc.add_argument("--config", default="")
+    sc.add_argument("--baseline", default="")
+    sc.add_argument("--notes", default="")
+    sc.set_defaults(func=_cmd_score)
     st = sub.add_parser("standin", help="import OCRia-1's published outputs into the cache as stand-in readings")
     st.add_argument("--workers", type=int, default=8)
     st.set_defaults(func=_cmd_standin)
