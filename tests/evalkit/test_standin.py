@@ -55,6 +55,27 @@ def test_import_report_and_cache_contents(tmp_path):
     assert again.imported == 0 and again.cached == 4
 
 
+def test_reading_with_layout_owns_a_shared_page(tmp_path):
+    gt, pub = tmp_path / "gt", tmp_path / "pub"
+    (gt / "charts").mkdir(parents=True)
+    (gt / "layout").mkdir()
+    pub.mkdir()
+    same = simple_pdf("Chart page that is also a layout case")
+    (gt / "charts" / "c_p1.pdf").write_bytes(same)
+    (gt / "layout" / "charts_core__c_p1.pdf").write_bytes(same)
+    layout_page = {"page_number": 1, "width": 612, "height": 792, "items": [{"type": "Picture", "md": ""}]}
+    (pub / "charts.jsonl").write_text(json.dumps(_record("charts/c_p1", ["chart reading"])))
+    (pub / "layout.jsonl").write_text(
+        json.dumps(_record("layout/charts_core__c_p1", ["layout reading"], [layout_page]))
+    )
+    cache = Cache(tmp_path / "cache")
+    report = import_published(pub, gt, cache, workers=1)
+    assert report.imported == 1 and report.collisions == [("charts/c_p1", "layout/charts_core__c_p1")]
+    image = render_pages(same)[0].image
+    stored = cache.get(published_call(pixel_hash(image)).key()).output
+    assert stored["markdown"] == "layout reading" and stored["layout_page"] == layout_page
+
+
 def test_source_file_finds_images(tmp_path):
     (tmp_path / "text").mkdir()
     (tmp_path / "text" / "scan.jpg").write_bytes(b"x")

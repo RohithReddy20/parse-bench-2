@@ -78,7 +78,10 @@ def import_published(published_dir: Path, gt_dir: Path, cache: Cache, workers: i
             hashes = list(pool.map(_hash_pages, paths, chunksize=8))
     else:
         hashes = [_hash_pages(p) for p in paths]
-    owner: dict[str, tuple[str, str]] = {}  # call key -> (example id, markdown)
+    # Aggregate before writing: the cache is first-write-wins, and the same page can appear in two subsets
+    # (a chart page that is also a layout case) with two separately generated readings. The reading that
+    # carries layout items owns the page, since those items quote that reading's text.
+    chosen: dict[str, dict] = {}
     for (example_id, _src, record), page_hashes in zip(jobs, hashes, strict=True):
         if page_hashes is None:
             report.unreadable.append(example_id)
@@ -93,18 +96,23 @@ def import_published(published_dir: Path, gt_dir: Path, cache: Cache, workers: i
             if len(page_hashes) == 1 and len(pages) != 1:
                 markdown = output.get("markdown", "")
             call = published_call(page_hash)
-            key = call.key()
-            if key in owner:
-                if owner[key][1] != markdown:
-                    report.collisions.append((owner[key][0], example_id))
+            entry = {"call": call, "example_id": example_id, "page": i, "markdown": markdown,
+                     "layout_page": layout_by_number.get(i + 1)}  # fmt: skip
+            previous = chosen.get(call.key())
+            if previous is None:
+                chosen[call.key()] = entry
                 continue
-            owner[key] = (example_id, markdown)
-            body = {"markdown": markdown, "layout_page": layout_by_number.get(i + 1), "source": "published"}
-            stored = cache.put(ModelResult(key=key, output=body), call, {"example_id": example_id, "page": i})
-            if stored:
-                report.imported += 1
-            else:
-                report.cached += 1
+            if previous["markdown"] != markdown:
+                report.collisions.append((previous["example_id"], example_id))
+            if previous["layout_page"] is None and entry["layout_page"] is not None:
+                chosen[call.key()] = entry
+    for key, entry in chosen.items():
+        body = {"markdown": entry["markdown"], "layout_page": entry["layout_page"], "source": "published"}
+        meta = {"example_id": entry["example_id"], "page": entry["page"]}
+        if cache.put(ModelResult(key=key, output=body), entry["call"], meta):
+            report.imported += 1
+        else:
+            report.cached += 1
     return report
 
 
