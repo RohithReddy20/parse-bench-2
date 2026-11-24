@@ -1,0 +1,36 @@
+src/docparse/__main__.py
+  s_a13908d8c3ae20::t_ccc910285e54ad 1-32
+serve/run_manifest.py
+  s_a13908d8c3ae20::t_ccc910285e54ad 1-104
+src/docparse/models/client.py
+  s_a13908d8c3ae20::t_ccc910285e54ad 1-67
+src/docparse/models/calls.py
+  s_a13908d8c3ae20::t_ccc910285e54ad 1-61
+tests/models/test_client_manifest.py
+  s_a13908d8c3ae20::t_3e576551c0196b 1-75
+src/docparse/models/manifest.py
+  s_a13908d8c3ae20::t_ccc910285e54ad 1-111
+tests/models/test_calls_cache.py
+  s_a13908d8c3ae20::t_3e576551c0196b 1-115
+src/docparse/models/cache.py
+  s_a13908d8c3ae20::t_ccc910285e54ad 1-118
+tests/serve/test_run_manifest.py
+  s_a13908d8c3ae20::t_3e576551c0196b 1-77
+  s_a13908d8c3ae20::t_7f5a9d2b8817dd 78-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b76f2d33358256f715f89baad8938bbefd5c9563",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
