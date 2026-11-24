@@ -1,0 +1,34 @@
+tests/models/test_heron_adapter.py
+  s_a13908d8c3ae20::t_f9e089e17f28ba 1-25
+tests/evalkit/test_detect.py
+  s_a13908d8c3ae20::t_d9a1c579f4c920 1-18
+src/docparse/models/adapters/heron.py
+  s_a13908d8c3ae20::t_f9e089e17f28ba 1-42
+src/evalkit/detect.py
+  s_a13908d8c3ae20::t_d9a1c579f4c920 1-24
+pyproject.toml
+  s_a13908d8c3ae20::t_f9e089e17f28ba 25-26
+serve/local_detector.py
+  s_a13908d8c3ae20::t_f9e089e17f28ba 1-77,79-84
+  s_a13908d8c3ae20::t_d9a1c579f4c920 78
+uv.lock
+  s_a13908d8c3ae20::t_b40cd05da69480 22-30,147-212,236-241,265-270,462-473,622-644,654-662,675-683,703-857,1270-1293,1315-1332,1351-1362,1372-1457,1470-1498,1508-1523
+serve/modal_ocria.py
+  s_a13908d8c3ae20::t_8b40963fa306b7 34-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3af4576a218f2fc35b27aae6e51a3899f5add9c1",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
