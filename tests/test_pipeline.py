@@ -140,3 +140,31 @@ def test_record_is_deterministic():
     a = result_record("text/a", "p", parse(pdf, CONFIG, FakeClient()).document)
     b = result_record("text/a", "p", parse(pdf, CONFIG, FakeClient()).document)
     assert a == b and a["raw_output"] == {"docparse": "2.0.0.dev0", "config_hash": CONFIG.config_hash()}
+
+
+def test_ground_layout_asks_for_detections_and_builds_items(tmp_path):
+    from docparse.fixes.layout import ocria_code_dir
+    from docparse.models.adapters import heron
+
+    if not (ocria_code_dir() / "ocria_grounding" / "layout.py").exists():
+        pytest.skip("OCRia-1 grounding code not fetched")
+    text = "Revenue grew by twelve percent compared with the same quarter of the previous year."
+    pdf = make_pdf([{"texts": [(72, 660, 11, text)]}])
+    cfg = CONFIG.model_copy(update={"layout": "ground"})
+
+    cache, manifest = Cache(tmp_path / "c"), ManifestWriter(tmp_path / "m")
+    planned = parse(pdf, cfg, CacheOnlyClient(cache, manifest))
+    assert planned.document is None and len(planned.pending) == 2  # the page read and the detection
+    page_call, det_call = (c for c, _ in read_manifest(tmp_path / "m"))
+    assert det_call.model == heron.HERON and det_call.inputs == page_call.inputs
+    assert len(list((tmp_path / "m" / "blobs").iterdir())) == 1  # one shared page image
+
+    cache.put(ModelResult(key=page_call.key(), output={"markdown": text}), page_call)
+    box = [250.0, 500.0, 2300.0, 600.0]
+    cache.put(
+        ModelResult(key=det_call.key(), output={"detections": [{"label": "Text", "score": 0.9, "box": box}]}), det_call
+    )
+    doc = parse(pdf, cfg, ReplayClient(cache)).document
+    (item,) = doc.pages[0].layout
+    assert item.type == "Text" and item.md == text
+    assert item.bbox.x0 == pytest.approx(250 * 72 / 300) and item.bbox.y1 == pytest.approx(600 * 72 / 300)

@@ -18,8 +18,9 @@ class Config(BaseModel):
     page_runtime: str
     prompt_sha: str  # sha256 of OCRia-1's prompt.txt ("published" for stand-in readings)
     dpi: int = 300
-    # where layout items come from: carried by the page read (stand-ins), or none at all
-    layout: Literal["from_page_read", "none"] = "from_page_read"
+    # where layout items come from: carried by the page read (published stand-ins); built here from detector
+    # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all
+    layout: Literal["from_page_read", "ground", "none"] = "from_page_read"
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:

@@ -1,0 +1,10 @@
+# Layout experiment on stand-in readings: OCRia-1's published markdown, with layout items rebuilt here from
+# heron regions and PDF words (no attention pass). Compare its layout score with the published 85.96.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+layout: ground

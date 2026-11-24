@@ -225,10 +225,12 @@ version = "2.0.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "markdown2" },
+    { name = "numpy" },
     { name = "pillow" },
     { name = "pydantic" },
     { name = "pypdfium2" },
     { name = "pyyaml" },
+    { name = "scipy" },
     { name = "zstandard" },
 ]
 
@@ -254,10 +256,12 @@ eval = [
 [package.metadata]
 requires-dist = [
     { name = "markdown2", specifier = ">=2.5.5" },
+    { name = "numpy", specifier = ">=1.24" },
     { name = "pillow", specifier = ">=10" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pypdfium2", specifier = ">=4.30" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "scipy", specifier = ">=1.11" },
     { name = "zstandard", specifier = ">=0.22" },
 ]
 
