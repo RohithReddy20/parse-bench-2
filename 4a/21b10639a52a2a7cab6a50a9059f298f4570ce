@@ -1,0 +1,33 @@
+src/docparse/fixes/layout_refine.py
+  s_a13908d8c3ae20::t_800dbcc9e93b63 5-8,18-19,115-135,146-147,163
+tests/fixes/test_layout_refine.py
+  s_a13908d8c3ae20::t_800dbcc9e93b63 92-103
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_800dbcc9e93b63 67
+src/evalkit/paired.py
+  s_a13908d8c3ae20::t_4a1a3bceb4a1d9 1-51
+tests/evalkit/test_paired.py
+  s_a13908d8c3ae20::t_4a1a3bceb4a1d9 1-24
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_800dbcc9e93b63 14
+configs/standin_layout.yaml
+  s_a13908d8c3ae20::t_6a6e199af86705 1-15
+docs/results/2026-11-25-layout-swap.md
+  s_a13908d8c3ae20::t_b12b0a29b5f27b 1-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a21b10639a52a2a7cab6a50a9059f298f4570ce",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
