@@ -1,0 +1,27 @@
+src/docparse/fixes/layout_refine.py
+  s_a13908d8c3ae20::t_ffab388b819649 1-131
+tests/fixes/test_layout_refine.py
+  s_a13908d8c3ae20::t_ffab388b819649 1-81
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_ffab388b819649 14,25-26,33-34,38-48
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_ffab388b819649 64-67
+src/evalkit/__main__.py
+  s_a13908d8c3ae20::t_ffab388b819649 89,202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c5023b856803e32008bdf2f12034043dfcd0073",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
