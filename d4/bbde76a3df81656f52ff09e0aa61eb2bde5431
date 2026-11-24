@@ -1,0 +1,25 @@
+src/evalkit/ledger.py
+  s_a13908d8c3ae20::t_24309be77c4bfb 1-215
+pyproject.toml
+  s_a13908d8c3ae20::t_7805d749f37531 45
+tests/evalkit/test_ledger.py
+  s_a13908d8c3ae20::t_24309be77c4bfb 1-91
+src/evalkit/__main__.py
+  s_a13908d8c3ae20::t_b66885b8b8796d 7-9,24-66,72,74-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4bbde76a3df81656f52ff09e0aa61eb2bde5431",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
