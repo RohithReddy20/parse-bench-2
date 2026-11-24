@@ -1,0 +1,23 @@
+src/evalkit/standin.py
+  s_a13908d8c3ae20::t_19d510784ec7e9 81-84,99-103,105-115
+tests/guards/test_invariance.py
+  s_a13908d8c3ae20::t_59032346ed1524 1-79
+tests/evalkit/test_standin.py
+  s_a13908d8c3ae20::t_19d510784ec7e9 58-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a81c7fafb983760fbf30b16532f26a80607b21f4",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
