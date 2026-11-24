@@ -201,6 +201,8 @@ def ingest(score: ScoreResult, run: RunRow, ledger: Ledger, tolerance: float = 1
         all_rows += case_rows(subset, json.loads(Path(path).read_text(encoding="utf-8")))
     problems = []
     for slot in score.slots:
+        if slot["subset"] not in score.subset_reports:
+            continue  # a partial run: this subset was not run
         ours = slot_average(r for r in all_rows if r.subset == slot["subset"] and r.metric == slot["metric"])
         if slot["score"] is None or ours is None or abs(ours - slot["score"]) > tolerance:
             problems.append(f"{slot['subset']}/{slot['metric']}: harness {slot['score']} vs ledger {ours}")

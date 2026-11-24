@@ -78,7 +78,10 @@ def _dropped(report: dict) -> Counter:
     )
 
 
-def read_score(score_path: Path, sources: dict[str, dict[str, str]], check_dropped: bool = True) -> ScoreResult:
+def read_score(
+    score_path: Path, sources: dict[str, dict[str, str]], check_dropped: bool = True, partial: bool = False
+) -> ScoreResult:
+    """`partial`: score only the dimensions whose subsets were all run (an experiment on some subsets)."""
     combined = json.loads(score_path.read_text(encoding="utf-8"))
     reports: dict[str, Path] = {}
     for subset, src in sources.items():
@@ -90,6 +93,8 @@ def read_score(score_path: Path, sources: dict[str, dict[str, str]], check_dropp
     problems: list[str] = []
     for dimension in DIMENSIONS:
         subsets = list(dict.fromkeys(slot.subset for slot in NEXT_DIMENSIONS[dimension]))
+        if partial and any(s not in sources for s in subsets):
+            continue
         problems += [f"{dimension}: {s} not published" for s in subsets if s not in sources]
         problems += [f"{dimension}: {s} not evaluated" for s in subsets if s in sources and s not in reports]
         entry = combined.get("dimensions", {}).get(dimension) or {}
@@ -116,7 +121,9 @@ def read_score(score_path: Path, sources: dict[str, dict[str, str]], check_dropp
     )
 
 
-def score_output(output_root: Path, pipeline: str, gt_dir: Path, report_dir: Path) -> ScoreResult:
+def score_output(
+    output_root: Path, pipeline: str, gt_dir: Path, report_dir: Path, partial: bool = False
+) -> ScoreResult:
     sources = sources_for(output_root, pipeline, gt_dir)
     if not sources:
         raise ScoreError(f"no <subset>/{pipeline}/ folders under {output_root}")
@@ -128,4 +135,4 @@ def score_output(output_root: Path, pipeline: str, gt_dir: Path, report_dir: Pat
     if not score_path.exists():
         tail = (proc.stdout + proc.stderr)[-3000:]
         raise ScoreError(f"evaluation failed (exit {proc.returncode}):\n{tail}")
-    return read_score(score_path, sources)
+    return read_score(score_path, sources, partial=partial)

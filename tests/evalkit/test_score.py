@@ -82,3 +82,18 @@ def test_missing_subset_raises(tmp_path):
 def test_no_sources_raises(tmp_path):
     with pytest.raises(S.ScoreError):
         S.score_output(tmp_path, "p", tmp_path, tmp_path / "rep")
+
+
+def test_partial_scores_only_complete_dimensions(tmp_path):
+    out, gt = _layout(tmp_path, ["layout", "text"])  # layout is complete; formatting lacks its other subsets
+    sources = S.sources_for(out, "p", gt)
+    for src in sources.values():
+        with open(src["output_dir"] + "/_evaluation_report.json", "w") as fh:
+            json.dump({"per_example_results": []}, fh)
+    path = tmp_path / "_next_score.json"
+    path.write_text(json.dumps(_combined({"layout": 0.86, "text": 0.88})))
+    with pytest.raises(S.ScoreError):
+        S.read_score(path, sources)
+    res = S.read_score(path, sources, partial=True)
+    assert res.dimensions == {"text": pytest.approx(88.0), "layout": pytest.approx(86.0)}
+    assert res.overall == pytest.approx(87.0)

@@ -127,7 +127,7 @@ def _cmd_score(args: argparse.Namespace) -> int:
 
         ids = pilot_ids(list_examples(gt))
         gt = gt_view(gt, ids, run_dir / "gt_view")
-    score = score_output(run_dir / "output" / "parsebench-2", args.name, gt, run_dir / "reports")
+    score = score_output(run_dir / "output" / "parsebench-2", args.name, gt, run_dir / "reports", partial=args.partial)
     ledger = Ledger(paths.ledger_path())
     config_hash = Config.load(args.config).config_hash() if args.config else ""
     run = RunRow(
@@ -135,6 +135,8 @@ def _cmd_score(args: argparse.Namespace) -> int:
         data_revision=pins.DATA_REVISION, overall=score.overall, dimensions=score.dimensions, code_sha=code_sha(),
         config_hash=config_hash, cache_snapshot=Cache(paths.cache_dir()).snapshot_hash(), notes=args.notes,
     )  # fmt: skip
+    if args.partial:
+        run.kind = "partial"  # only some dimensions were run; `overall` is their mean, not a board score
     cases = ingest(score, run, ledger)
     print(f"run {args.run_id}: {cases} case rows in {paths.ledger_path()}")
     baseline = None
@@ -142,6 +144,12 @@ def _cmd_score(args: argparse.Namespace) -> int:
         base = ledger.run(args.baseline)
         baseline = {"overall": base.overall, **base.dimensions}
     if ids is None:
+        if args.partial and baseline:
+            baseline = {k: v for k, v in baseline.items() if k in score.dimensions}
+            print(f"partial run: only {sorted(score.dimensions)} were scored")
+            for name, value in score.dimensions.items():
+                print(f"{name:12}{value:8.2f}{baseline[name]:9.2f}{value - baseline[name]:+8.2f}")
+            return 0
         print_scores(score, baseline, "baseline")
         return 0
     from evalkit.compare import compare_runs
@@ -202,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--config", default="")
     sc.add_argument("--baseline", default="")
     sc.add_argument("--notes", default="")
+    sc.add_argument("--partial", action="store_true", help="score only the dimensions whose subsets were run")
     sc.add_argument("--pilot", action="store_true", help="score only the pilot pages (needs --baseline)")
     sc.set_defaults(func=_cmd_score)
     lo = sub.add_parser("losses", help="loss table of a run in the ledger")
