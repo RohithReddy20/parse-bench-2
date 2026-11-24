@@ -1,0 +1,46 @@
+docs/results/2026-11-24-ocria1-baseline.md
+  s_a13908d8c3ae20::t_9a877e0fef82d5 1-46
+src/evalkit/__main__.py
+  s_a13908d8c3ae20::t_1cce191ddd752e 136-153,182-186
+docs/results/2026-11-24-ocria1-loss-table.md
+  s_a13908d8c3ae20::t_9a877e0fef82d5 1-316
+tests/evalkit/test_losses.py
+  s_a13908d8c3ae20::t_dc9ca352dd28ef 165-188
+  s_a13908d8c3ae20::t_6efb361770271f 86-164
+src/evalkit/layout_losses.py
+  s_a13908d8c3ae20::t_6efb361770271f 1-33,41-69
+  s_a13908d8c3ae20::t_cdeaec405e3f62 34-40
+src/evalkit/pagestats.py
+  s_a13908d8c3ae20::t_e5a696d88a776a 1-51
+src/evalkit/losses.py
+  s_a13908d8c3ae20::t_6efb361770271f 21-22,50-51,53,101-138,223,259-273,293-297,299-312
+  s_a13908d8c3ae20::t_dc9ca352dd28ef 52,139-145,150-165,168,170-174,250-252,288,298
+  s_a13908d8c3ae20::t_f374b4051b2f31 146-149,166-167,169
+  s_a13908d8c3ae20::t_e15ac3af469d14 313-314
+src/evalkit/report.py
+  s_a13908d8c3ae20::t_1cce191ddd752e 1-53,59-64,67-105
+  s_a13908d8c3ae20::t_dc9ca352dd28ef 54-58,65-66
+docs/results/2026-11-24-m0-round-trip.md
+  s_a13908d8c3ae20::t_0d2bb58131bba7 1-58
+  s_a13908d8c3ae20::t_d042cfecee8d46 59-72
+docs/superpowers/plans/2026-11-24-docparse-v2-m0-m1.md
+  s_a13908d8c3ae20::t_729239000245d7 231
+docs/superpowers/specs/2026-11-24-docparse-v2-design.md
+  s_a13908d8c3ae20::t_a517272c6c21c5 343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10abe1b516869b0a52699b0f54ca751dd62839b2",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
