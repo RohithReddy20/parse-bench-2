@@ -31,8 +31,12 @@ ROOT = Path(__file__).resolve().parent.parent
 image = (
     modal.Image.from_registry(f"vllm/vllm-openai:v{VLLM_VERSION}")
     .entrypoint([])
-    .pip_install(
-        "httpx>=0.28", "pydantic>=2.6", "zstandard>=0.22", "pillow>=10", "pypdfium2>=4.30", "markdown2", "pyyaml"
+    # the vLLM image ships `python3` only; Modal and our runner use the image's own interpreter, which already
+    # has vllm, httpx, pydantic, pillow and huggingface_hub. Only zstandard (the cache format) is missing.
+    .run_commands(
+        'ln -sf "$(command -v python3)" /usr/local/bin/python',
+        "uv pip install --system 'zstandard>=0.22' || python3 -m pip install 'zstandard>=0.22'",
+        "python -c 'import vllm, httpx, pydantic, PIL, huggingface_hub, zstandard; print(vllm.__version__)'",
     )
     .env({"HF_HOME": "/hf", "HF_HUB_ENABLE_HF_TRANSFER": "0"})
     .add_local_dir(str(ROOT / "src" / "docparse"), "/root/docparse")
