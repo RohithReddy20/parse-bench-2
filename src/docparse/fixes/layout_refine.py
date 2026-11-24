@@ -2,7 +2,10 @@
 
     tighten      a text item's box becomes the union of the PDF words it holds
     tighten_pad  ... grown on every side by tighten_pad x the item's median word height
-    native_text  a text item's text becomes those PDF words, in reading order
+    native_text  a text item's text becomes those PDF words, in reading order, when the text layer is healthy
+                 there: at least native_support (default 0.8) of the item's PDF tokens also occur in OCRia-1's
+                 reading of the page. A broken font map or a stale OCR layer fails that test and the model's
+                 text stays.
     split_gap    a text item is split where the vertical gap between two of its lines exceeds
                  split_gap x the item's median line height (each part gets its own words as text)
 
@@ -12,6 +15,8 @@ item holding no PDF words (a scan, text drawn as an image) is left exactly as it
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from dataclasses import dataclass
 from statistics import median
 
@@ -107,7 +112,27 @@ def split_lines(lines: list[list[PtWord]], split_gap: float) -> list[list[list[P
     return parts
 
 
-def refine(items: list[LayoutItem], rendered: RenderedPage, options: dict) -> list[LayoutItem]:
+_TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
+
+
+def tokens(text: str) -> list[str]:
+    return [t.lower() for t in _TOKEN.findall(text)]
+
+
+def supported(words: list[PtWord], page_tokens: Counter | None, minimum: float) -> bool:
+    """Is the text layer healthy under these words? True when enough of their tokens occur in the model's
+    reading of the page. With no reading to compare against, the text layer is trusted."""
+    if page_tokens is None or minimum <= 0:
+        return True
+    mine = [t for w in words for t in tokens(w.text)]
+    if not mine:
+        return False
+    return sum(1 for t in mine if page_tokens.get(t)) / len(mine) >= minimum
+
+
+def refine(
+    items: list[LayoutItem], rendered: RenderedPage, options: dict, page_markdown: str | None = None
+) -> list[LayoutItem]:
     """Apply the enabled options; with none enabled, or no text layer, the items come back unchanged."""
     tighten = bool(options.get("tighten"))
     native = bool(options.get("native_text"))
@@ -118,6 +143,8 @@ def refine(items: list[LayoutItem], rendered: RenderedPage, options: dict) -> li
     if not words or not (tighten or native or split_gap):
         return items
     owned = assign_words(items, words)
+    support = float(options.get("native_support", 0.8))
+    page_tokens = Counter(tokens(page_markdown)) if page_markdown is not None else None
     out: list[LayoutItem] = []
     for item, mine in zip(items, owned, strict=True):
         if item.type not in TEXT_TYPES or not mine:
@@ -133,7 +160,7 @@ def refine(items: list[LayoutItem], rendered: RenderedPage, options: dict) -> li
         update: dict = {}
         if tighten:
             update["bbox"] = _union(mine, pad, page)
-        if native:
+        if native and supported(mine, page_tokens, support):
             update["md"] = _text(lines)
         out.append(item.model_copy(update=update) if update else item)
     return out

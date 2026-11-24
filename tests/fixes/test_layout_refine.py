@@ -89,3 +89,15 @@ def test_tighten_pad_grows_the_word_box_by_a_share_of_the_word_height():
     assert grow > 1 and padded.bbox.y1 - tight.bbox.y1 == pytest.approx(grow)
     (edge,) = refine([_item()], rendered, {"tighten": True, "tighten_pad": 500})
     assert (edge.bbox.x0, edge.bbox.y0, edge.bbox.x1, edge.bbox.y1) == (0.0, 0.0, 612.0, 792.0)  # clipped to the page
+
+
+def test_native_text_needs_support_from_the_model_reading():
+    rendered = _rendered()
+    agrees = "\n".join(P1 + P2).replace("report", "rep0rt")  # the model misread one word
+    (item,) = refine([_item()], rendered, {"native_text": True}, page_markdown=agrees)
+    assert "report" in item.md  # healthy text layer: the PDF's words win
+    garbage = "completely different words came out of the model for this page"
+    (kept,) = refine([_item()], rendered, {"native_text": True}, page_markdown=garbage)
+    assert kept.md == "model text"  # the text layer disagrees with the reading everywhere: keep the model's text
+    (forced,) = refine([_item()], rendered, {"native_text": True, "native_support": 0}, page_markdown=garbage)
+    assert forced.md.startswith("First paragraph")

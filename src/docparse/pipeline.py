@@ -64,7 +64,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         if config.layout_options and page.layout:
             from docparse.fixes.layout_refine import refine
 
-            page.layout = refine(page.layout, rp, config.layout_options)
+            page.layout = refine(page.layout, rp, config.layout_options, read.markdown)
         pages.append(page)
     if pending:
         return ParseResult(document=None, pending=pending)

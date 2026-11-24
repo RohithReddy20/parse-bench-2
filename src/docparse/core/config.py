@@ -11,7 +11,7 @@ from docparse.core.hashing import canonical_json, sha256_hex
 from docparse.models.calls import ModelRef
 
 FIXES = ("layout", "forms", "tables", "charts", "text", "formatting")
-LAYOUT_OPTIONS = frozenset({"tighten", "tighten_pad", "native_text", "split_gap"})
+LAYOUT_OPTIONS = frozenset({"tighten", "tighten_pad", "native_text", "native_support", "split_gap"})
 
 
 class Config(BaseModel):

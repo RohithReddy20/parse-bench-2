@@ -1,0 +1,15 @@
+# Stand-in readings with the layout refinements that passed on the development part (docs/results, layout swap):
+# boxes tightened to their PDF words plus 15% of the word height, and item text from the PDF where the text
+# layer agrees with OCRia-1's reading.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+layout: from_page_read
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
