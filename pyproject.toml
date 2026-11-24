@@ -17,6 +17,8 @@ dependencies = [
 eval = [
     "parse-bench @ git+https://github.com/run-llama/ParseBench@6e4479ad9bda4347a81f7fe86dcf674071c352f9",
     "huggingface-hub>=0.25",
+    "httpx>=0.28",
+    "openai>=1.0",
 ]
 dev = ["pytest>=8", "ruff>=0.6"]
 
