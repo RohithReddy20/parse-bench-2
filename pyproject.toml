@@ -42,6 +42,7 @@ markers = ["data: needs the downloaded benchmark data under $DOCPARSE_DATA"]
 line-length = 120
 target-version = "py312"
 src = ["src", "tests", "serve"]
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
