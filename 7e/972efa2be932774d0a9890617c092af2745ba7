@@ -1,0 +1,21 @@
+serve/colab_ocria.ipynb
+  s_a13908d8c3ae20::t_9f8708732de302 1-106
+serve/modal_ocria.py
+  s_a13908d8c3ae20::t_9f8708732de302 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7e972efa2be932774d0a9890617c092af2745ba7",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
