@@ -61,6 +61,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
             # OCRia-1's grounding reads the raw answer; published stand-ins only have the scored markdown
             page.layout = ground(read.raw_answer or read.markdown, rp, heron.read_detections(detections))
+        if config.layout_options and page.layout:
+            from docparse.fixes.layout_refine import refine
+
+            page.layout = refine(page.layout, rp, config.layout_options)
         pages.append(page)
     if pending:
         return ParseResult(document=None, pending=pending)

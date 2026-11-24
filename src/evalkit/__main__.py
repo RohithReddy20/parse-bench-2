@@ -86,7 +86,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from evalkit.run import list_examples, run_pipeline
 
     gt = fetch.fetch_ground_truth()
-    config = Config.load(args.config)
+    config = Config.load(args.config, args.set)
     run_dir = paths.runs_dir() / args.run_id
     subsets = tuple(args.subsets.split(",")) if args.subsets else None
     ids = list_examples(gt, subsets)
@@ -199,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--name", required=True, help="pipeline name of the output folders")
     r.add_argument("--run-id", required=True)
     r.add_argument("--subsets", default="")
+    r.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a config value")
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--pilot", action="store_true", help="only the fixed pilot sample of development-part pages")
     r.add_argument("--workers", type=int, default=8)
