@@ -1,0 +1,28 @@
+src/docparse/fixes/layout_refine.py
+  s_a13908d8c3ae20::t_b7209614cf59bd 4,47-48,80-86,115-116,131,135
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_b7209614cf59bd 14
+src/docparse/pdf/render.py
+  s_a13908d8c3ae20::t_b7209614cf59bd 37-40,92-125,172
+tests/fixes/test_layout_refine.py
+  s_a13908d8c3ae20::t_b7209614cf59bd 82-91
+  s_a13908d8c3ae20::t_0662aaf163a21d 26
+tests/pdf/test_render.py
+  s_a13908d8c3ae20::t_b7209614cf59bd 93-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb04ad93f1d12d7acacde2da6a53420e0ce7db46",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
