@@ -34,6 +34,10 @@ class RenderedPage:
     height_pt: float
     rotation: int = 0
     words: list[Word] | None = field(default=None)  # None: the input has no text layer at all (an image)
+    # the same text layer split at the spaces PDFium reports, not at glyph gaps: use these to *read* text.
+    # (`words` follows OCRia-1's gap rule, which its grounding code needs but which breaks words apart in
+    # fonts with loose glyph boxes: "R egul atory".)
+    text_words: list[Word] | None = field(default=None)
 
     @property
     def scale(self) -> float:
@@ -79,6 +83,40 @@ def page_words(page, dpi: float = DPI) -> list[Word]:
         else:
             if cur:
                 out.append(cur)
+            cur = Word(text=ch, box=box)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def page_text_words(page, dpi: float = DPI) -> list[Word]:
+    """Text-layer words split at whitespace characters (PDFium inserts a space where the page shows one)
+    and at line changes. Boxes are pixels of the page render, as in `page_words`."""
+    s, rot, crop = dpi / 72, page.get_rotation() % 360, page.get_cropbox()
+    tp = page.get_textpage()
+    out: list[Word] = []
+    cur: Word | None = None
+    for i in range(tp.count_chars()):
+        ch = tp.get_text_range(i, 1)
+        if not ch or ch.isspace() or ch in "\r\n\x00\ufffe":
+            if cur:
+                out.append(cur)
+                cur = None
+            continue
+        box = _to_image(*tp.get_charbox(i), crop, rot, s)
+        if box[2] <= box[0] or box[3] <= box[1]:
+            continue  # a glyph without extent
+        if cur:
+            height = max(cur.box[3] - cur.box[1], box[3] - box[1])
+            same_line = box[1] < cur.box[3] + 0.3 * height and box[3] > cur.box[1] - 0.3 * height
+            if not same_line:
+                out.append(cur)
+                cur = None
+        if cur:
+            cur.text += ch
+            cb = cur.box
+            cur.box = [min(cb[0], box[0]), min(cb[1], box[1]), max(cb[2], box[2]), max(cb[3], box[3])]
+        else:
             cur = Word(text=ch, box=box)
     if cur:
         out.append(cur)
@@ -131,6 +169,7 @@ def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400) -> list[Re
                         height_pt=float(h),
                         rotation=page.get_rotation() % 360,
                         words=page_words(page, scale * 72),
+                        text_words=page_text_words(page, scale * 72),
                     )
                 )
             return out

@@ -90,3 +90,12 @@ def test_unreadable_bytes_raise_parse_error(data):
 def test_page_limit():
     with pytest.raises(ParseError, match="limit"):
         render_pages(make_pdf([{} for _ in range(3)]), max_pages=2)
+
+
+def test_text_words_split_at_spaces_not_at_glyph_gaps():
+    (page,) = render_pages(simple_pdf("Regulatory matters, at 12.5% (net)"))
+    assert [w.text for w in page.text_words] == ["Regulatory", "matters,", "at", "12.5%", "(net)"]
+    for w in page.text_words:
+        assert 0 <= w.box[0] < w.box[2] <= page.image.width and 0 <= w.box[1] < w.box[3] <= page.image.height
+    two = render_pages(make_pdf([{"texts": [(72, 700, 12, "first line"), (72, 680, 12, "second line")]}]))[0]
+    assert [w.text for w in two.text_words] == ["first", "line", "second", "line"]

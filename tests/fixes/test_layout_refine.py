@@ -23,7 +23,7 @@ def test_no_options_or_no_text_layer_changes_nothing():
     rendered = _rendered()
     items = [_item()]
     assert refine(items, rendered, {}) is items
-    rendered.words = None
+    rendered.words = rendered.text_words = None
     assert refine(items, rendered, {"tighten": True, "native_text": True, "split_gap": 1.0}) is items
 
 
@@ -79,3 +79,13 @@ def test_config_overrides_and_unknown_option(tmp_path):
         Config.load("configs/standin.yaml", ["layout_options.padding=2"])
     with pytest.raises(ValueError, match="key=value"):
         Config.load("configs/standin.yaml", ["nonsense"])
+
+
+def test_tighten_pad_grows_the_word_box_by_a_share_of_the_word_height():
+    rendered = _rendered()
+    (tight,) = refine([_item()], rendered, {"tighten": True})
+    (padded,) = refine([_item()], rendered, {"tighten": True, "tighten_pad": 0.5})
+    grow = tight.bbox.x0 - padded.bbox.x0
+    assert grow > 1 and padded.bbox.y1 - tight.bbox.y1 == pytest.approx(grow)
+    (edge,) = refine([_item()], rendered, {"tighten": True, "tighten_pad": 500})
+    assert (edge.bbox.x0, edge.bbox.y0, edge.bbox.x1, edge.bbox.y1) == (0.0, 0.0, 612.0, 792.0)  # clipped to the page

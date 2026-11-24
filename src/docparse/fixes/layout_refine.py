@@ -1,6 +1,7 @@
 """Layout refinements on pages with a PDF text layer (plan Task 16). Each is one option, measured on its own.
 
     tighten      a text item's box becomes the union of the PDF words it holds
+    tighten_pad  ... grown on every side by tighten_pad x the item's median word height
     native_text  a text item's text becomes those PDF words, in reading order
     split_gap    a text item is split where the vertical gap between two of its lines exceeds
                  split_gap x the item's median line height (each part gets its own words as text)
@@ -43,7 +44,8 @@ class PtWord:
 
 def words_in_points(rendered: RenderedPage) -> list[PtWord]:
     s = rendered.scale
-    return [PtWord(w.text, w.box[0] * s, w.box[1] * s, w.box[2] * s, w.box[3] * s) for w in rendered.words or []]
+    source = rendered.text_words if rendered.text_words is not None else rendered.words
+    return [PtWord(w.text, w.box[0] * s, w.box[1] * s, w.box[2] * s, w.box[3] * s) for w in source or []]
 
 
 def assign_words(items: list[LayoutItem], words: list[PtWord]) -> list[list[PtWord]]:
@@ -75,9 +77,13 @@ def lines_of(words: list[PtWord]) -> list[list[PtWord]]:
     return [sorted(line, key=lambda w: w.x0) for line in lines]
 
 
-def _union(words: list[PtWord]) -> Box:
-    return Box(x0=min(w.x0 for w in words), y0=min(w.y0 for w in words),
-               x1=max(w.x1 for w in words), y1=max(w.y1 for w in words))  # fmt: skip
+def _union(words: list[PtWord], pad: float = 0.0, page: tuple[float, float] | None = None) -> Box:
+    m = pad * median(w.y1 - w.y0 for w in words) if pad else 0.0
+    x0, y0 = min(w.x0 for w in words) - m, min(w.y0 for w in words) - m
+    x1, y1 = max(w.x1 for w in words) + m, max(w.y1 for w in words) + m
+    if page:
+        x0, y0, x1, y1 = max(0.0, x0), max(0.0, y0), min(page[0], x1), min(page[1], y1)
+    return Box(x0=x0, y0=y0, x1=x1, y1=y1)
 
 
 def _text(lines: list[list[PtWord]]) -> str:
@@ -106,6 +112,8 @@ def refine(items: list[LayoutItem], rendered: RenderedPage, options: dict) -> li
     tighten = bool(options.get("tighten"))
     native = bool(options.get("native_text"))
     split_gap = float(options.get("split_gap") or 0.0)
+    pad = float(options.get("tighten_pad") or 0.0)
+    page = (rendered.width_pt, rendered.height_pt)
     words = words_in_points(rendered)
     if not words or not (tighten or native or split_gap):
         return items
@@ -120,11 +128,11 @@ def refine(items: list[LayoutItem], rendered: RenderedPage, options: dict) -> li
         if len(parts) > 1:
             for part in parts:
                 flat = [w for line in part for w in line]
-                out.append(item.model_copy(update={"bbox": _union(flat), "md": _text(part)}))
+                out.append(item.model_copy(update={"bbox": _union(flat, pad, page), "md": _text(part)}))
             continue
         update: dict = {}
         if tighten:
-            update["bbox"] = _union(mine)
+            update["bbox"] = _union(mine, pad, page)
         if native:
             update["md"] = _text(lines)
         out.append(item.model_copy(update=update) if update else item)
