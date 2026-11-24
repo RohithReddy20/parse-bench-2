@@ -64,6 +64,22 @@ def _cmd_score_published(args: argparse.Namespace) -> int:
     return 0
 
 
+def _published_path(pipeline: str = pins.OCRIA_PIPELINE):
+    return paths.data_root() / "published" / pins.RESULTS_REVISION / pipeline / "results" / pipeline
+
+
+def _cmd_standin(args: argparse.Namespace) -> int:
+    from docparse.models.cache import Cache
+    from evalkit import fetch
+    from evalkit.standin import import_published, report_json
+
+    gt = fetch.fetch_ground_truth()
+    fetch.fetch_published(pins.OCRIA_PIPELINE)
+    report = import_published(_published_path(), gt, Cache(paths.cache_dir()), workers=args.workers)
+    print(report_json(report))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="evalkit")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -76,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--revision", default=pins.RESULTS_REVISION)
     s.add_argument("--run-id", default="")
     s.set_defaults(func=_cmd_score_published)
+    st = sub.add_parser("standin", help="import OCRia-1's published outputs into the cache as stand-in readings")
+    st.add_argument("--workers", type=int, default=8)
+    st.set_defaults(func=_cmd_standin)
     return parser
 
 

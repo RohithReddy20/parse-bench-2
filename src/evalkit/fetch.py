@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 from evalkit import paths, pins
 
 ATTEMPTS = 5
-WORKERS = 4
+WORKERS = int(os.environ.get("DOCPARSE_FETCH_WORKERS", "4"))
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 OCRIA_CODE_PATTERNS = [
     "ocria_grounding/*",
