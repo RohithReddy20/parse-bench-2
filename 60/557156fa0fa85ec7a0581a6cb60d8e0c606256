@@ -1,0 +1,23 @@
+configs/standin_best.yaml
+  s_a13908d8c3ae20::t_6428b306456f5b 28-31
+docs/results/2026-11-25-forms-fix.md
+  s_a13908d8c3ae20::t_3bcff1564c147f 227,247,292,298,305-306
+  s_a13908d8c3ae20::t_6528a2208db485 206-209
+  s_a13908d8c3ae20::t_5d42c885c55e49 180-205,210-226,228-246,248-291,293-297,299-304,307-317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60557156fa0fa85ec7a0581a6cb60d8e0c606256",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
