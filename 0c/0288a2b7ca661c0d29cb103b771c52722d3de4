@@ -1,0 +1,21 @@
+configs/own_best.yaml
+  s_a13908d8c3ae20::t_26d35ea8b2065a 40-42
+configs/standin_best.yaml
+  s_a13908d8c3ae20::t_6ad4bc625c093f 19-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c0288a2b7ca661c0d29cb103b771c52722d3de4",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
