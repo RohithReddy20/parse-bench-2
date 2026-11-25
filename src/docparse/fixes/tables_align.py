@@ -56,6 +56,56 @@ def page_words(rendered: RenderedPage) -> list[TWord]:
     return out
 
 
+def _direction(words: list[TWord]) -> tuple[int, int]:
+    """(lines whose words the text layer writes left to right, lines it writes right to left), over lines of
+    three or more words. The PDF writes words in reading order, so on an upright page the first count wins."""
+    rev = fwd = 0
+    for line in lines_of(words):
+        if len(line) < 3:
+            continue
+        steps = [b.index - a.index for a, b in zip(line, line[1:], strict=False)]
+        up, down = sum(1 for s in steps if s > 0), sum(1 for s in steps if s < 0)
+        if down > 2 * up:
+            rev += 1
+        elif up > 2 * down:
+            fwd += 1
+    return fwd, rev
+
+
+def turned(words: list[TWord], width: float, height: float, angle: int = 180) -> list[TWord]:
+    """The words of a `width` x `height` page turned clockwise by `angle` (90, 180 or 270) degrees."""
+    out = []
+    for w in words:
+        if angle == 180:
+            box = (width - w.x1, height - w.y1, width - w.x0, height - w.y0)
+        elif angle == 90:
+            box = (height - w.y1, w.x0, height - w.y0, w.x1)
+        else:
+            box = (w.y0, width - w.x1, w.y1, width - w.x0)
+        out.append(TWord(w.index, w.text, *box, w.key))
+    return out
+
+
+def upright_turn(words: list[TWord], width: float, height: float, min_lines: int = 4) -> int:
+    """The clockwise turn (0, 90, 180 or 270 degrees) that sets the page's text upright. Text printed sideways
+    has tall word boxes; whether it reads up or down, or whether level text is upside down, is told by the order
+    the text layer writes the words of a line in (reading order). 0 when the evidence is thin."""
+    long = [w for w in words if len(w.text) >= 4]
+    tall = sum(1 for w in long if (w.y1 - w.y0) > 1.5 * (w.x1 - w.x0))
+    candidates = (90, 270) if long and tall > 0.5 * len(long) else (0, 180)
+    best, best_fwd = 0, -1
+    scores = {}
+    for angle in candidates:
+        fwd, rev = _direction(turned(words, width, height, angle) if angle else words)
+        scores[angle] = (fwd, rev)
+        if fwd > best_fwd:
+            best, best_fwd = angle, fwd
+    fwd, rev = scores[best]
+    if best == 0 or fwd < min_lines or fwd <= 2 * rev:
+        return 0
+    return best
+
+
 def lines_of(words: list[TWord]) -> list[list[TWord]]:
     """Words grouped into lines, top to bottom, each line left to right."""
     lines: list[list[TWord]] = []
