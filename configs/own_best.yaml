@@ -25,13 +25,27 @@ table_options:
   complete: true
   merge: true
   extend: true
+  leaf: true  # round two: a short leaf header row over the last columns where no page geometry places it
+  leaf_mode: 3
+  dedupe: true  # round two: copies of a table a looping read wrote again and again are dropped
+  complete_extent: true  # round two: a cut-off table is completed down its own column group
 form_options:
   combs: true
   boxes: true
+  ids: true  # round two: line numbers and box codes in cells of their own joined to their captions
+  codes: true
+  outlines: true  # character-box outlines read as empty check boxes before a typed value dropped
+  trailing: true  # printed text far right of a typed value on its own line
 chart_options:
   measure: true
   labels: true
   panels: true
+  lost: true  # round two: tick labels with leading digits lost
+  legend: true  # round two: legend binding, with panel titles and two-cell series
+  titles: true
+  legend_min: 2
+  legend_override: true  # round two: bindings that contradict the legend or the titled panel
+  panel_override: true
 format_options:
   cell_strike: true
   strike: true

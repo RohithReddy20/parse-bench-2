@@ -19,7 +19,25 @@ LAYOUT_OPTIONS = frozenset(
         "kdl_arbiter", "kdl_keep_pictures", "kdl_keep_tables",
     }
 )  # fmt: skip
-TABLE_OPTIONS = frozenset({"regrid", "regrid_wide", "complete", "merge", "extend", "health"})  # fixes/tables.py
+TABLE_OPTIONS = frozenset(
+    {
+        "regrid",
+        "regrid_wide",
+        "complete",
+        "merge",
+        "extend",
+        "health",
+        "unspan",
+        "unspan_mode",
+        "dedupe",
+        "upright",
+        "split",
+        "absorb",
+        "leaf",
+        "leaf_mode",
+        "complete_extent",
+    }
+)  # fixes/tables.py
 FORM_OPTIONS = frozenset({"combs", "boxes", "outlines", "ids", "codes", "grids", "trailing"})
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
 CHART_OPTIONS = frozenset(
