@@ -28,6 +28,10 @@ table_options:
 form_options:
   combs: true
   boxes: true
+  ids: true  # round two: line numbers and box codes in cells of their own joined to their captions
+  codes: true
+  outlines: true  # character-box outlines read as empty check boxes before a typed value dropped
+  trailing: true  # printed text far right of a typed value on its own line
 chart_options:
   measure: true
   labels: true
