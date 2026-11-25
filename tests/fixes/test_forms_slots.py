@@ -77,3 +77,18 @@ def test_hints_on_lines_without_a_marker():
     assert colon_text(long) is None
     printed = [(40, 700, 10, "Religion:"), (140, 700, 10, "1"), (150, 700, 10, "="), (160, 700, 10, "Austritt")]
     assert _fix("Religion: 1 = Austritt", printed, {"hints": True}) == "Religion (1 = Austritt): [___]"
+
+
+def test_blank_forms_needs_several_blank_markers_and_words_from_the_pdf():
+    printed = [(40, 700, 10, "Behinderung:"), (140, 700, 10, "1"), (150, 700, 10, "="), (160, 700, 10, "Ja")]
+    printed += [(40, 680, 10, "Name:"), (40, 660, 10, "Ort:")]
+    data = make_pdf([{"texts": printed}])  # no overlay
+    rp, fonts = render_pages(data)[0], overlay_fonts(data)
+    md = "Behinderung: 1 = Ja [___]\nName: [___]\nOrt: [___]"
+    on = {"blanks": True, "blank_forms": True}
+    assert repair(md, rp, fonts, on, data) == "Behinderung (1 = Ja): [___]\nName: [___]\nOrt: [___]"
+    assert repair(md, rp, fonts, {"blanks": True}, data) == md  # off unless asked
+    two = "Behinderung: 1 = Ja [___]\nName: [___]"  # two markers: not taken for a form
+    assert repair(two, rp, fonts, on, data) == two
+    absent = "Behinderung: 9 = Nein [___]\nName: [___]\nOrt: [___]"  # the tail is not on the page
+    assert repair(absent, rp, fonts, on, data) == absent

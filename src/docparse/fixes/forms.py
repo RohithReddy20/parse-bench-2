@@ -308,9 +308,11 @@ def repair(
     pdf_bytes: bytes = b"",
     page_index: int = 0,
 ) -> str:
-    """The page markdown with the enabled repairs; unchanged without an overlay or options."""
-    if not fonts or not options or not markdown:
+    """The page markdown with the enabled repairs; unchanged without an overlay or options (except `blank_forms`)."""
+    if not options or not markdown:
         return markdown
+    if not fonts:
+        return _blank_form(markdown, rendered, options)
     printed, overlay = page_words(rendered, fonts)
     if not overlay:
         return markdown
@@ -347,3 +349,23 @@ def repair(
         slots = slot_edits(page, options)
         out = apply_edits(out, slots) if slots else out
     return out
+
+
+BLANK_FORM_MARKS = 3  # a page read writing this many blank markers (`[___]`) is a form with blank fields
+_BLANK_MARK = re.compile(r"\[[ \t]*_{2,}[ \t]*\]")
+
+
+def _blank_form(markdown: str, rendered: RenderedPage, options: dict) -> str:
+    """Option `blank_forms`: the slot repairs (`blanks`, `cells`, `hints`) on a page without an overlay whose read
+    writes several blank markers. Nothing on such a page is typed: every word aligned to the PDF is printed."""
+    if not options.get("blank_forms") or len(_BLANK_MARK.findall(markdown)) < BLANK_FORM_MARKS:
+        return markdown
+    if not (options.get("blanks") or options.get("cells") or options.get("hints")):
+        return markdown
+    from docparse.fixes.forms_slots import slot_edits
+
+    printed, _ = page_words(rendered, frozenset())
+    if not printed:
+        return markdown
+    slots = slot_edits(read_form(markdown, printed, []), options)
+    return apply_edits(markdown, slots) if slots else markdown
