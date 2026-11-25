@@ -1,0 +1,50 @@
+src/docparse/fixes/tables_html.py
+  s_a13908d8c3ae20::t_d1cd6a3d395dde 86
+  s_a13908d8c3ae20::t_35666bc1aa020f 1-65,73-85,87-164
+  s_a13908d8c3ae20::t_3fb5158a95cb95 66-72
+src/docparse/fixes/tables_align.py
+  s_a13908d8c3ae20::t_b0695df4739716 1-210
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_9cc7d22ac6cf8a 60-63
+tests/fixes/test_tables.py
+  s_a13908d8c3ae20::t_4165d2e7e763bd 1-113,147-195
+  s_a13908d8c3ae20::t_63178d94f4a59d 128-146
+  s_a13908d8c3ae20::t_130c51bf17bd5e 114-127
+src/docparse/fixes/tables.py
+  s_a13908d8c3ae20::t_b0e606e6424da9 25,27
+  s_a13908d8c3ae20::t_68d4e9679ca358 8-9
+  s_a13908d8c3ae20::t_d10d8303e1476b 111
+  s_a13908d8c3ae20::t_29bf2516b4fc28 178-187,192-193,298-324
+  s_a13908d8c3ae20::t_81ad9a021e103d 1-5,13-22,28-35,46-47,49-53,55,58-59,95-96,101,103-110,112-152,154-161,165-177,188-191,325-345
+  s_a13908d8c3ae20::t_82ff83312ac881 36-45,48,54,56-57,62,64-71,73-94
+  s_a13908d8c3ae20::t_275707ebc58974 194-244
+  s_a13908d8c3ae20::t_97992724ac426f 97-100,102
+  s_a13908d8c3ae20::t_a9a36521c8b2e9 245-297
+  s_a13908d8c3ae20::t_e4698eebbda2a4 23-24,26
+  s_a13908d8c3ae20::t_26ef7e80adfa7e 6-7
+  s_a13908d8c3ae20::t_9f14bc4d538c93 10-12
+  s_a13908d8c3ae20::t_e11390a0a1dafb 60-61,63,72
+  s_a13908d8c3ae20::t_b28655eb92f17c 153,162-164
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_a1d4a4e34f7460 20
+  s_a13908d8c3ae20::t_3300305e024719 36-37
+  s_a13908d8c3ae20::t_95307417c1ab59 60-61
+src/evalkit/report.py
+  s_a13908d8c3ae20::t_ba3c10d8dec3ba 22-26,28-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b19f15bc67cc7b6513ab177019620d0ec2f72b54",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
