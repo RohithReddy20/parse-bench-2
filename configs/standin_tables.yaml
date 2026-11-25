@@ -1,7 +1,8 @@
 # Stand-in readings with the table corrections that passed on the development part (docs/results, tables fix):
 # rows narrower than their table get empty cells so their cells sit in the columns their PDF words lie in, and
 # rows written with a stray empty cell have their empty cells laid out again; tables cut off by the token limit are
-# completed from the text layer; one table read as two side by side is merged back.
+# completed from the text layer; one table read as two side by side is merged back; a group header ending a short
+# header row spans the rest of the row. Tables 86.20 -> 88.03 on all pages (run ta-extend).
 page_model:
   repo: llamaindex/OCRia-1
   revision: published-497e243f68cd
@@ -15,3 +16,4 @@ table_options:
   regrid_wide: true
   complete: true
   merge: true
+  extend: true

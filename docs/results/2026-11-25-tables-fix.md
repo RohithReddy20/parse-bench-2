@@ -64,7 +64,8 @@ run for real.
 | `ta-regrid-wide` | + `regrid_wide` | 86.44 | 91.32 | 87.43 | +0.07 | 0.99 | +0.22 | **yes** |
 | `ta-complete` | + `complete` | 86.58 | 91.36 | 87.54 | +0.13 | 1.00 | +0.04 | **yes** |
 | `ta-merge` | + `merge` | 86.84 | 91.63 | 87.81 | +0.27 | 1.00 | +0.26 | **yes** |
-LEDGER_MORE
+| `ta-extend` | + `extend` | 87.10 | 91.70 | 88.03 | +0.25 | 0.99 | +0.07 | **yes** |
+| `ta-extend` against `ta-base` | all five | 87.10 | 91.70 | 88.03 | +1.87 | 1.00 | +1.65 | gain on all pages +1.82 |
 
 **Local re-scores** (deltas against `ta-base` unless said otherwise; pages up / down):
 
@@ -89,11 +90,18 @@ LEDGER_MORE
 | Text lines between matched rows that no row took, fitting the columns, inserted as rows (vs. `regrid` + `regrid_wide`) | -0.66 | -0.24 | -0.58 | 7 / 39 | rejected: most such lines belong to rows matched elsewhere |
 | Empty cells of matched rows filled with the unused words of their line inside their column (vs. `regrid` + `regrid_wide`) | -0.29 | -0.54 | -0.35 | 16 / 95 | rejected: those words are mostly parts of other cells |
 | Full-width header rows with empty cells laid out again (vs. `regrid` + `regrid_wide`) | -0.01 | 0.00 | -0.00 | 1 / 2 | rejected (almost never applies) |
-LOCAL_MORE
+| Health share 0.3 instead of 0.5 (vs. `regrid` + `regrid_wide`) | +0.00 | 0.00 | +0.00 | 2 / 0 | 0.5 kept (insensitive) |
+| Health share 0.7 instead of 0.5 (vs. `regrid` + `regrid_wide`) | -0.01 | -0.31 | -0.07 | 2 / 4 | 0.5 kept |
 
 ## 4. What is kept
 
-KEPT_LINE
+`configs/standin_tables.yaml`: `table_options: {regrid, regrid_wide, complete, merge, extend}` (health share
+0.5). Tables **86.20 → 88.03 on all pages (+1.82)**, 85.22 → 87.10 on the development part (+1.87, P 1.00) and
+90.05 → 91.70 on the check slice (+1.65, P 1.00). That is about +0.30 on the overall score. By subset: `tables`
+89.75 → 90.58, `complex_table_headers` 72.57 → 73.91, `financial_tables` 90.03 → 91.56,
+`insurance_filing_tables` 83.99 → 89.42, `dense_tables` 84.06 → 87.01.
+
+This falls short of the target of about 90.
 
 What each kept option does, and what it found on these pages:
 
@@ -113,8 +121,62 @@ What each kept option does, and what it found on these pages:
   kept and the text layer's lines below the last matched row are added as rows while every word of a line falls
   in one of the table's columns and the line fills at least half of them; the first line that does not fit (a
   note, a footer) ends the table. 14 pages change, mostly long dense tables; none goes down.
-MERGE_EXTEND
+- **`merge`**: OCRia-1 sometimes writes one wide table as two tables, one after the other: the left part with the
+  row labels and the right part (a second column group such as "Rolling 4-Quarter") without them, starting at
+  the first row that has values. The PDF shows both parts on the same text lines, the right one to the right.
+  They are merged back when every body row of the right part lies on a line of a body row of the left part, the
+  right part's first column holds numbers, and it does not repeat the left part's row-label header (a repeated
+  group such as `Pad no. | Pad Name | X | Y` twice is a separate table in the references, and stays one). A
+  family of insurance trend pages goes from about 0.5 to 0.9. The first version, which kept tables apart when
+  they shared any header text, merged nothing useful: in the real cases the sub-headers repeat.
+- **`extend`**: after `regrid`, a header row still narrower than the table whose last cell spans two or more
+  columns and ends the row ("Percent Change 2025 vs. 2024" over four of five value columns) gets that cell spanned
+  to the table's last column. This one does not use the PDF and also runs on scans, where it helps
+  `complex_table_headers`. Its check-slice gain (+0.07) is under half its development gain (+0.25), the design's
+  overfitting signal; it has a single threshold (two columns at least), and one column at least was slightly
+  worse, so the simplest form is kept.
+
+Pages without a text layer, and tables whose text layer fails the health test, are left as they were (apart from
+`extend`).
 
 ## 5. What is left
 
-LEFT_SECTION
+`python -m evalkit losses --run-id ta-extend`: 11.97 dimension points lost (13.80 at `ta-base`). Pages with a
+text layer lose 9.55 (11.23 before), pages without one 2.42 (2.56). Pages at 0 cost 2.73, pages under 0.5 cost
+3.70, pages between 0.5 and 0.9 cost 4.60.
+
+| Error type | Severity | `ta-base` | `ta-extend` |
+|---|---|---:|---:|
+| content: cell content | — | 7.04 | 5.80 |
+| systematic column error: wrong numbers (3+ in one column) | critical | 2.02 | 1.67 |
+| row missing | critical | 1.07 | 0.99 |
+| wrong or misplaced number in a row | critical | 0.82 | 0.81 |
+| repeated row | major | 0.57 | 0.55 |
+| systematic column error: wrong text or units | major | 0.40 | 0.37 |
+| extra column | major | 0.41 | 0.35 |
+| label reworded (different wording) | major | 0.35 | 0.35 |
+| invented row | critical | 0.32 | 0.32 |
+| content: row order | — | 0.47 | 0.31 |
+| header rows differ | major | 0.31 | 0.27 |
+
+What the remaining losses are, from the pages looked at:
+
+- **Structure the PDF cannot settle.** Most "wrong number" cells are still values OCRia-1 read correctly but
+  keyed differently from the reference: multi-level headers flattened or split differently, a currency code
+  and amount in one cell or two (`EUR | 20,000,000` against `EUR 20,000,000`), two values in one reference
+  cell, a reference that splits side-by-side groups the reading keeps together. Which form the reference wants
+  varies from page to page; no geometric rule tried here picks it.
+- **Reads that failed outright**: three looped readings (`SERFF_TX_random_pages_1__p649`, `blackrock-funds...p25`:
+  the same table repeated over 80 times; `dense_table_018`: a header repeated until the token limit) and a few
+  garbled text layers (`financial_tables/accenture-2026-08-14_page1` uses a custom encoding). They need a table
+  built from the text layer alone, or a second model read.
+- **Dropped rows and columns.** Inserting text lines that no row took, and filling empty cells with unused words,
+  both lost points: in these tables most unclaimed words belong to multi-line cells or to rows the assignment
+  put on a neighbouring line. A dropped column group (`SERFF_CA_random_pages 1_page46`: seven groups printed, six
+  read) is visible in the text layer but was not attempted.
+- **Pages without a text layer** (101 of the 149 `complex_table_headers` pages) still lose 2.4 points; only
+  `extend` reaches them.
+
+Best next step: build a table from the text layer alone (lines → columns by the gaps that run through all rows),
+use it as a second reading for looped or garbled reads, and as a structural vote where OCRia-1's header
+structure and the text layer's column count disagree.
