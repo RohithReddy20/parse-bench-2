@@ -16,7 +16,7 @@ from docparse import __version__
 from docparse.base.ocria_parse import parse_page
 from docparse.core.config import Config
 from docparse.core.hashing import sha256_hex
-from docparse.core.ir import CostRecord, Document
+from docparse.core.ir import CostRecord, Document, Finding
 from docparse.models.adapters import heron
 from docparse.models.adapters.attention import attention_call, read_attention
 from docparse.models.adapters.ocria import build_page_call, read_page_result
@@ -80,6 +80,17 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.tables import fix_tables
 
             fix_tables(page, rp, config.table_options)
+        if config.chart_options.get("measure") and any(r.kind == "table" for r in page.regions):
+            from docparse.fixes.charts import correct_tables
+            from docparse.fixes.layout_refine import words_in_points
+            from docparse.pdf.graphics import load_shapes
+
+            try:
+                correct_tables(page, words_in_points(rp), load_shapes(pdf_bytes, index), config.chart_options)
+            except Exception as exc:  # unusual geometry must never cost the page: keep the reading, record why
+                for region in page.regions:
+                    region.selected = region.candidates[0].id
+                page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
         page.cost = CostRecord(
             calls=1,
             gpu_seconds=result.gpu_seconds or 0.0,

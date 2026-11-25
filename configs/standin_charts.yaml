@@ -1,0 +1,16 @@
+# Stand-in readings with the chart corrections that passed on the development part (docs/results, charts fix):
+# chart values measured from the PDF's vector bars, lines and markers against the tick-label axes, bars placed
+# by their printed category labels when they do not fall into one slot per row, and small multiples read
+# against their own axis.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+layout: from_page_read
+chart_options:
+  measure: true
+  labels: true
+  panels: true

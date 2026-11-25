@@ -13,7 +13,8 @@ def _text_ops(texts, font: str = "F1") -> bytes:
 
 def make_pdf(pages: list[dict]) -> bytes:
     """pages: [{"size": (w, h), "rotate": 0, "crop": (x0, y0, x1, y1) | None, "texts": [(x, y, size, text)],
-    "overlay": [(x, y, size, text)], "rects": [(x, y, w, h)]}]. Text coordinates are PDF user space (origin bottom-left). "overlay" text
+    "overlay": [(x, y, size, text)], "rects": [(x, y, w, h)], "draw": [operators]}]. Text coordinates are PDF
+    user space (origin bottom-left). "overlay" text
     is drawn the way a fill tool adds it: the page wrapped in q ... Q, then one more stream in its own font."""
     objects: list[bytes] = [b"", b"", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
     stream = lambda body: b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream"  # noqa: E731
@@ -23,6 +24,8 @@ def make_pdf(pages: list[dict]) -> bytes:
         content = _text_ops(page.get("texts", []))
         for rx, ry, rw, rh in page.get("rects", []):  # stroked rectangles (check boxes)
             content += f"\n{rx} {ry} {rw} {rh} re S".encode()
+        if page.get("draw"):  # raw drawing operators ("1 0 0 rg 10 10 50 80 re f", ...), painted before the text
+            content = "\n".join(page["draw"]).encode("latin-1") + b"\n" + content
         page_no = len(objects) + 1
         kids.append(f"{page_no} 0 R")
         extra = ""
