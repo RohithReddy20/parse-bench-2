@@ -3,6 +3,7 @@ from docparse.core.ir import Box, LayoutItem
 from docparse.fixes.layout_kdl import (
     add_uncovered,
     apply_kdl,
+    arbitrate,
     picture_boxes,
     regions_in_points,
     split_coarse,
@@ -123,6 +124,20 @@ def test_picture_boxes_take_the_matching_kdl_box():
     moved, same = picture_boxes([pic, text], regions_in_points(dets, rendered))
     assert round(moved.bbox.x0) == 310 and round(moved.bbox.y1) == 510 and same is text
     assert picture_boxes([pic], regions_in_points(dets[1:], rendered)) == [pic]  # no match: unchanged
+
+
+def test_arbitrate_drops_the_nested_item_kdl_does_not_see():
+    rendered = _rendered()
+    outer = _item("Table", (100, 100, 400, 300), label="table")
+    inner = _item("Text", (110, 110, 300, 150), "t")
+    apart = _item("Text", (450, 450, 500, 470), "far")
+    sees_outer = regions_in_points([_det("Table", (100, 100, 400, 300), rendered)], rendered)
+    assert arbitrate([outer, inner, apart], sees_outer) == [outer, apart]
+    sees_inner = regions_in_points([_det("Text", (110, 110, 300, 150), rendered)], rendered)
+    assert arbitrate([outer, inner, apart], sees_inner) == [inner, apart]
+    both = sees_outer + sees_inner
+    assert arbitrate([outer, inner, apart], both) == [outer, inner, apart]
+    assert arbitrate([outer, inner, apart], sees_inner, frozenset({"Table"})) == [outer, inner, apart]
 
 
 def test_apply_kdl_changes_nothing_without_options_or_text_layer():

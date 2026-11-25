@@ -13,6 +13,8 @@ PDF text layer. Each option is measured on its own; the `layout_refine` options 
     kdl_pictures a Picture item holding several KDL pictures that no other item covers, where KDL sees no
                  picture of about the same box, is replaced by the KDL regions inside it (also without text layer)
     kdl_picbox   a Picture item takes the box of the KDL picture it matches (IoU >= 0.5)
+    kdl_arbiter  of two nested items, the one no KDL region matches is dropped when KDL matches the other;
+                 with kdl_keep_pictures / kdl_keep_tables, pictures / tables are never dropped
 
 A new text item's text is its PDF words in reading order; a region holding no words is dropped, except
 pictures (which have no text). On a page without a text layer the items are returned unchanged.
@@ -27,7 +29,9 @@ from docparse.fixes.layout_refine import PtWord, _holds, _text, lines_of, words_
 from docparse.models.adapters.heron import Detection
 from docparse.pdf.render import RenderedPage
 
-KDL_OPTIONS = ("kdl_replace", "kdl_words", "kdl_add", "kdl_split", "kdl_children", "kdl_pictures", "kdl_picbox")
+KDL_OPTIONS = (
+    "kdl_replace", "kdl_words", "kdl_add", "kdl_split", "kdl_children", "kdl_pictures", "kdl_picbox", "kdl_arbiter",
+)  # fmt: skip
 PICTURES = frozenset({"Picture", "Chart"})
 GRAPHIC = PICTURES | {"Table"}
 SEGMENT = {"Section-header": "paragraph_title", "Title": "doc_title", "Picture": "image", "Table": "table",
@@ -151,6 +155,25 @@ def picture_boxes(items: list[LayoutItem], regions: list[PtRegion]) -> list[Layo
     return out
 
 
+def arbitrate(items: list[LayoutItem], regions: list[PtRegion], keep: frozenset = frozenset()) -> list[LayoutItem]:
+    """Of two nested items (one at least half inside the other), when KDL has a region matching one of them
+    (IoU >= 0.5) and none matching the other, the unmatched one is dropped, unless its type is in `keep`."""
+
+    def matched(it: LayoutItem) -> bool:
+        return any(_iou(r.box, it.bbox) >= SAME for r in regions)
+
+    ok = [matched(it) for it in items]
+    drop: set[int] = set()
+    for i, a in enumerate(items):
+        for j, b in enumerate(items):
+            if i < j and ok[i] != ok[j]:
+                small = min(_area(a.bbox), _area(b.bbox))
+                loser = j if ok[i] else i
+                if small > 0 and _inter(a.bbox, b.bbox) >= 0.5 * small and items[loser].type not in keep:
+                    drop.add(loser)
+    return [it for k, it in enumerate(items) if k not in drop]
+
+
 def apply_kdl(
     items: list[LayoutItem],
     rendered: RenderedPage,
@@ -180,6 +203,11 @@ def apply_kdl(
         items = split_coarse(items, regions, words)
     if options.get("kdl_children"):
         items = table_children(items, regions, words)
+    if options.get("kdl_arbiter"):
+        keep = frozenset(
+            t for t, k in (("Picture", "kdl_keep_pictures"), ("Table", "kdl_keep_tables")) if options.get(k)
+        )
+        items = arbitrate(items, regions, keep)
     if options.get("kdl_add"):
         items = add_uncovered(items, regions, words)
     return items
