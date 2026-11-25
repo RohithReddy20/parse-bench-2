@@ -1,0 +1,19 @@
+docs/results/2026-11-25-own-run-with-corrections.md
+  s_a13908d8c3ae20::t_722376ea4dd36c 1,3,9-12,18,20,23-25,53-54,76-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a218e7226faabd01781a0144edbacbf5f86805d",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
