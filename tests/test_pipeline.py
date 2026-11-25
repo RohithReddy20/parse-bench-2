@@ -207,3 +207,12 @@ def test_pages_without_a_text_layer_ask_for_attention_after_the_read(tmp_path):
     # a page with a text layer never asks for attention
     pdf = make_pdf([{"texts": [(72, 660, 11, "Revenue grew by twelve percent compared with the previous year.")]}])
     assert len(parse(pdf, cfg, CacheOnlyClient(Cache(tmp_path / "c3"), ManifestWriter(tmp_path / "m3"))).pending) == 2
+    # ... unless attention is asked for on every page (it places picture references)
+    always = cfg.model_copy(update={"layout_attention": "always"})
+    cache3 = Cache(tmp_path / "c4")
+    parse(pdf, always, CacheOnlyClient(cache3, ManifestWriter(tmp_path / "m4")))
+    for call, _meta in read_manifest(tmp_path / "m4"):
+        out = {"detections": []} if call.prompt_id == "heron/detect" else {"markdown": "Revenue grew."}
+        cache3.put(ModelResult(key=call.key(), output=out), call)
+    again = parse(pdf, always, CacheOnlyClient(cache3, ManifestWriter(tmp_path / "m5")))
+    assert len(again.pending) == 1 and [c.prompt_id for c, _ in read_manifest(tmp_path / "m5")] == ["ocria-1/attention"]

@@ -59,10 +59,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             continue
         read = read_page_result(result)
         attention = None
-        if config.layout == "ground" and config.layout_attention == "no_text_layer":
+        if config.layout == "ground" and config.layout_attention != "never":
             from docparse.fixes.layout import has_text_layer
 
-            if not has_text_layer(rp):  # asked for only once the read exists: the answer is part of the call
+            # asked for only once the read exists: the answer is part of the call
+            if config.layout_attention == "always" or not has_text_layer(rp):
                 answer = read.raw_answer or read.markdown
                 att_call, answer_blob = attention_call(call.inputs[0], answer, config.page_model, config.prompt_sha)
                 attention = client.get(att_call, ChainMap(answer_blob, blobs), meta)

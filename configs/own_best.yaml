@@ -1,0 +1,39 @@
+# Our own OCRia-1 readings with every correction that passed the keep rule (docs/results). Layout is rebuilt
+# from heron regions and PDF words, with OCRia-1's attention for pages that have no text layer.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: dae83aa51ecd0a8574d415d929a4d9e79348fd2a
+  dtype: bf16
+page_runtime: vllm-0.34.0
+prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38   # sha256 of prompt.txt at the pinned revision
+dpi: 300
+fallback_below: 0.5
+layout: ground
+layout_attention: always
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+form_options:
+  combs: true
+  boxes: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
+format_options:
+  cell_strike: true
+  strike: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true  # safety net: one page in the benchmark; too rare for the bootstrap to judge
