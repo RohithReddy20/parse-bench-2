@@ -186,8 +186,10 @@ def blank_line(line: str, at: int = 0, printed: Printed | None = None) -> str:
     for i, (g0, g1) in enumerate(groups):
         head = line[last:g0]
         after = line[g1 : groups[i + 1][0] if i + 1 < len(groups) else len(line)]
-        # a blank inside a sentence (`Introducing: the [___] — a specialist`) is no field's slot
-        new = head if re.search(r"\w|[?!]", after) and _continues(after) else _head(head, at + last, printed)
+        # a blank inside a sentence (`Introducing: the [___] — a specialist`, `and [___], which`) is no field's slot;
+        # a unit after the blank (`[___] km`) is
+        inside = re.match(r"[ \t]*[,.;:)\]/?!—–-]|[ \t]*[a-z]+[ \t]+[a-z]", after)
+        new = head if inside else _head(head, at + last, printed)
         out += ("\n" + new.lstrip() if i and _opens_field(head) else new) + line[g0:g1]
         last = g1
     rest = line[last:]

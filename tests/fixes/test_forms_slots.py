@@ -38,6 +38,7 @@ def test_blank_line_rules():
     line = "A. Introducing: the [___] — a specialist in the law"
     assert blank_line(line) == line  # a blank inside a sentence
     assert blank_line("1. The priest? The [___]? The [___]?") == "1. The priest? The [___]? The [___]?"
+    assert blank_line("davon zurückgelegt: 113 [___] km") == "113 davon zurückgelegt: [___] km"  # a unit after it
     assert blank_line("Elle s'est terminée le : D15 [___]") == "D15 Elle s'est terminée le: [___]"
     assert blank_line("252 – dont intérêts: [___] (2TR)") == "252 – dont intérêts: [___]\n(2TR)"
     assert blank_line("* Namenszusatz (Beispiel: Freifrau, Graf): [___]") == (
