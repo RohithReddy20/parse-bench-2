@@ -1,0 +1,29 @@
+tests/pdf/test_upright.py
+  s_a13908d8c3ae20::t_4d9a84e8407015 1-33
+tests/test_pipeline.py
+  s_a13908d8c3ae20::t_133152a239723f 269-299
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_133152a239723f 50-56,121,158-164
+src/docparse/pdf/upright.py
+  s_a13908d8c3ae20::t_4d9a84e8407015 1-67
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_133152a239723f 95-96
+docs/results/2026-11-25-own-run-with-corrections.md
+  s_a13908d8c3ae20::t_2b57e41b658b16 58-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07f165418b83fecf4c725250baba7a966c178e2d",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
