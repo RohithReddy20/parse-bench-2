@@ -45,6 +45,15 @@ CHART_OPTIONS = frozenset(
         "snap_tol",
         "panels",
         "anchors",
+        "lost",  # round two: tick labels with leading digits missing from the text layer
+        "rotated",  # round two: rotated category labels ("ordered" or "any")
+        "pos_marks",  # round two: markers placed on categories by their labels
+        "titles",  # round two: legend binding finds a series' panel by the title printed above it
+        "legend_min",  # round two: fewest cells a legend-bound series may have (default 3)
+        "legend_override",  # round two: a binding whose colour contradicts the legend takes the legend's series
+        "pitch",  # round two: bars at a regular pitch with categories missing between them
+        "elim",  # round two: the last unbound series of a plot takes its last unused drawn series
+        "panel_override",  # round two: ... and a binding to another panel than the titled one moves to it
     }
 )
 

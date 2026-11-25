@@ -215,6 +215,55 @@ def _restore_signs(row: list[tuple[float, float, object]], orient: str) -> list[
     return [(c, out[i], w) for i, (c, _, w) in enumerate(row)]
 
 
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text)
+
+
+def _lost_digits(row: list[tuple[float, float, object]]) -> list[tuple[float, float, object]]:
+    """Tick labels whose leading digits have no text mapping ("80 0 0 0 0 30 20 10 0" down a column: the 7, 6,
+    5 and 4 glyphs map to spaces). In an evenly spaced run, at least three labels (and no fewer than the rest)
+    fall on one arithmetic sequence; every other label prints the tail of its value in that sequence, with
+    one or more leading digits missing and the same sign (a lost minus sign alone is not a lost digit). Those
+    labels take their value from the sequence; anything else leaves the row as it was."""
+    out = list(row)
+    done: set[int] = set()
+    for run in _runs(row):
+        n = len(run)
+        if n < 4 or any(id(m[2]) in done for m in run):
+            continue
+        vals = [m[1] for m in run]
+        best: tuple[int, list[float]] | None = None
+        for i in range(n):
+            for j in range(i + 1, n):
+                if vals[i] == vals[j]:
+                    continue
+                dv = (vals[j] - vals[i]) / (j - i)
+                pred = [vals[i] + (k - i) * dv for k in range(n)]
+                hits = sum(abs(v - p) <= 1e-9 * max(1.0, abs(p)) for v, p in zip(vals, pred, strict=True))
+                if best is None or hits > best[0]:
+                    best = (hits, pred)
+        if best is None or best[0] < max(3, n - best[0]) or best[0] == n:
+            continue
+        pred = best[1]
+        fixed = []
+        for (c, v, w), p in zip(run, pred, strict=True):
+            if abs(v - p) <= 1e-9 * max(1.0, abs(p)):
+                fixed.append((c, v, w))
+                continue
+            text = w.text.strip()
+            frac = re.search(r"\.(\d+)", text)
+            shown, full = _digits(text), _digits(f"{abs(p):.{len(frac.group(1)) if frac else 0}f}")
+            neg = text.lstrip("(")[:1] in "-−–" or (text.startswith("(") and text.endswith(")"))
+            if not shown or len(full) <= len(shown) or not full.endswith(shown) or (p < 0) != neg:
+                break
+            fixed.append((c, p, w))
+        else:
+            ids = {id(m[2]) for m in run}
+            done |= ids
+            out = [m for m in out if id(m[2]) not in ids] + fixed
+    return sorted(out, key=lambda m: (m[0], m[1]))
+
+
 def _expand_years(row: list[tuple[float, float, object]]) -> list[tuple[float, float, object]]:
     """A year axis printed "2006 07 08 ... 23": two-digit labels after a full year are years of its century
     (rolling over at 00)."""
@@ -235,7 +284,12 @@ def _expand_years(row: list[tuple[float, float, object]]) -> list[tuple[float, f
 
 
 def find_axes(
-    words: list, years: bool = True, bent: bool = True, signs: bool = True, upright: bool = True
+    words: list,
+    years: bool = True,
+    bent: bool = True,
+    signs: bool = True,
+    upright: bool = True,
+    lost: bool = False,
 ) -> list[Axis]:
     """Value axes printed as numeric tick labels (words with x0, y0, x1, y1, cx, cy and text, in points)."""
     nums = [(w, v) for w in words if (v := tick_value(w.text)) is not None]
@@ -260,6 +314,8 @@ def find_axes(
                 along = sorted((((w.cy if orient == "v" else w.cx), v, w) for w, v in g), key=lambda m: (m[0], m[1]))
                 if orient == "h" and years:
                     along = _expand_years(along)
+                if lost:
+                    along = _lost_digits(along)
                 if signs:
                     along = _restore_signs(along, orient)
                 for run in (m for r in _runs(along) for m in (_monotone(r) if signs else [r])):

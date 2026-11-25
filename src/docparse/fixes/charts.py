@@ -59,6 +59,7 @@ class Unit:
     cats: list[str]
     cells: list[Cell | None]
     nums: list[Number | None]
+    group: str = ""  # the outer label the series sits under (a panel's title, as the table gives it)
 
     @property
     def values(self) -> list[float | None]:
@@ -131,7 +132,8 @@ def table_units(raw: str) -> list[list[Unit]]:
         for c in range(lab, n_cols):
             name = dedupe([text(r, c) for r in range(hdr)])
             got = [value_cell(r, c) for r in rows]
-            down.append(Unit(name, cats, [g[0] for g in got], [g[1] for g in got]))
+            group = text(rows[0], 0) if lab >= 2 else (name.rsplit(" / ", 1)[0] if " / " in name else "")
+            down.append(Unit(name, cats, [g[0] for g in got], [g[1] for g in got], group))
     # categories across the header
     across: list[Unit] = []
     col_groups: list[list[int]] = []
@@ -144,7 +146,13 @@ def table_units(raw: str) -> list[list[Unit]]:
         for r in body:
             got = [value_cell(r, c) for c in cols]
             across.append(
-                Unit(dedupe([text(r, c) for c in range(lab)]), cats, [g[0] for g in got], [g[1] for g in got])
+                Unit(
+                    dedupe([text(r, c) for c in range(lab)]),
+                    cats,
+                    [g[0] for g in got],
+                    [g[1] for g in got],
+                    text(0, cols[0]) if hdr >= 2 else "",
+                )
             )
     return [down, across]
 
@@ -328,6 +336,46 @@ def _slots(bars: list[Bar], n: int, vertical: bool) -> list[list[Bar]] | None:
     return out
 
 
+def _pitch_slots(bars: list[Bar], n: int, vertical: bool) -> list[list[Bar]] | None:
+    """Bars (or stacks) at a regular pitch with categories missing between them: every gap between
+    neighbouring stacks is a whole number of pitches, and the stacks span exactly n - 1 pitches, so each stack
+    has one category and the empty ones fall in the wider gaps. None for anything less regular, or when a
+    category could be missing at either end."""
+    if n < 3 or not bars:
+        return None
+    lo = (lambda b: b.x0) if vertical else (lambda b: b.y0)
+    hi = (lambda b: b.x1) if vertical else (lambda b: b.y1)
+    runs: list[list[Bar]] = []
+    end = -math.inf
+    for b in sorted(bars, key=lo):
+        if runs and lo(b) < end - 0.3:
+            runs[-1].append(b)
+            end = max(end, hi(b))
+        else:
+            runs.append([b])
+            end = hi(b)
+    if not 2 <= len(runs) < n:
+        return None
+    width = [max(hi(b) for b in r) - min(lo(b) for b in r) for r in runs]
+    if max(width) - min(width) > 0.1 * max(width) + 0.3:
+        return None  # stacks of one width
+    centres = [(min(lo(b) for b in r) + max(hi(b) for b in r)) / 2 for r in runs]
+    diffs = [q - p for p, q in zip(centres, centres[1:], strict=False)]
+    pitch = min(diffs)
+    if pitch <= max(width):
+        return None
+    steps = [round(d / pitch) for d in diffs]
+    if any(abs(d - k * pitch) > 0.1 * pitch for d, k in zip(diffs, steps, strict=True)) or sum(steps) != n - 1:
+        return None
+    out: list[list[Bar]] = [[] for _ in range(n)]
+    i = 0
+    for k, r in enumerate(runs):
+        out[i] = r
+        if k < len(steps):
+            i += steps[k]
+    return out
+
+
 def _bar_values(b: Bar, ax: Axis) -> tuple[float, float]:
     """(value at the bar's far end, signed length from its near end): the near end is the one closer to zero."""
     if ax.orient == "v":
@@ -370,8 +418,11 @@ def measured_series(
     reverse: bool = False,
     labels: bool = False,
     anchors: bool = False,
+    rotated: str = "",
+    pos_marks: bool = False,
+    pitch: bool = False,
 ) -> list[Measured]:
-    out = _measured(z, cats, bar_mode, reverse, labels, anchors)
+    out = _measured(z, cats, bar_mode, reverse, labels, anchors, rotated, pos_marks, pitch)
     for m in out:
         m.side, m.box = z.side, z.box
     return out
@@ -385,6 +436,12 @@ def _by_position(bars: list[Bar], pos: list[float | None], vertical: bool) -> li
     """Bars assigned to the category whose label they stand on (centre within half a category spacing)."""
     found = [(i, p) for i, p in enumerate(pos) if p is not None]
     steps = [abs(q - p) / (j - i) for (i, p), (j, q) in zip(found, found[1:], strict=False)]
+    ps = [p for _, p in found]
+    if not (
+        all(q > p for p, q in zip(ps, ps[1:], strict=False)) or all(q < p for p, q in zip(ps, ps[1:], strict=False))
+    ):
+        ps = sorted(ps)  # labels in another order than the table's: the spacing of neighbouring labels
+        steps = [q - p for p, q in zip(ps, ps[1:], strict=False)]
     if not steps:
         return None
     half = 0.5 * sorted(steps)[len(steps) // 2]
@@ -397,8 +454,40 @@ def _by_position(bars: list[Bar], pos: list[float | None], vertical: bool) -> li
     return out
 
 
+def _marks_by_position(
+    pts: list[tuple[float, float]], pos: list[float | None]
+) -> list[tuple[float, float] | None] | None:
+    """Markers of one colour placed on the categories whose labels they stand over (within a third of the
+    label spacing); None when a category has two such markers or fewer than half the categories get one."""
+    found = sorted(p for p in pos if p is not None)
+    steps = [q - p for p, q in zip(found, found[1:], strict=False) if q > p]
+    if not steps:
+        return None
+    tol = sorted(steps)[len(steps) // 2] / 3
+    out: list[tuple[float, float] | None] = []
+    for c in pos:
+        near = [] if c is None else [p for p in pts if abs(p[0] - c) <= tol]
+        near = [
+            p for i, p in enumerate(near) if all(abs(p[0] - q[0]) > 0.5 or abs(p[1] - q[1]) > 0.5 for q in near[:i])
+        ]
+        if len(near) > 1:
+            return None
+        out.append(near[0] if near else None)
+    if sum(p is not None for p in out) < max(2, 0.5 * len(pos)):
+        return None
+    return out
+
+
 def _measured(
-    z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bool = False, anchors: bool = False
+    z: Zone,
+    cats: list[str],
+    bar_mode: str,
+    reverse: bool,
+    labels: bool = False,
+    anchors: bool = False,
+    rotated: str = "",
+    pos_marks: bool = False,
+    pitch: bool = False,
 ) -> list[Measured]:
     n = len(cats)
     ax = z.axis
@@ -407,11 +496,20 @@ def _measured(
     slots = _slots(z.bars, n, vertical)
     pos = None
     if labels and z.words:
-        from docparse.fixes.charts_cats import label_positions
+        from docparse.fixes.charts_cats import label_positions, rotated_positions
 
         pos = label_positions(cats, z.words, z.plot, vertical)
+        if pos is None and rotated and vertical:
+            # labels printed rotated under the plot; "any": each category placed by its own label, in
+            # whatever order the chart draws them (a panel sorted differently from the table)
+            pos = rotated_positions(cats, z.words, z.plot, ordered=rotated != "any")
+            found = [p for p in pos or [] if p is not None]
+            if pos is not None and not all(q > p for p, q in zip(found, found[1:], strict=False)):
+                slots = None  # the bars' order is not the table's: place them by their labels only
         if slots is None and pos is not None:
             slots = _by_position(z.bars, pos, vertical)
+    if slots is None and pitch and z.bars:
+        slots = _pitch_slots(z.bars, n, vertical)
     if slots is None and anchors and z.bars:
         # a series of markers with one mark per category places the categories for bars with gaps
         groups: dict[tuple[int, int, int], list[float]] = {}
@@ -487,6 +585,11 @@ def _measured(
     for color, pts in by_color.items():
         pts = sorted(pts)
         key = ("markers", color, round(pts[0][0], 1))
+        if pos_marks and pos is not None:
+            placed = _marks_by_position(pts, pos)
+            if placed is not None:
+                out.append(Measured(key, ax, [None if p is None else ax.value(p[1]) for p in placed]))
+                continue
         if len(pts) == n:
             out.append(Measured(key, ax, [ax.value(y) for _, y in pts], where=[(x, y, x, y) for x, y in pts]))
         elif cat_x is not None:
@@ -616,11 +719,38 @@ def _axis_side(name: str) -> str:
     return ""
 
 
+def panel_titles(zs: list[Zone], words: list, groups: set[str]) -> dict[str, list[tuple[float, float, float, float]]]:
+    """Per table group label (a panel's title in the table), the zones whose plot has that title printed just
+    above it, within its width. Letters may be missing from the text layer, so the title's letters must
+    appear in order in the words above the plot (at least 85% of them); short labels (under four letters) are
+    not matched."""
+    from docparse.fixes.charts_cats import _lcs, _letters
+
+    out: dict[str, list[tuple[float, float, float, float]]] = {}
+    for z in zs:
+        x0, y0, x1, _ = z.plot
+        lines: list[list] = []
+        for w in sorted(
+            (w for w in words if y0 - 40 <= w.y1 <= y0 + 3 and x0 - 10 <= w.cx <= x1 + 10), key=lambda w: w.cy
+        ):
+            if lines and w.cy - lines[-1][-1].cy <= 3:
+                lines[-1].append(w)
+            else:
+                lines.append([w])
+        text = _letters("".join(w.text for line in lines for w in sorted(line, key=lambda w: w.x0)))
+        for g in groups:
+            letters = _letters(g)
+            if len(letters) >= 4 and _lcs(letters, text) >= 0.85 * len(letters):
+                out.setdefault(g, []).append(z.box)
+    return out
+
+
 def legend_bind(
     options: list[tuple[Unit, list[Measured]]],
     pairs: list[tuple[Unit, Measured]],
     legend: dict[tuple[int, int, int], str],
     opts: dict,
+    titles: dict[str, list[tuple[float, float, float, float]]] | None = None,
 ) -> list[tuple[Unit, Measured]]:
     """Units the values did not bind, tied by name to a legend entry: the measured series of that colour.
     When several drawn series have the colour (panels, two axes), the one nearest OCRia-1's reading is taken
@@ -652,6 +782,11 @@ def legend_bind(
             continue
         mine = {m.key for m in cands if m.key[1] == color}
         home = panels.get(group(u))
+        if titles and u.group and u.group in titles:
+            # the panel printed with this series' group label above it (one plot, or a plot and its right axis)
+            boxes = titles[u.group]
+            if all(_overlap(b, boxes[0]) or _same_plot(b, boxes[0]) for b in boxes):
+                home = boxes
         if home is None and len(mine) > 1:
             continue  # several panels draw this colour and nothing says which one this column reads
         have = [i for i, v in enumerate(u.values) if v is not None]
@@ -665,7 +800,8 @@ def legend_bind(
             if home is not None and not any(_overlap(m.box, b) for b in home):
                 continue  # another panel than the one this column group's other series are read in
             both = [i for i in have if m.values[i] is not None]
-            if len(have) < 3 or len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
+            least = int(opts.get("legend_min", 3))
+            if len(have) < least or len(both) < max(least, opts.get("coverage", 0.7) * len(have)):
                 continue
             span = min(m.axis.span, rng) if not m.axis.log else None
             if not span:
@@ -689,6 +825,171 @@ def legend_bind(
         used.add(m.key)
         done.add(id(u))
     return out
+
+
+def legend_override(
+    options: list[tuple[Unit, list[Measured]]],
+    pairs: list[tuple[Unit, Measured]],
+    legend: dict[tuple[int, int, int], str],
+    titles: dict[str, list[tuple[float, float, float, float]]] | None = None,
+) -> list[tuple[Unit, Measured]]:
+    """Bindings that contradict the legend: the unit's name is a legend entry of one colour but the values
+    bound it to a series drawn in another legend colour (the reading put a series' numbers under its
+    neighbour's name). Within the same plot and category mapping, the series drawn in the unit's own legend
+    colour replaces it, when there is exactly one such series. With `titles`, a binding to a plot other than
+    the one printed with the unit's group label above it moves to that plot (the legend's colour, or the
+    bound colour when the legend does not name the unit). Every other binding stays."""
+    by_name: dict[str, tuple[int, int, int] | None] = {}
+    for color, text in legend.items():
+        k = _norm(text)
+        by_name[k] = None if k in by_name else color
+    legend_colors = set(legend)
+    marked = {_axis_side(t) for t in legend.values()} - {""}
+    implied = {"right": "left", "left": "right"}[next(iter(marked))] if len(marked) == 1 else ""
+    cands = {id(u): ms for u, ms in options}
+    out: list[tuple[Unit, Measured]] = []
+    changed = False
+
+    def near(box, boxes) -> bool:  # the plot of a binding being recoloured (or the zones of its two axes)
+        return box is not None and any(_overlap(box, b) or _same_plot(box, b) for b in boxes)
+
+    def inside(box, boxes) -> bool:  # a titled panel (side-by-side panels share their vertical extent)
+        return box is not None and any(_overlap(box, b) for b in boxes)
+
+    for u, m in pairs:
+        want = by_name.get(_norm(u.name.split(" / ")[-1]))
+        have = m.key[1] if m.key[0] in ("bars", "line", "markers") else None
+        home = None
+        if titles and u.group in titles and all(inside(b, titles[u.group][:1]) for b in titles[u.group]):
+            home = titles[u.group]
+        moved = home is not None and m.box is not None and not inside(m.box, home)
+        recolour = want is not None and have != want and have in legend_colors
+        if not (moved or recolour):
+            out.append((u, m))
+            continue
+        target = want if want is not None else have
+        side = _axis_side(u.name) or implied
+        found: dict[tuple, list[Measured]] = {}
+        for o in cands.get(id(u), []):
+            if o.key[1] != target or o.key[0] != m.key[0]:
+                continue
+            if not (inside(o.box, home) if moved else near(o.box, [m.box])):
+                continue
+            if side and o.side:
+                if o.side != side:
+                    continue
+            elif not moved and o.axis is not m.axis:
+                continue
+            found.setdefault(o.key, []).append(o)
+        reads = next(iter(found.values())) if len(found) == 1 else []
+        if any(r.values != reads[0].values for r in reads[1:]):
+            # one series read two ways (by its vertices, through a category axis) or on two axes: the way and
+            # the axis the values chose for the binding it replaces
+            same = [r for r in reads if (r.where is None) == (m.where is None)]
+            reads = [r for r in same if r.axis is m.axis] or same
+        if not reads or any(r.values != reads[0].values for r in reads[1:]):
+            out.append((u, m))  # no series, several, or readings that nothing chooses between
+            continue
+        out.append((u, reads[-1]))
+        changed = True
+    if titles:
+        out, changed = _titled(options, out, by_name, inside, titles, changed)
+    if not changed:
+        return pairs
+    keys = [m.key for _, m in out]
+    if len(set(keys)) != len(keys):
+        return pairs  # the corrected bindings would use one series twice: keep the values' bindings
+    return out
+
+
+def _titled(options, pairs, by_name, near, titles, changed):
+    """Units whose panel is titled and whose name is a legend entry take the one series of that colour in
+    that panel, whatever the values bound; bindings that would then share a series are dropped, so the
+    legend and the titles decide where they both speak. Applies only when every such unit finds a distinct
+    series."""
+    fixed: dict[int, Measured] = {}
+    for u, cands in options:
+        color = by_name.get(_norm(u.name.split(" / ")[-1]))
+        home = titles.get(u.group) if u.group else None
+        if color is None or not home or not all(near(b, home[:1]) for b in home):
+            continue
+        found: dict[tuple, list[Measured]] = {}
+        for o in cands:
+            if o.key[1] == color and near(o.box, home):
+                found.setdefault(o.key, []).append(o)
+        reads = next(iter(found.values())) if len(found) == 1 else []
+        if not reads or any(r.values != reads[0].values for r in reads[1:]):
+            return pairs, changed
+        fixed[id(u)] = reads[-1]
+    keys = [m.key for m in fixed.values()]
+    if len(fixed) < 2 or len(set(keys)) != len(keys):
+        return pairs, changed
+    taken = set(keys)
+    out = []
+    seen = set()
+    for u, m in pairs:
+        seen.add(id(u))
+        if id(u) in fixed:
+            out.append((u, fixed[id(u)]))
+            changed |= fixed[id(u)] is not m
+        elif m.key not in taken:
+            out.append((u, m))
+        else:
+            changed = True
+    for u, _ in options:
+        if id(u) in fixed and id(u) not in seen:
+            out.append((u, fixed[id(u)]))
+            changed = True
+    return out, changed
+
+
+def eliminate(
+    options: list[tuple[Unit, list[Measured]]], pairs: list[tuple[Unit, Measured]], opts: dict
+) -> list[tuple[Unit, Measured]]:
+    """In a plot where some of a table group's series are bound, the last unbound series of that group takes
+    the last unused drawn series of that plot, when there is exactly one of each and the drawn series covers
+    it (the other series of the plot are accounted for, so only this one is left)."""
+    out = list(pairs)
+    used = {m.key for _, m in pairs}
+    done = {id(u) for u, _ in pairs}
+    for box in {m.box for _, m in pairs if m.box is not None}:
+        groups = {(u.group, tuple(u.cats)) for u, m in pairs if m.box == box}
+        for group in groups:
+            free = [
+                (u, ms)
+                for u, ms in options
+                if id(u) not in done and (u.group, tuple(u.cats)) == group and sum(v is not None for v in u.values) >= 3
+            ]
+            if len(free) != 1:
+                continue
+            u, ms = free[0]
+            left = {}
+            for m in ms:
+                if m.box == box and m.key not in used and not any(_same(m, o) for _, o in out):
+                    left.setdefault(m.key, []).append(m)
+            if len(left) != 1:
+                continue
+            reads = next(iter(left.values()))
+            if any(r.values != reads[0].values for r in reads[1:]):
+                continue
+            m = reads[0]
+            have = [i for i, v in enumerate(u.values) if v is not None]
+            both = [i for i in have if m.values[i] is not None]
+            if len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
+                continue
+            vb = [m.values[i] for i in both]
+            span = m.axis.span or 1.0
+            if _sd(vb) < 0.01 * span:
+                continue  # a flat reading: a rule or stubs, not a series
+            out.append((u, m))
+            used.add(m.key)
+            done.add(id(u))
+    return out
+
+
+def _same_plot(a, b) -> bool:
+    """Two zones of one plot read on its left and right axes: they share the plot's vertical extent."""
+    return abs(a[1] - b[1]) < 2 and abs(a[3] - b[3]) < 2
 
 
 def _overlap(a, b) -> bool:
@@ -799,6 +1100,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
             bent=bool(opts.get("bent", True)),
             signs=bool(opts.get("signs", False)),
             upright=bool(opts.get("upright", False)),
+            lost=bool(opts.get("lost", False)),
         )
     ]
     if not axes:
@@ -821,6 +1123,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
     printed = printed_numbers(words, axes)
     labels = printed_words(words, axes) if opts.get("snap") else None
     legend = find_legend(marks, words) if opts.get("legend") else {}
+    titled = bool(opts.get("titles")) and bool(legend)
     for region in tables:
         base = region.chosen()
         best: tuple[int, list[tuple[Unit, Measured]]] | None = None
@@ -839,13 +1142,21 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                             bool(opts.get("reverse", False)),
                             bool(opts.get("labels", False)),
                             bool(opts.get("anchors", False)),
+                            str(opts.get("rotated", "") or ""),
+                            bool(opts.get("pos_marks", False)),
+                            bool(opts.get("pitch", False)),
                         )
                         if m.key not in used
                     ]
             options = [(u, by_cats[tuple(u.cats)]) for u in units]
             pairs = bind(options, opts)
             if legend:
-                pairs = legend_bind(options, pairs, legend, opts)
+                titles = panel_titles(zs, words, {u.group for u in units if u.group}) if titled else None
+                pairs = legend_bind(options, pairs, legend, opts, titles)
+                if opts.get("legend_override"):
+                    pairs = legend_override(options, pairs, legend, titles if opts.get("panel_override") else None)
+            if opts.get("elim") and pairs:
+                pairs = eliminate(options, pairs, opts)
             n = sum(
                 sum(v is not None and x is not None for v, x in zip(u.values, m.values, strict=True)) for u, m in pairs
             )

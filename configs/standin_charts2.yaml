@@ -1,0 +1,46 @@
+# configs/standin_best.yaml plus the chart corrections kept in round two (docs/results/2026-11-25-charts-fix.md).
+# Stand-in readings with every correction that passed the keep rule so far (docs/results): looped-read fallback,
+# layout refinements, table grid repairs, form combs and check boxes, chart values measured from the drawing,
+# strikeout, bold and list-marker repairs, and respelling from the text layer.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+fallback_below: 0.5  # looped or truncated reads fall back to the PDF text layer
+layout: from_page_read
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+form_options:
+  combs: true
+  boxes: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
+  lost: true  # round two (docs/results/2026-11-25-charts-fix.md): tick labels with leading digits lost
+  legend: true  # round two: legend binding, with panel titles and two-cell series
+  titles: true
+  legend_min: 2
+  legend_override: true  # round two: bindings that contradict the legend or the titled panel
+  panel_override: true
+format_options:
+  cell_strike: true
+  strike: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true  # safety net: one page in the benchmark; too rare for the bootstrap to judge
