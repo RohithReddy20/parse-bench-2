@@ -325,6 +325,10 @@ def repair(
         from docparse.fixes.forms_rows import outline_edits
 
         edits += outline_edits(page)
+    if options.get("trailing"):
+        from docparse.fixes.forms_rows import trailing_edits
+
+        edits += trailing_edits(page)
     out = apply_edits(markdown, edits) if edits else markdown
     if options.get("ids") or options.get("codes") or options.get("grids"):  # whole tables: after the edits inside them
         from docparse.fixes.forms_rows import row_edits

@@ -13,6 +13,8 @@ word) and the same number printed again at the value box, sitting in the caption
               that ends the row
     outlines  character-box outlines the read wrote as empty check boxes right before a typed value
               (`£ [ ] [ ] 7060`) are dropped (`£ 7060`)
+    trailing  printed text the read wrote after a typed value on its line, standing far right of the value on
+              the page (another column), goes to a line of its own
 
 Cells holding typed (overlay) text are never moved. A table whose first row captions its value columns
 (`| | | Plus-value | Moins-value |`) is a grid read by column, and one where a caption owns more than one value slot
@@ -33,6 +35,7 @@ CODE = re.compile(r"\(?[0-9]{1,5}[a-zA-Z]?[.)]?|[a-zA-Z]")  # anything a box may
 BOX_CODE = re.compile(r"[0-9]{2,5}[a-zA-Z]?|[0-9]{1,2}\.[0-9]{1,3}|[A-Z]{1,2}[0-9]{1,3}")  # 9060, 3.111, RN33
 CAPTION = re.compile(r"(?:\[[ xX✓]?\]|[☐☑☒□■○●\s*(•-])*[^\W\d_]{2,}")  # words, maybe after a box or a bullet
 _WORDY = re.compile(r"\w")
+_LETTERS = re.compile(r"[^\W\d_]{2,}")
 _OUTLINES = re.compile(r"((?:[ \t*_]*(?:\[[ \t]?\]|[☐□]))+)[ \t*_]*$")
 _SIGNS = re.compile(r"[ \t]*[£$€¥]?[ \t]*")
 _UNIT_END = re.compile(r"\n|<br[ \t]*/?>|</?t[dhr][^>\n]*>")
@@ -198,4 +201,47 @@ def outline_edits(page: FormPage) -> list[tuple[int, int, str]]:
         m = _OUTLINES.search(head)
         if m and _SIGNS.fullmatch(re.sub(r"[*_]", "", head[: m.start()])):
             edits.add((u0 + m.start(1), u0 + m.end(1), ""))
+    return sorted(edits)
+
+
+TRAIL_GAP = 4.0  # printed text this many glyph heights right of a typed value (or on another line) is not its label
+
+
+def trailing_edits(page: FormPage) -> list[tuple[int, int, str]]:
+    """A line break between a placed typed value and the printed text the read wrote after it on the same line, when
+    that text stands far right of the value on the page or on another line (`264 524 570 **PROTECTED B**`): text of
+    another column, not the value's own label (`11 year(s)` stays)."""
+    md, al = page.markdown, page.al
+    typed, printed = [False] * len(al.tokens), [False] * len(al.tokens)
+    for k, p in enumerate(al.amatch):
+        if p is not None:
+            (typed if page.owner[al.p_word[p]] >= 0 else printed)[al.a_tok[k]] = True
+    edits = set()
+    for f, (_, t1) in page.placed.items():
+        end, nxt = al.tokens[t1].end, t1 + 1
+        line_end = md.find("\n", end)
+        line_end = len(md) if line_end < 0 else line_end
+        line = md[md.rfind("\n", 0, end) + 1 : line_end]
+        if nxt >= len(al.tokens) or al.tokens[nxt].start >= line_end or "<t" in line or "|" in line:
+            continue
+        rest = [t for t in range(nxt, len(al.tokens)) if al.tokens[t].start < line_end]
+        if typed[nxt] or not printed[nxt] or not any(_LETTERS.search(al.tokens[t].text) for t in rest):
+            continue
+        gap = md[end : al.tokens[nxt].start]
+        words = al.token_words(nxt)
+        if not re.fullmatch(r"[ \t*_]*", gap) or not words:
+            continue
+        w, last = al.words[words[0]], page.fills[f].words[-1]
+        height = max(last.y1 - last.y0, 1.0)
+        if abs(w.cy - last.cy) < 0.5 * height and w.x0 - last.x1 < TRAIL_GAP * height:
+            continue
+        lead = len(gap) - len(gap.lstrip(" \t"))
+        if md[md.rfind("\n", 0, end) + 1 : end].count("**") % 2:  # the value sits in bold: its closer stays
+            if not gap[lead:].startswith("**"):
+                continue
+            start = end + lead + 2
+        else:
+            start = end
+        stop = start + len(md[start : al.tokens[nxt].start]) - len(md[start : al.tokens[nxt].start].lstrip(" \t"))
+        edits.add((start, stop, "\n"))
     return sorted(edits)

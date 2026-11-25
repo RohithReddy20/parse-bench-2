@@ -18,7 +18,7 @@ LAYOUT_OPTIONS = frozenset(
     }
 )  # fmt: skip
 TABLE_OPTIONS = frozenset({"regrid", "regrid_wide", "complete", "merge", "extend", "health"})  # fixes/tables.py
-FORM_OPTIONS = frozenset({"combs", "boxes", "outlines", "ids", "codes", "grids"})
+FORM_OPTIONS = frozenset({"combs", "boxes", "outlines", "ids", "codes", "grids", "trailing"})
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
 CHART_OPTIONS = frozenset(
     {

@@ -54,6 +54,16 @@ def test_character_box_outlines_before_a_typed_value_are_dropped():
     assert _fix(md, printed, typed, {"outlines": True}) == "**14** **Total rents**\n\xa3 7060\n\n[ ] Yes"
 
 
+def test_printed_text_far_right_of_a_typed_value_goes_to_its_own_line():
+    printed = [(40, 700, 10, "Number:"), (420, 700, 10, "PROTECTED"), (40, 660, 10, "for:"), (112, 660, 10, "year(s)")]
+    typed = [(100, 700, 10, "264524570"), (90, 660, 10, "11")]
+    md = "Number: 264524570 **PROTECTED**\nfor: 11 year(s)"
+    assert _fix(md, printed, typed, {"trailing": True}) == "Number: 264524570\n**PROTECTED**\nfor: 11 year(s)"
+    assert _fix("**Number: 264524570** PROTECTED", printed, typed, {"trailing": True}) == (
+        "**Number: 264524570**\nPROTECTED"
+    )
+
+
 def test_a_grid_of_check_boxes_under_option_captions_becomes_one_line_per_row():
     from docparse.fixes.forms_grids import box_grid_lines
 
