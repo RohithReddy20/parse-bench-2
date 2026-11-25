@@ -1,0 +1,23 @@
+src/evalkit/external/__init__.py
+  s_a13908d8c3ae20::t_03f40084c35308 1-2
+src/evalkit/external/olmocr_bench.py
+  s_a13908d8c3ae20::t_e8e22e4a0bd6f0 1-439
+tests/evalkit/test_olmocr_bench.py
+  s_a13908d8c3ae20::t_6cad95d22d2b89 1-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f458032e5eda97ed5cb413916db9196b5777f1e2",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
