@@ -182,6 +182,40 @@ def _cmd_losses(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def _cmd_paired(args: argparse.Namespace) -> int:
+    """One line per dimension: the run's score and its paired gain over the base on dev, check and all pages."""
+    from evalkit.ledger import Ledger
+    from evalkit.losses import dimension_scores
+    from evalkit.paired import paired_bootstrap
+
+    ledger = Ledger(paths.ledger_path())
+    base, new = ledger.cases(args.base), ledger.cases(args.run_id)
+    for dim in args.dimension.split(","):
+        parts = []
+        for fold in ("dev", "check", "all"):
+            try:
+                r = paired_bootstrap(base, new, dim, fold)
+            except ValueError:
+                continue
+            parts.append(f"{fold} {dimension_scores(new, fold)[dim]:.2f} ({r['gain']:+.2f}, P {r['p_positive']:.2f})")
+        print(f"{dim:11s} " + " | ".join(parts))
+    return 0
+
+
+def _cmd_pages(args: argparse.Namespace) -> int:
+    """The pages whose score differs between two runs for one metric, worst first."""
+    from evalkit.ledger import Ledger
+
+    ledger = Ledger(paths.ledger_path())
+    a = {c.example_id: c.score or 0.0 for c in ledger.cases(args.base, metric=args.metric) if c.counted}
+    b = {c.example_id: c.score or 0.0 for c in ledger.cases(args.run_id, metric=args.metric) if c.counted}
+    rows = sorted((b[k] - a[k], k) for k in a if k in b and abs(b[k] - a[k]) > 1e-9)
+    print(f"{len(rows)} pages changed, sum {sum(d for d, _ in rows):+.2f} ({sum(d > 0 for d, _ in rows)} up)")
+    for d, k in rows[: args.limit] + (rows[-args.limit :] if len(rows) > args.limit else []):
+        print(f"{d:+.3f}  {a[k]:.3f} -> {b[k]:.3f}  {k}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="evalkit")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -219,6 +253,17 @@ def build_parser() -> argparse.ArgumentParser:
     lo.add_argument("--fold", choices=["all", "dev", "check"], default="all")
     lo.add_argument("--out", default="")
     lo.set_defaults(func=_cmd_losses)
+    pa = sub.add_parser("paired", help="paired bootstrap of a run against a base run, per dimension and fold")
+    pa.add_argument("--base", required=True)
+    pa.add_argument("--run-id", required=True)
+    pa.add_argument("--dimension", required=True, help="comma-separated: text,formatting,tables,charts,layout,forms")
+    pa.set_defaults(func=_cmd_paired)
+    pg = sub.add_parser("pages", help="pages whose score differs between two runs")
+    pg.add_argument("--base", required=True)
+    pg.add_argument("--run-id", required=True)
+    pg.add_argument("--metric", required=True, help="forms_v2, table_next, chart_next, text_next, ...")
+    pg.add_argument("--limit", type=int, default=15)
+    pg.set_defaults(func=_cmd_pages)
     st = sub.add_parser("standin", help="import OCRia-1's published outputs into the cache as stand-in readings")
     st.add_argument("--workers", type=int, default=8)
     st.set_defaults(func=_cmd_standin)
