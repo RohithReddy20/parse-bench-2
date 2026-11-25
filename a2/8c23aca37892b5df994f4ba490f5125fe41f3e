@@ -1,0 +1,27 @@
+src/docparse/fixes/forms_rows.py
+  s_a13908d8c3ae20::t_0da565b19c47b5 147
+  s_a13908d8c3ae20::t_a81a9e8de5ac42 1-73,77,85-146,148,150-195
+  s_a13908d8c3ae20::t_0ee4f94beede7a 74-76,78-84,149
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_4b64f71b253a16 21
+src/docparse/fixes/forms.py
+  s_a13908d8c3ae20::t_4c1997f508cb79 324-336
+tests/fixes/test_forms_rows.py
+  s_a13908d8c3ae20::t_eef105704be004 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a28c23aca37892b5df994f4ba490f5125fe41f3e",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
