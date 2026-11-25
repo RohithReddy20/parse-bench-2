@@ -66,34 +66,74 @@ What the experiments showed:
   scored 70.11.
 - **Splitting text items at paragraph gaps does not pay** (-0.02 to -0.05), so it stays off.
 
-## 3. What is left in layout after the kept refinements
+## 3. Second round: words no item covers, and nested boxes
 
-Dimension points lost, all pages.
+After round one the largest remaining loss was reference elements that no predicted box located (5.4 of the
+11 points still lost). A diagnostic over the 535 layout pages split them by cause, in page shares:
 
-| Outcome | Published | With refinements | Change |
+| Cause | Elements | Share of pages lost |
+|---|---:|---:|
+| No predicted box touches the element at all | 596 | 8.2 |
+| Text or heading covered by a much larger Table box | 304 | 5.5 |
+| Text covered by, or half covered by, a Picture box | 152 | 3.3 |
+| Picture box covers under half of the reference picture | 22 | 1.7 |
+| Everything else | | 10.0 |
+
+Of the elements with no box at all, nearly every one has PDF words inside it, and about half of them are text
+that OCRia-1 did not write into its markdown at all. So the fix needs no model: PDF words that lie in no
+layout item are grouped into lines and blocks, and each block becomes a new Text item (`orphans`).
+
+Gains are against the round-one configuration (87.89 on all pages), same paired bootstrap.
+
+| Variant | Dev | Check | All | Dev gain | P(gain > 0) | Kept |
+|---|---:|---:|---:|---:|---:|---|
+| Round one (tighten 0.15 + health-tested native text) | 89.06 | 83.61 | 87.89 | | | |
+| + items for uncovered PDF words, block gap 1.0 line heights | 89.80 | 85.27 | 88.83 | +0.74 | 1.00 | **yes** |
+| same, block gap 0.7 | 89.80 | 85.28 | 88.83 | +0.74 | 1.00 | no (same) |
+| same, block gap 1.5 | 89.76 | 85.13 | 88.77 | +0.70 | 1.00 | no |
+| same, blocks need 3 letters or digits | 89.78 | 85.28 | 88.81 | +0.71 | 1.00 | no |
+| + skip blocks where the rendered page shows nothing (invisible text) | 89.98 | 85.35 | 88.99 | +0.92 | 1.00 | **yes** |
+| + skip blocks whose words OCRia-1 did not read (50% support) | 89.69 | 84.76 | 88.63 | -0.11 vs plain | 0.22 | no |
+| + skip blocks whose box holds words of another item | 89.79 | 85.29 | 88.82 | -0.01 vs plain | 0.42 | no |
+| + drop text items inside a Key-Value Region | 90.00 | 85.62 | 89.06 | +0.02 vs kept | 0.76 | no |
+| + drop text items inside a Picture | 89.69 | 85.43 | 88.77 | -0.29 vs kept | 0.00 | no |
+| + drop a Table that mostly is a Picture | 90.01 | 85.43 | 89.02 | +0.02 vs kept | 0.62 | no |
+
+**Kept:** `orphans` with `orphan_ink`. Layout is now **88.99 on all pages** (published 85.95, +3.04), 89.98
+on the development part and 85.35 on the check slice. That is +0.51 on the overall score, on stand-in
+readings and pages with a text layer.
+
+- The check slice gains more than the development part (+1.74 against +0.92), so this is not fitted to the
+  development pages.
+- Words OCRia-1 did not read are worth keeping: requiring support from the reading loses 0.2.
+- The nested-box rules (plan Task 16, step 3) do not pay. Which of two overlapping boxes the reference wants
+  differs from page to page; no fixed rule wins.
+
+## 4. What is left in layout after the kept refinements
+
+Dimension points lost, all pages (11.0 in total).
+
+| Outcome | Round one | Now | Change |
 |---|---:|---:|---:|
-| element not located (no box matches): text | 2.83 | 2.75 | -0.08 |
-| extra box: holds words locked to another element | 1.94 | 1.56 | -0.38 |
-| box looser or tighter than the reference (IoU ramp): text | 1.28 | 1.14 | -0.14 |
-| box found, text does not match (token F1 < 0.8): text | 1.63 | 0.99 | -0.64 |
-| element not located (no box matches): heading | 0.92 | 0.94 | +0.02 |
-| element not located (no box matches): picture | 0.86 | 0.87 | +0.01 |
+| extra box: holds words locked to another element | 1.56 | 1.66 | +0.09 |
+| element not located (no box matches): text | 2.75 | 1.55 | -1.20 |
+| box found, text does not match (token F1 < 0.8): text | 0.99 | 1.20 | +0.20 |
+| box looser or tighter than the reference (IoU ramp): text | 1.14 | 1.15 | +0.00 |
+| element not located (no box matches): picture | 0.87 | 0.86 | -0.00 |
 | box looser or tighter than the reference (IoU ramp): picture | 0.68 | 0.68 | -0.00 |
-| box looser or tighter than the reference (IoU ramp): heading | 0.74 | 0.57 | -0.17 |
-| element not located (no box matches): table | 0.41 | 0.41 | +0.00 |
-| element not located (no box matches): header/footer | 0.35 | 0.34 | -0.01 |
-| box found, text does not match (token F1 < 0.8): heading | 0.76 | 0.34 | -0.42 |
-| box looser or tighter than the reference (IoU ramp): header/footer | 0.36 | 0.31 | -0.05 |
-| box found, text does not match (token F1 < 0.8): table | 0.26 | 0.26 | +0.00 |
-| extra box: blank area | 0.24 | 0.24 | +0.00 |
-| table box misses its words (< 90% of word centres): table | 0.22 | 0.22 | +0.00 |
-| box found, text does not match (token F1 < 0.8): header/footer | 0.24 | 0.14 | -0.10 |
+| element not located (no box matches): heading | 0.94 | 0.62 | -0.31 |
+| box looser or tighter than the reference (IoU ramp): heading | 0.57 | 0.59 | +0.02 |
+| element not located (no box matches): table | 0.41 | 0.41 | -0.00 |
+| box found, text does not match (token F1 < 0.8): heading | 0.34 | 0.37 | +0.03 |
+| box looser or tighter than the reference (IoU ramp): header/footer | 0.31 | 0.35 | +0.04 |
+| extra box: blank area | 0.24 | 0.30 | +0.06 |
 
-The remaining loss is mostly elements with no matching box and boxes with the wrong text. Those are
-segmentation errors in the detector's regions, which is what a second detector (KDL nano v2) is for.
+What remains is mostly disagreement about granularity: a Table or Picture box where the reference has
+separate text elements (about 1.6 points), and overlapping boxes where one is counted as extra (1.7). Those
+are the detector's region choices, which is what a second detector (KDL nano v2) is for.
 
 ## Still open in M1
 
 - The same refinements on our own run's layout (needs the full OCRia-1 run and the attention pass on pages
   without a text layer).
-- KDL nano v2 boxes (plan Task 16, step 4) and the picture-threshold and de-duplication variants (step 3).
+- KDL nano v2 boxes (plan Task 16, step 4).

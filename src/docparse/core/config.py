@@ -13,19 +13,10 @@ from docparse.models.calls import ModelRef
 FIXES = ("layout", "forms", "tables", "charts", "text", "formatting")
 LAYOUT_OPTIONS = frozenset(
     {
-        "tighten",
-        "tighten_pad",
-        "native_text",
-        "native_support",
-        "split_gap",
-        "orphans",
-        "orphan_gap",
-        "orphan_min",
-        "orphan_ink",
-        "orphan_support",
-        "orphan_clear",
+        "tighten", "tighten_pad", "native_text", "native_support", "split_gap",
+        "orphans", "orphan_gap", "orphan_min", "orphan_ink",
     }
-)
+)  # fmt: skip
 
 
 class Config(BaseModel):

@@ -139,7 +139,7 @@ def test_orphan_words_need_a_healthy_text_layer():
     assert len(refine([first], rendered, {"orphans": True}, page_markdown=reading)) == 2
 
 
-def test_orphan_filters_ink_support_and_clear():
+def test_orphan_ink_skips_invisible_text():
     rendered = _rendered()
     first = _item(box=(60, 80, 420, 112))
     assert len(refine([first], rendered, {"orphans": True, "orphan_ink": True})) == 2  # the words are drawn
@@ -148,8 +148,3 @@ def test_orphan_filters_ink_support_and_clear():
     hidden = render_pages(make_pdf([{"texts": [(72, 640, 11, P2[0])]}]))[0]
     hidden.image = blank  # a text layer with nothing drawn: invisible text
     assert refine([], hidden, {"orphans": True, "orphan_ink": True}) == []
-    reading = "\n".join(P1)  # the model did not read the second paragraph
-    assert len(refine([first], rendered, {"orphans": True, "orphan_support": 0.5}, page_markdown=reading)) == 1
-    assert (
-        len(refine([first], rendered, {"orphans": True, "orphan_support": 0.5}, page_markdown="\n".join(P1 + P2))) == 2
-    )

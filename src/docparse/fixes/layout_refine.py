@@ -11,9 +11,8 @@
     orphans      PDF words that lie in no item at all become new Text items, one per block of lines, when the
                  text layer is healthy (the words the items do hold agree with the reading). orphan_gap is the
                  largest vertical gap inside one block, in line heights (default 1.0); orphan_min is the
-                 fewest letters or digits a block needs (default 1). Three optional filters: orphan_ink
-                 (the page shows something there), orphan_support (that share of the block's tokens is in
-                 the reading) and orphan_clear (the block's box holds no word that already has an item)
+                 fewest letters or digits a block needs (default 1). With orphan_ink a block is skipped
+                 when the rendered page shows nothing there (invisible text)
 
 A word belongs to the smallest text item holding its centre. Pictures and tables are never changed, and an
 item holding no PDF words (a scan, text drawn as an image) is left exactly as it was.
@@ -223,18 +222,12 @@ def refine(
         held = [w for mine in owned for w in mine]
         if supported(held or words, page_tokens, support):
             least = int(options.get("orphan_min", 1))
-            need = float(options.get("orphan_support") or 0.0)
-            taken = [w for w in words if any(_holds(it.bbox, w) for it in items)]
             for block in orphan_blocks(items, words, float(options.get("orphan_gap", 1.0))):
                 flat = [w for line in block for w in line]
                 box = _union(flat, pad, page)
                 if sum(len(t) for w in flat for t in tokens(w.text)) < least:
                     continue
-                if need and not supported(flat, page_tokens, need):
-                    continue  # the model did not read these words: hidden text, or text the page does not show
                 if options.get("orphan_ink") and not has_ink(rendered, _union(flat)):
                     continue  # nothing is drawn there: invisible text
-                if options.get("orphan_clear") and any(_holds(box, w, 0.0) for w in taken):
-                    continue  # the block wraps around words that already have an item
                 out.append(LayoutItem(type="Text", label="text", md=_text(block), bbox=box))
     return out
