@@ -52,3 +52,21 @@ def test_character_box_outlines_before_a_typed_value_are_dropped():
     typed = [(120, 700, 10, "7060")]
     md = "**14** **Total rents**\n\xa3 [ ] [ ] [ ] 7060\n\n[ ] Yes"
     assert _fix(md, printed, typed, {"outlines": True}) == "**14** **Total rents**\n\xa3 7060\n\n[ ] Yes"
+
+
+def test_a_grid_of_check_boxes_under_option_captions_becomes_one_line_per_row():
+    from docparse.fixes.forms_grids import box_grid_lines
+
+    md = (
+        '<table><tr><th rowspan="2">How would you rate it?</th><th colspan="3">Most days</th></tr>'
+        "<tr><th>Good</th><th>Fair</th><th>Poor</th></tr>"
+        "<tr><td>1. Walk</td><td>[ ]</td><td>[x]</td><td>[ ]</td></tr>"
+        "<tr><td>2. Read</td><td>☐</td><td>☐</td><td>☒</td></tr></table>"
+    )
+    out = "How would you rate it? Most days\n1. Walk: [ ] Good [x] Fair [ ] Poor\n2. Read: [ ] Good [ ] Fair [x] Poor"
+    assert box_grid_lines(md) == out
+    plain = "<table><tr><th>A</th><th>B</th></tr><tr><td>1. Walk</td><td>12</td></tr></table>"
+    assert box_grid_lines(plain) is None  # values, not boxes
+    printed = [(40, 700, 10, "1."), (52, 700, 10, "Walk"), (200, 720, 10, "Good"), (260, 720, 10, "Fair")]
+    md = "<table><tr><th></th><th>Good</th><th>Fair</th></tr><tr><td>1. Walk</td><td>[ ]</td><td>[x]</td></tr></table>"
+    assert _fix(md, printed, [(262, 700, 10, "X")], {"grids": True}) == "1. Walk: [ ] Good [x] Fair"

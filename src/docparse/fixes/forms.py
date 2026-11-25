@@ -326,7 +326,7 @@ def repair(
 
         edits += outline_edits(page)
     out = apply_edits(markdown, edits) if edits else markdown
-    if options.get("ids") or options.get("codes"):  # whole tables: after the edits inside them
+    if options.get("ids") or options.get("codes") or options.get("grids"):  # whole tables: after the edits inside them
         from docparse.fixes.forms_rows import row_edits
 
         if out != markdown:

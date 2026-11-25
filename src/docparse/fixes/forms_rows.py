@@ -168,11 +168,17 @@ def rewrite_table(raw: str, typed: list[list[bool]], options: dict) -> str:
 
 def row_edits(page: FormPage, options: dict) -> list[tuple[int, int, str]]:
     """Whole-table replacements for the tables of the page read that change."""
-    if not (options.get("ids") or options.get("codes")):
+    if not (options.get("ids") or options.get("codes") or options.get("grids")):
         return []
+    from docparse.fixes.forms_grids import box_grid_lines
+
     typed = _typed_tokens(page)
     edits = []
     for m in _TABLE.finditer(page.markdown):
+        lines = box_grid_lines(m.group(0)) if options.get("grids") else None
+        if lines is not None:
+            edits.append((m.start(), m.end(), lines))
+            continue
         new = rewrite_table(m.group(0), _typed_cells(page, typed, m.start(), m.end()), options)
         if new != m.group(0):
             edits.append((m.start(), m.end(), new))
