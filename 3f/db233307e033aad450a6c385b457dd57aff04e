@@ -1,0 +1,60 @@
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_848b815db0aa13 21-35,38
+  s_a13908d8c3ae20::t_754f42137cad1a 20,39
+  s_a13908d8c3ae20::t_d2a4abf226499c 36-37
+src/docparse/fixes/tables_split.py
+  s_a13908d8c3ae20::t_27b16815724679 1-22,24,26-32,34-64,67-99,101-112
+  s_a13908d8c3ae20::t_ce2679370cb2ae 100
+  s_a13908d8c3ae20::t_0e6ab7348fcbb1 25
+  s_a13908d8c3ae20::t_a224aea5b28e4f 23,65-66
+  s_a13908d8c3ae20::t_d24f5917d3ee2f 33
+tests/fixes/test_tables_round2.py
+  s_a13908d8c3ae20::t_eaf0f4c05d6a2b 1-177,194-207
+  s_a13908d8c3ae20::t_b9d868e4280922 178-193
+  s_a13908d8c3ae20::t_0f13dc1bf86f2f 208-211
+src/docparse/fixes/tables.py
+  s_a13908d8c3ae20::t_9686b7cf7efb08 362-374,382-404
+  s_a13908d8c3ae20::t_f21a9b1a34fc4e 31-39,41
+  s_a13908d8c3ae20::t_b023003bd83e9e 304-305,307
+  s_a13908d8c3ae20::t_29ba1955f6cd94 298
+  s_a13908d8c3ae20::t_c129ea4468a3f1 101-102
+  s_a13908d8c3ae20::t_61f076b074dff3 325-361
+  s_a13908d8c3ae20::t_19fe7bd52ac847 112-114
+  s_a13908d8c3ae20::t_798c4f355a3f6d 40,66-69
+  s_a13908d8c3ae20::t_ea22313ad58bdf 405-427,429-431,436-438,440-448
+  s_a13908d8c3ae20::t_0e6ab7348fcbb1 238
+  s_a13908d8c3ae20::t_8b18b79a9c306f 43,94-95
+  s_a13908d8c3ae20::t_e2c87b90c25f67 273
+  s_a13908d8c3ae20::t_6728e6b799e136 92-93
+  s_a13908d8c3ae20::t_d79adf39175774 96-97
+  s_a13908d8c3ae20::t_c7087014929175 428,432-435
+  s_a13908d8c3ae20::t_fff5de6c48051a 117-120
+  s_a13908d8c3ae20::t_848b815db0aa13 82,98-100,299-302
+  s_a13908d8c3ae20::t_58b8f07c72900f 375-381
+  s_a13908d8c3ae20::t_0686510db958c2 279-297,303,308-324
+  s_a13908d8c3ae20::t_ee20473ecee39e 48,109,530-532,536-538,556-559
+  s_a13908d8c3ae20::t_7a24907e8b7287 306
+  s_a13908d8c3ae20::t_ce2679370cb2ae 439
+  s_a13908d8c3ae20::t_0adfed5eef0823 241-272,274-278
+  s_a13908d8c3ae20::t_063af5cafc0719 239-240
+src/docparse/fixes/tables_align.py
+  s_a13908d8c3ae20::t_d24f5917d3ee2f 66
+  s_a13908d8c3ae20::t_c93497aff4ea16 59-61,72,75-106
+  s_a13908d8c3ae20::t_3e56795206b8a9 62-65,67-71,73-74,107-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3fdb233307e033aad450a6c385b457dd57aff04e",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
