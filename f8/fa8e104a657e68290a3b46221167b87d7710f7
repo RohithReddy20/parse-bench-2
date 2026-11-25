@@ -1,0 +1,37 @@
+src/docparse/models/adapters/attention.py
+  s_a13908d8c3ae20::t_193cc6e482c895 1-65
+serve/executors.py
+  s_a13908d8c3ae20::t_b05232bf635846 119-150
+tests/models/test_attention_adapter.py
+  s_a13908d8c3ae20::t_193cc6e482c895 1-20
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_4c97e72653b005 12,21,51-62,86
+src/docparse/fixes/layout.py
+  s_a13908d8c3ae20::t_4c97e72653b005 22,58-75,89-91
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_4c97e72653b005 30-32
+tests/test_pipeline.py
+  s_a13908d8c3ae20::t_4c97e72653b005 171-175,177-182,186-209
+  s_a13908d8c3ae20::t_d5b37f70ead89d 176,183-185
+serve/modal_attention.py
+  s_a13908d8c3ae20::t_b05232bf635846 1-132
+tests/serve/test_executors.py
+  s_a13908d8c3ae20::t_ca8ffdf52754eb 118
+  s_a13908d8c3ae20::t_b05232bf635846 110-117,119-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8fa8e104a657e68290a3b46221167b87d7710f7",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
