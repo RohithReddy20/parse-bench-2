@@ -59,6 +59,7 @@ class Unit:
     cats: list[str]
     cells: list[Cell | None]
     nums: list[Number | None]
+    group: str = ""  # the outer label the series sits under (a panel's title, as the table gives it)
 
     @property
     def values(self) -> list[float | None]:
@@ -131,7 +132,8 @@ def table_units(raw: str) -> list[list[Unit]]:
         for c in range(lab, n_cols):
             name = dedupe([text(r, c) for r in range(hdr)])
             got = [value_cell(r, c) for r in rows]
-            down.append(Unit(name, cats, [g[0] for g in got], [g[1] for g in got]))
+            group = text(rows[0], 0) if lab >= 2 else (name.rsplit(" / ", 1)[0] if " / " in name else "")
+            down.append(Unit(name, cats, [g[0] for g in got], [g[1] for g in got], group))
     # categories across the header
     across: list[Unit] = []
     col_groups: list[list[int]] = []
@@ -144,7 +146,13 @@ def table_units(raw: str) -> list[list[Unit]]:
         for r in body:
             got = [value_cell(r, c) for c in cols]
             across.append(
-                Unit(dedupe([text(r, c) for c in range(lab)]), cats, [g[0] for g in got], [g[1] for g in got])
+                Unit(
+                    dedupe([text(r, c) for c in range(lab)]),
+                    cats,
+                    [g[0] for g in got],
+                    [g[1] for g in got],
+                    text(0, cols[0]) if hdr >= 2 else "",
+                )
             )
     return [down, across]
 
@@ -667,11 +675,34 @@ def _axis_side(name: str) -> str:
     return ""
 
 
+def panel_titles(zs: list[Zone], words: list, groups: set[str]) -> dict[str, list[tuple[float, float, float, float]]]:
+    """Per table group label (a panel's title in the table), the zones whose plot has that title printed just
+    above it, within its width. Letters may be missing from the text layer, so the title's letters must
+    appear in order in the words above the plot (at least 85% of them); short labels (under four letters) are
+    not matched."""
+    from docparse.fixes.charts_cats import _lcs, _letters
+
+    out: dict[str, list[tuple[float, float, float, float]]] = {}
+    for z in zs:
+        x0, y0, x1, _ = z.plot
+        above = sorted(
+            (w for w in words if y0 - 40 <= w.y1 <= y0 + 3 and x0 - 10 <= w.cx <= x1 + 10),
+            key=lambda w: (round(w.cy), w.x0),
+        )
+        text = _letters("".join(w.text for w in above))
+        for g in groups:
+            letters = _letters(g)
+            if len(letters) >= 4 and _lcs(letters, text) >= 0.85 * len(letters):
+                out.setdefault(g, []).append(z.box)
+    return out
+
+
 def legend_bind(
     options: list[tuple[Unit, list[Measured]]],
     pairs: list[tuple[Unit, Measured]],
     legend: dict[tuple[int, int, int], str],
     opts: dict,
+    titles: dict[str, list[tuple[float, float, float, float]]] | None = None,
 ) -> list[tuple[Unit, Measured]]:
     """Units the values did not bind, tied by name to a legend entry: the measured series of that colour.
     When several drawn series have the colour (panels, two axes), the one nearest OCRia-1's reading is taken
@@ -703,6 +734,11 @@ def legend_bind(
             continue
         mine = {m.key for m in cands if m.key[1] == color}
         home = panels.get(group(u))
+        if titles and u.group and u.group in titles:
+            # the panel printed with this series' group label above it (one plot, or a plot and its right axis)
+            boxes = titles[u.group]
+            if all(_overlap(b, boxes[0]) or _same_plot(b, boxes[0]) for b in boxes):
+                home = boxes
         if home is None and len(mine) > 1:
             continue  # several panels draw this colour and nothing says which one this column reads
         have = [i for i, v in enumerate(u.values) if v is not None]
@@ -716,7 +752,8 @@ def legend_bind(
             if home is not None and not any(_overlap(m.box, b) for b in home):
                 continue  # another panel than the one this column group's other series are read in
             both = [i for i in have if m.values[i] is not None]
-            if len(have) < 3 or len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
+            least = int(opts.get("legend_min", 3))
+            if len(have) < least or len(both) < max(least, opts.get("coverage", 0.7) * len(have)):
                 continue
             span = min(m.axis.span, rng) if not m.axis.log else None
             if not span:
@@ -740,6 +777,11 @@ def legend_bind(
         used.add(m.key)
         done.add(id(u))
     return out
+
+
+def _same_plot(a, b) -> bool:
+    """Two zones of one plot read on its left and right axes: they share the plot's vertical extent."""
+    return abs(a[1] - b[1]) < 2 and abs(a[3] - b[3]) < 2
 
 
 def _overlap(a, b) -> bool:
@@ -873,6 +915,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
     printed = printed_numbers(words, axes)
     labels = printed_words(words, axes) if opts.get("snap") else None
     legend = find_legend(marks, words) if opts.get("legend") else {}
+    titled = bool(opts.get("titles")) and bool(legend)
     for region in tables:
         base = region.chosen()
         best: tuple[int, list[tuple[Unit, Measured]]] | None = None
@@ -899,7 +942,8 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
             options = [(u, by_cats[tuple(u.cats)]) for u in units]
             pairs = bind(options, opts)
             if legend:
-                pairs = legend_bind(options, pairs, legend, opts)
+                titles = panel_titles(zs, words, {u.group for u in units if u.group}) if titled else None
+                pairs = legend_bind(options, pairs, legend, opts, titles)
             n = sum(
                 sum(v is not None and x is not None for v, x in zip(u.values, m.values, strict=True)) for u, m in pairs
             )

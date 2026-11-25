@@ -23,3 +23,25 @@ def test_lost_minus_signs_and_other_numbers_are_not_lost_digits():
     # a label that is not the tail of its value in the sequence leaves the column alone
     odd = [PtWord(t, 40, 300 + 10 * i, 50, 305 + 10 * i) for i, t in enumerate(("80", "5", "60", "50", "40"))]
     assert all(70 not in a.values for a in find_axes(odd, lost=True, **KEPT))
+
+
+def test_rotated_category_labels_split_into_pieces_place_the_categories():
+    from docparse.fixes.charts_cats import rotated_positions
+
+    box = (90, 50, 400, 200)  # the plot; rotated labels just under it, read bottom to top
+    words = []
+    for x, pieces in ((100, ["Swit", "erland"]), (150, ["United", "States"]), (200, ["at", "ia"]), (250, ["Spain"])):
+        y = 260.0
+        for p in pieces:  # each piece a narrow, tall box; the next piece above it
+            words.append(PtWord(p, x, y - 4 * len(p), x + 5, y))
+            y -= 4 * len(p) + 2
+    words.append(PtWord("Source:", 90, 270, 120, 276))  # horizontal text under the labels
+    cats = ["Switzerland", "United States", "Latvia", "Spain"]
+    assert rotated_positions(cats, words, box) == [102.5, 152.5, 202.5, 252.5]
+    assert rotated_positions(["Spain", "Latvia", "United States", "Switzerland"], words, box) is None
+    assert rotated_positions(["Spain", "Latvia", "United States", "Switzerland"], words, box, ordered=False) == [
+        252.5,
+        202.5,
+        152.5,
+        102.5,
+    ]

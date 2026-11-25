@@ -46,6 +46,8 @@ CHART_OPTIONS = frozenset(
         "lost",  # round two: tick labels with leading digits missing from the text layer
         "rotated",  # round two: rotated category labels ("ordered" or "any")
         "pos_marks",  # round two: markers placed on categories by their labels
+        "titles",  # round two: legend binding finds a series' panel by the title printed above it
+        "legend_min",  # round two: fewest cells a legend-bound series may have (default 3)
     }
 )
 
