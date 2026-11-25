@@ -1,0 +1,28 @@
+configs/own_best.yaml
+  s_a13908d8c3ae20::t_1b45b374a83db1 1-11,13-39
+  s_a13908d8c3ae20::t_6e4930ec77710f 12
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_6e4930ec77710f 58-61
+tests/test_pipeline.py
+  s_a13908d8c3ae20::t_6e4930ec77710f 210-218
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_6e4930ec77710f 62,65-66
+docs/results/2026-11-25-combined-standin.md
+  s_a13908d8c3ae20::t_592444f4a4e26e 3,9-12,15,17-23,27-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f7c2d9481885c7ef05f431937ee7ae8c756a9f3",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
