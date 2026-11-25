@@ -1,0 +1,40 @@
+src/docparse/fixes/forms_boxes.py
+  s_a13908d8c3ae20::t_b10f66fe8c3af0 23
+  s_a13908d8c3ae20::t_84278cadf559f0 22,24,26
+  s_a13908d8c3ae20::t_27dd36a7f9c5b5 42-43,45,52-53
+src/docparse/fixes/forms.py
+  s_a13908d8c3ae20::t_5eb3c4b664c17f 280
+  s_a13908d8c3ae20::t_e60129bb64cd69 108-113
+  s_a13908d8c3ae20::t_ad495326debc2c 276-278
+  s_a13908d8c3ae20::t_6806df9d871120 141-142,145,149,155-156
+  s_a13908d8c3ae20::t_1b195282495e76 247-262
+  s_a13908d8c3ae20::t_6782f6754c2896 27-28
+  s_a13908d8c3ae20::t_3bef4977294235 31-33
+  s_a13908d8c3ae20::t_1255e3fdad1287 68-72,74-75
+  s_a13908d8c3ae20::t_d3ffd8f0bbde1f 281-284
+  s_a13908d8c3ae20::t_62772c0d882f98 34
+  s_a13908d8c3ae20::t_21b586f3d4c188 239-246,265,275,285-286
+  s_a13908d8c3ae20::t_2f4fe668b1612d 7-9
+  s_a13908d8c3ae20::t_6c0c7eaeb423ca 274
+tests/fixes/test_forms.py
+  s_a13908d8c3ae20::t_d3ffd8f0bbde1f 36
+  s_a13908d8c3ae20::t_c202ce343c783d 45-46,52
+  s_a13908d8c3ae20::t_f3d3bc3a9b2cb5 33,35,37-44,47-51,54-56
+  s_a13908d8c3ae20::t_26ffa077ef0256 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1f954d140947ac137b4437449a247fb86dea6ea",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
