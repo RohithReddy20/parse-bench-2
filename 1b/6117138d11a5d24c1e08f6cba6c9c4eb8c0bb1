@@ -1,0 +1,31 @@
+tests/fixes/test_tables.py
+  s_a13908d8c3ae20::t_31aef1afd30dc2 200-213
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_d44a766e0f1481 20
+configs/standin_tables.yaml
+  s_a13908d8c3ae20::t_5613c4bde6fda5 14
+  s_a13908d8c3ae20::t_8cda26a3d81d17 1,4-13
+  s_a13908d8c3ae20::t_423d6538387f80 2-3
+src/docparse/fixes/tables.py
+  s_a13908d8c3ae20::t_0be1d3c1d0d5ff 51,54,65-77,79-80
+  s_a13908d8c3ae20::t_56081a61bcdee7 146-147
+  s_a13908d8c3ae20::t_8f0ce8a7b57553 19-20
+  s_a13908d8c3ae20::t_f9778fd42c5bfc 202-224
+  s_a13908d8c3ae20::t_25ce6a2ae7502f 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b6117138d11a5d24c1e08f6cba6c9c4eb8c0bb1",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
