@@ -1,0 +1,22 @@
+src/docparse/fixes/text.py
+  s_a13908d8c3ae20::t_9ed71ae126c69e 130,134-138
+  s_a13908d8c3ae20::t_ef4039ca2f8590 8-10
+  s_a13908d8c3ae20::t_24dfbfcb5b99fa 6,35
+  s_a13908d8c3ae20::t_1904aafdfe6d1f 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34b9fcbc9bb5e8ec1327503c35ffeef1040fdc17",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
