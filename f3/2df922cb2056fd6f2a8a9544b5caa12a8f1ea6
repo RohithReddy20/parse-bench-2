@@ -1,0 +1,25 @@
+tests/fixes/test_align.py
+  s_a13908d8c3ae20::t_76afe4fe5666d6 1-36
+src/docparse/fixes/text.py
+  s_a13908d8c3ae20::t_9f7e82af3ef5d9 26,139
+src/docparse/fixes/align.py
+  s_a13908d8c3ae20::t_25c69196ec03e0 85-108
+  s_a13908d8c3ae20::t_85cc40039432be 6-10,17-18,22-23,36-79,83
+  s_a13908d8c3ae20::t_a2311ea33ac1ce 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f32df922cb2056fd6f2a8a9544b5caa12a8f1ea6",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
