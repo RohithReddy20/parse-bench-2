@@ -23,7 +23,7 @@ from collections import Counter
 from difflib import SequenceMatcher
 
 from docparse.core.ir import Candidate, Page, Provenance, Region
-from docparse.fixes.align import TOKEN, key
+from docparse.fixes.align import TOKEN, key, opcodes
 
 TEXT_OPTIONS = frozenset({"respell", "empty_read"})
 READER = "fix.text"
@@ -136,7 +136,7 @@ def refine_text(page: Page, rendered, options: dict) -> None:
     if not trusted(rendered, reading_keys, layer_keys):
         return
     swaps: dict[int, list[tuple[int, int, str]]] = {}
-    ops = SequenceMatcher(None, reading_keys, layer_keys, autojunk=False).get_opcodes()
+    ops = opcodes(reading_keys, layer_keys)
     for x, (tag, i1, i2, j1, j2) in enumerate(ops):
         if tag != "replace" or i2 - i1 != j2 - j1 or i2 - i1 > MAX_SWAP:
             continue
