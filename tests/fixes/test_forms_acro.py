@@ -74,3 +74,10 @@ def test_acro_clean_strips_blank_row_indices_splits_notes_and_fills_yes_no_grids
     assert "**Authorized Signature**: [___]\n(Owner, Partner)" in out
     assert "20 [___]\nSee separate instructions." in out
     assert "<strong>LAST 4:</strong><br/>[___]" in out
+
+
+def test_acroform_widgets_on_image_or_unreadable_bytes_finds_none():
+    from docparse.fixes.forms_acro import acroform_widgets
+
+    assert acroform_widgets(b"\x89PNG\r\n\x1a\n" + b"\0" * 64, 0) == (0, [])
+    assert acroform_widgets(b"%PDF-1.4 not really a pdf", 0) == (0, [])

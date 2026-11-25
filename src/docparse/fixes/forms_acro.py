@@ -43,9 +43,18 @@ def acroform_widgets(
     pdf_bytes: bytes, page_index: int = 0
 ) -> tuple[int, list[tuple[float, float, float, float, bool]]]:
     """Return (interactive_widget_count, checkbox/radio rects `(x0, y0, x1, y1, checked)` in top-down PDF pts)."""
-    if not pdf_bytes:
-        return 0, []
-    doc = pdfium.PdfDocument(pdf_bytes)
+    if not pdf_bytes or not pdf_bytes.lstrip()[:5].startswith(b"%PDF-"):
+        return 0, []  # an image input, or not a PDF at all
+    from docparse.pdf.render import _PDFIUM_LOCK
+
+    with _PDFIUM_LOCK:
+        try:
+            return _widgets(pdfium.PdfDocument(pdf_bytes), page_index)
+        except pdfium.PdfiumError:
+            return 0, []  # unreadable (corrupt or encrypted): the renderer has already said so
+
+
+def _widgets(doc, page_index: int) -> tuple[int, list[tuple[float, float, float, float, bool]]]:
     try:
         if page_index < 0 or page_index >= len(doc):
             return 0, []
