@@ -1,0 +1,42 @@
+configs/standin_layout_kdl.yaml
+  s_a13908d8c3ae20::t_d23409f77f0f25 1-23
+src/docparse/models/adapters/kdl.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 1-125
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 20-21,54,57-59,133-136
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 18-19
+tests/fixes/test_layout_kdl.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 1-158
+tests/test_pipeline.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 221-241
+  s_a13908d8c3ae20::t_8eacf97a9a28a3 219-220
+docs/results/2026-11-25-layout-kdl.md
+  s_a13908d8c3ae20::t_d23409f77f0f25 1-164
+serve/local_detector.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 3,65-120,129,132
+src/docparse/fixes/layout_kdl.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 1-213
+docs/superpowers/plans/2026-11-24-docparse-v2-m0-m1.md
+  s_a13908d8c3ae20::t_d23409f77f0f25 628-629
+pyproject.toml
+  s_a13908d8c3ae20::t_d23409f77f0f25 28
+tests/models/test_kdl_adapter.py
+  s_a13908d8c3ae20::t_d23409f77f0f25 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23ee3aed281d8a39474558a24d59bce7a8d1fd0b",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
