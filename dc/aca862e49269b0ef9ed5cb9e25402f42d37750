@@ -1,0 +1,32 @@
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_fa6a0b44f4603e 31-32
+  s_a13908d8c3ae20::t_d41b1faeb0896f 33
+src/docparse/fixes/fallback.py
+  s_a13908d8c3ae20::t_d41b1faeb0896f 15
+  s_a13908d8c3ae20::t_a01205fb678a3e 1-2,4-9,11-14,16-31,38-50
+  s_a13908d8c3ae20::t_fa6a0b44f4603e 3,10,32-37
+tests/fixes/test_fallback.py
+  s_a13908d8c3ae20::t_a01205fb678a3e 2-23
+  s_a13908d8c3ae20::t_fa6a0b44f4603e 1,24-30
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_d41b1faeb0896f 49-50,52-54,57-58
+  s_a13908d8c3ae20::t_fa6a0b44f4603e 51,55-56
+docs/results/2026-11-25-forms-findings.md
+  s_a13908d8c3ae20::t_5016aa15fc540b 1-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dcaca862e49269b0ef9ed5cb9e25402f42d37750",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
