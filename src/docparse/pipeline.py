@@ -57,6 +57,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 markdown = text_dump(words)
         page = parse_page(markdown, index=index, call_key=call.key())
         page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
+        if config.table_options:
+            from docparse.fixes.tables import fix_tables
+
+            fix_tables(page, rp, config.table_options)
         page.cost = CostRecord(
             calls=1,
             gpu_seconds=result.gpu_seconds or 0.0,
