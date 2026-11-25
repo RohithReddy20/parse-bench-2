@@ -24,6 +24,26 @@ and long token sequences are now cut at unique anchors before difflib (difflib t
 of repeated digits; pairs up to 4M token pairs, which is every page that changed here but one, align exactly as
 before). One text page differs from `fm-respell` (three more bold spans removed), with no score change.
 
+## The other dimensions with the final configuration
+
+The options also change pages of other subsets (bold captions on forms, `~~` in table cells, respelled cells), so
+the final configuration was run on all 4,317 pages (`fm-all2`) and compared with the same stand-ins plus the
+looped-read fallback (`all-fbloop`, overall 85.32):
+
+| Dimension | Base | Final | Dev gain (P) | Check gain (P) |
+|---|---:|---:|---:|---:|
+| text | 88.06 | 88.30 | +0.31 (1.00) | +0.03 (0.97) |
+| formatting | 91.66 | 93.00 | +1.32 (1.00) | +1.41 (1.00) |
+| tables | 86.20 | 86.23 | +0.03 (0.76) | +0.01 (0.96) |
+| charts | 77.66 | 77.66 | 0.00 | 0.00 |
+| layout | 85.95 | 85.95 | 0.00 | 0.00 |
+| forms | 82.39 | 82.41 | +0.02 (0.66) | −0.01 (0.27) |
+| **overall** | **85.32** | **85.59** | | |
+
+No dimension loses more than 0.01 on any fold. Layout cannot move (its items come from the page read's layout,
+not from the markdown); 330 of the 500 form pages change (mostly bold removed from captions) and the forms score
+does not, because the forms scorer reads markup-free text.
+
 ## Variants, one at a time
 
 Gain and P(gain > 0) are against the previous kept run.
