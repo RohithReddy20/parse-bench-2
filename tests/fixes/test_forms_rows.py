@@ -47,6 +47,16 @@ def test_a_box_code_between_a_caption_and_its_typed_value_moves_to_the_caption()
     assert _fix(md, printed, typed, {"codes": True}) == md
 
 
+def test_a_box_code_before_an_empty_slot_and_the_margin_line_number_moves_too():
+    printed = [(40, 700, 10, "Abatement"), (250, 700, 10, "44000"), (300, 700, 10, "+"), (500, 700, 10, "151")]
+    md = "<table><tr><td>Abatement</td><td>44000</td><td>+</td><td></td><td>• 151</td></tr></table>"
+    out = "<table><tr><td>44000 Abatement</td><td></td><td>+</td><td></td><td>• 151</td></tr></table>"
+    assert _fix(md, printed, [(560, 600, 10, "X")], {"codes": True}) == out
+    printed = [(20, 700, 10, "14"), (40, 700, 10, "Credit"), (250, 700, 10, "14")]
+    md = "<table><tr><td>14</td><td>Credit</td><td>14</td><td>200</td></tr></table>"  # the row's own number
+    assert _fix(md, printed, [(330, 700, 10, "200")], {"codes": True}) == md
+
+
 def test_character_box_outlines_before_a_typed_value_are_dropped():
     printed = [(40, 720, 10, "Total rents"), (40, 700, 10, "\xa3")]
     typed = [(120, 700, 10, "7060")]

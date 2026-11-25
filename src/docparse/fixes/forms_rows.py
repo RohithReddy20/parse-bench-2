@@ -130,10 +130,14 @@ def _code_plan(t: HTable, typed: list[list[bool]], done: set[tuple[int, int]]) -
                 j += 1  # + = £ $
             if j >= len(cells) or typed[r][j] or (r, j) in done or not BOX_CODE.fullmatch(cells[j].text.strip(" .*")):
                 continue
+            if i > 0 and _key(cells[i - 1].text) == _key(cells[j].text):
+                continue  # the row's own line number printed again at the box: not a second label
             k = j + 1
             while k < len(cells) and not _WORDY.search(cells[k].text):
                 k += 1
-            if k >= len(cells) or typed[r][k]:
+            # the line number printed at the right margin ends the row too (`| caption | 44000 | + | | • 151 |`)
+            margin = k == len(cells) - 1 and LINE_ID.fullmatch(cells[k].text.strip(" •*·")) and not typed[r][k]
+            if k >= len(cells) or typed[r][k] or margin:
                 plan.append((r, i, j))
     return plan
 
