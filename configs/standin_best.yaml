@@ -1,5 +1,6 @@
 # Stand-in readings with every correction that passed the keep rule so far (docs/results): looped-read fallback,
-# layout refinements, table grid repairs, form combs and check boxes, chart values measured from the drawing.
+# layout refinements, table grid repairs, form combs and check boxes, chart values measured from the drawing,
+# strikeout, bold and list-marker repairs, and respelling from the text layer.
 page_model:
   repo: llamaindex/OCRia-1
   revision: published-497e243f68cd
@@ -28,3 +29,11 @@ chart_options:
   measure: true
   labels: true
   panels: true
+format_options:
+  cell_strike: true
+  strike: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true  # safety net: one page in the benchmark; too rare for the bootstrap to judge

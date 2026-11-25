@@ -4,7 +4,7 @@ It receives bytes and nothing else: no file name, path, example id or subset (de
 A pure function of (bytes, config, cache): model answers come from the client, which reads the cache.
 
     S0 render -> S2 OCRia-1 page read (one cached call per page) -> S3 answer parsed into the IR
-    -> S4 correctors (none yet; each will sit behind a `config.fixes` flag) -> writers
+    -> S4 correctors, each behind its options (layout_options, text_options, format_options) -> writers
 """
 
 from __future__ import annotations
@@ -33,7 +33,17 @@ class ParseResult:
 
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
-    rendered = render_pages(pdf_bytes, config.dpi)
+    decorations = styles = False
+    if config.format_options:
+        from docparse.fixes.formatting import needs_decorations, needs_styles
+
+        decorations, styles = needs_decorations(config.format_options), needs_styles(config.format_options)
+    layer = False
+    if config.text_options:
+        from docparse.fixes.text import needs_layer
+
+        layer = needs_layer(config.text_options)
+    rendered = render_pages(pdf_bytes, config.dpi, decorations=decorations, styles=styles, layer=layer)
     doc_sha = sha256_hex(pdf_bytes)
     pages, pending = [], []
     for index, rp in enumerate(rendered):
@@ -74,7 +84,19 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.pdf.overlay import overlay_fonts
 
             markdown = repair(markdown, rp, overlay_fonts(pdf_bytes, index), config.form_options, pdf_bytes, index)
+        if config.text_options.get("empty_read"):
+            from docparse.fixes.text import empty_read
+
+            markdown = empty_read(markdown, rp) or markdown
         page = parse_page(markdown, index=index, call_key=call.key())
+        if config.text_options:
+            from docparse.fixes.text import refine_text
+
+            refine_text(page, rp, config.text_options)
+        if config.format_options:
+            from docparse.fixes.formatting import refine_format
+
+            refine_format(page, rp, config.format_options)
         page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
         if config.table_options:
             from docparse.fixes.tables import fix_tables
