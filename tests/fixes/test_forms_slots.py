@@ -43,6 +43,15 @@ def test_blank_line_rules():
     assert blank_line("支店名 Name of branch [___]") == "支店名 Name of branch: [___]"
     assert blank_line("**Last name(s)** [___]") == "**Last name(s)** [___]"  # one part: no colon to steal a caption
     assert blank_line("Will tickets be sold?: No [___]") == "Will tickets be sold?: No [___]"  # a choice is an answer
+    # extras between the caption and its colon: a box code moves to the front, an italic hint is bracketed
+    assert blank_line("* gain imposable *Après abattement*** **1TZ**: [___]") == (
+        "* 1TZ gain imposable (Après abattement): [___]"
+    )
+    assert blank_line("**238 Intérêts inclus *lignes 233 + 237*****: [___]") == (
+        "**238 Intérêts inclus** (lignes 233 + 237): [___]"
+    )
+    assert blank_line("Telephone Number (999) 999-9999: [___]") == "Telephone Number (999 999-9999): [___]"
+    assert blank_line("**Code postal :** [___]") == "**Code postal :** [___]"
 
 
 def test_a_cell_ending_in_box_decoration_or_a_worded_hint_gets_a_blank_marker():

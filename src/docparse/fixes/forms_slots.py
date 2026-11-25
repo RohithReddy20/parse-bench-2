@@ -31,6 +31,7 @@ import html
 import re
 from collections.abc import Callable
 
+from docparse.fixes.align import fold
 from docparse.fixes.forms import FormPage
 
 MARK = re.compile(r"\[[ \t]*_{2,}[ \t]*\]|_{3,}")
@@ -56,6 +57,10 @@ _LATIN = re.compile(r"[A-Za-z]{2,}")
 HINT_TAIL = 12  # a printed tail after a caption's colon this long or shorter is a hint (option `hints`)
 
 Printed = Callable[[int, int], bool]
+
+
+def fold_word(text: str) -> str:
+    return "".join(fold(ch) for ch in text)
 
 
 def _clean(text: str) -> str:
@@ -95,7 +100,10 @@ def _head(head: str, at: int, printed: Printed | None) -> str:
     if colons:
         c = colons[-1].start()
         tail = _clean(head[c + 1 :])
-        if not re.search(r"\w", tail) or _choice(tail):
+        if not re.search(r"\w", tail):
+            new = _before_colon(head[:c], at, printed)
+            return head if new is None else new + ": " + head[c + 1 :].lstrip(" \t*_")
+        if _choice(tail):
             return head
         if printed is not None and not printed(at + c + 1, at + len(head)):
             return head
@@ -109,6 +117,46 @@ def _head(head: str, at: int, printed: Printed | None) -> str:
     if _two_parts(head) and not _unit(head):
         return head.rstrip() + ": "
     return head
+
+
+_CODE_END = re.compile(r"(?:^|(?<=[ \t*_]))\**(" + BOX_CODE.pattern + r")\**[ \t*_]*$")
+_ITALIC_OPEN = re.compile(r"(?:^|(?<=[ \t]))[*_](?=[^\s*_])")
+
+
+def _before_colon(cap: str, at: int, printed: Printed | None) -> str | None:
+    """A caption before its colon and blank marker that ends in printed extras: a box code moves to the front, an
+    italic hint or a box's decoration becomes a bracketed hint (`gain imposable *Après abattement* 1TZ:` ->
+    `1TZ gain imposable (Après abattement):`). None when it ends in neither."""
+    lead = LEAD.match(cap).end()
+    code, body = "", cap
+    m = _CODE_END.search(cap)
+    if m and m.start(1) > lead and _WORDS.search(EMPH.sub(" ", cap[lead : m.start(1)])):
+        before = cap[: m.start(1)].rstrip(" \t")
+        # a code: lettered (1TZ, D15) or set apart by emphasis; not the last number of a sum (`233 + 237`)
+        apart = re.search(r"[*_>][ \t]*$", before) or any(ch.isalpha() for ch in m.group(1))
+        if apart and not re.search(r"[-+×=/][ \t*_]*$", before):
+            code, body = m.group(1), cap[: m.start(1)]
+    body = body.rstrip(" \t*_")
+    hint, cut = "", len(body)
+    opens = list(_ITALIC_OPEN.finditer(body))
+    if opens and opens[-1].start() > lead and _WORDS.search(EMPH.sub(" ", body[lead : opens[-1].start()])):
+        cut = opens[-1].start()
+        hint = _clean(body[cut:])
+    else:
+        d = _DECO.search(body)
+        if d and d.start() > lead and re.search(r"[0-9A-Za-z]", d.group(0)) and _WORDS.search(body[lead : d.start()]):
+            if not (body[d.start() - 1].isalnum() and d.group(0)[:1].isalnum()):
+                cut, hint = d.start(), _clean(d.group(0))
+    if not (code or hint):
+        return None
+    moved_from = m.start(1) if code and not hint else cut
+    if printed is not None and not printed(at + moved_from, at + len(cap)):
+        return None
+    body = body[:cut].rstrip()
+    if body.count("**") % 2:
+        body += "**"
+    out = body[:lead] + (code + " " if code else "") + body[lead:].lstrip()
+    return out + (" (" + hint + ")" if hint else "")
 
 
 def _opens_field(text: str) -> bool:
@@ -205,6 +253,13 @@ class _Flags:
             if p is not None:
                 (self.typed if page.owner[al.p_word[p]] >= 0 else self.printed)[al.a_tok[k]] = True
         self.share = al.token_share()
+        # a word the alignment left out (a repeated block) counts as printed when the page prints it and never types it
+        printed_keys = {fold_word(w.text) for w in page.printed}
+        typed_keys = {fold_word(w.text) for f in page.fills for w in f.words} | {f.key for f in page.fills}
+        for t, tok in enumerate(al.tokens):
+            key = fold_word(tok.text)
+            if self.share[t] == 0 and key in printed_keys and key not in typed_keys:
+                self.printed[t], self.share[t] = True, 1.0
 
     def span(self, lo: int, hi: int) -> range:
         return range(bisect.bisect_left(self.starts, lo), bisect.bisect_left(self.starts, hi))
