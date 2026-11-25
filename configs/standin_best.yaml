@@ -1,0 +1,30 @@
+# Stand-in readings with every correction that passed the keep rule so far (docs/results): looped-read fallback,
+# layout refinements, table grid repairs, form combs and check boxes, chart values measured from the drawing.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+fallback_below: 0.5  # looped or truncated reads fall back to the PDF text layer
+layout: from_page_read
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+form_options:
+  combs: true
+  boxes: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
