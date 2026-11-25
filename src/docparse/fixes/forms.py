@@ -8,6 +8,8 @@ form's structure. Each repair is one option of `form_options`, and acts only on 
              spaces, emphasis, a printed separator or a character box's outline (`[ ]`) between them; glyphs
              read one per table cell become one cell spanning those columns
     boxes    check-box states from the overlay's tick glyphs (`forms_boxes`)
+    blanks, cells, hints
+             printed text out of the slots of blank fields (`forms_slots`), last
 
 The overlay's words are grouped into fills (one typed value each); each fill is placed on the markdown tokens
 that spell it, next to the printed words around it (see `read_form`).
@@ -337,4 +339,11 @@ def repair(
             page = read_form(out, printed, overlay)
         rows = row_edits(page, options)
         out = apply_edits(out, rows) if rows else out
+    if options.get("blanks") or options.get("cells") or options.get("hints"):  # printed text out of blank slots: last
+        from docparse.fixes.forms_slots import slot_edits
+
+        if out != page.markdown:
+            page = read_form(out, printed, overlay)
+        slots = slot_edits(page, options)
+        out = apply_edits(out, slots) if slots else out
     return out

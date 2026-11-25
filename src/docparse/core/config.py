@@ -38,7 +38,9 @@ TABLE_OPTIONS = frozenset(
         "complete_extent",
     }
 )  # fixes/tables.py
-FORM_OPTIONS = frozenset({"combs", "boxes", "outlines", "ids", "codes", "grids", "trailing"})
+FORM_OPTIONS = frozenset(
+    {"combs", "boxes", "outlines", "ids", "codes", "grids", "trailing", "blanks", "cells", "hints"}
+)
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
 CHART_OPTIONS = frozenset(
     {
