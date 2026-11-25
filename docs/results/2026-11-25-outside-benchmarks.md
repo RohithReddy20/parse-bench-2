@@ -33,4 +33,34 @@ fields cannot be judged by presence and are not scored, which leaves 1,039 quest
 
 ## 2. olmOCR-bench (Allen AI)
 
-Results are added below when the page reads finish.
+1,403 one-page PDFs with 7,019 pass/fail tests (8,413 with the scorer's own "page is not empty or looping"
+tests); data `allenai/olmOCR-bench` at `54a96a6f`; scorer `olmocr==0.4.27`, run unchanged. 1,220 of the PDFs
+have a text layer. 1,402 OCRia-1 page reads, about 65 minutes on an A100-40GB.
+
+| Category | Tests | Plain OCRia-1 | Corrected | Change in tests passed |
+|---|---:|---:|---:|---:|
+| **Overall** (mean of categories) | | **76.05** | **75.99** | |
+| arXiv maths | 2,927 | 85.14 | 84.97 | -5 |
+| Headers and footers left out | 760 | 24.61 | 24.21 | -3 |
+| Long tiny text | 442 | 93.44 | 93.44 | 0 |
+| Multi-column reading order | 884 | 81.45 | 81.56 | +1 |
+| Old scans | 526 | 43.16 | 43.16 | 0 |
+| Old scans, maths | 458 | 88.65 | 88.65 | 0 |
+| Tables | 1,022 | 92.17 | 91.98 | -2 |
+| Page not empty or looping | 1,394 | 99.78 | 99.93 | +2 |
+
+- The scorer's own interval is ±0.9 for each output, so the two are the same. The corrected markdown differs
+  on 258 of 1,403 pages; 6 tests are failed only by the plain output and 13 only by the corrected one.
+- **The corrections do not help here, and are very slightly harmful.** Tables is the category where a gain
+  was most expected, and it loses two tests.
+- Both outputs score low on headers and footers because OCRia-1 keeps that text by design and this benchmark
+  wants it left out; that lowers both equally.
+- Not covered by this benchmark: charts, forms, layout boxes and pages printed sideways, which is where the
+  largest ParseBench gains are (charts +3.2, layout +4.3). Whether those carry over is still untested.
+
+## What the two tests say together
+
+On 1,984 pages from two independent benchmarks, plus 51 private statement pages, the corrections change the
+result by nothing that can be measured. The ParseBench 2 gain in text, tables, formatting and forms should
+therefore be read as fit to that benchmark's documents and scorer, not as a better parser in general. On
+documents like these the quality comes from OCRia-1 itself.
