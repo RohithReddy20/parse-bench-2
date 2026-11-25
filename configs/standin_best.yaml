@@ -38,6 +38,12 @@ form_options:
   blanks: true  # round three: printed text out of blank fields' slots, lines with blank markers ...
   cells: true  # ... and printed caption cells (box decoration, worded hints) ...
   blank_forms: true  # ... and blank-marker lines on pages without an overlay that write 3+ blank markers
+  # from the other round-two forms line (2026-11-25-forms-neon-integration.md): only the rules that correct the read
+  # from PDF evidence or whose gain holds on the check slice; its wording- and issuer-keyed rules stay off
+  bare_ticks: true  # a bare typed tick beside an option label -> [x], from the overlay's tick and the drawn boxes
+  table_rows: true  # caption | box code | typed value cells -> one `code caption: value` cell
+  box_grids: true  # check-box cells of a rating grid get their column caption
+  acroform: true  # AcroForm check boxes and radios written from the widgets; line-number cells joined to captions
 chart_options:
   measure: true
   labels: true
