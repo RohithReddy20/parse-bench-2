@@ -1,0 +1,29 @@
+src/evalkit/external/__init__.py
+  s_a13908d8c3ae20::t_00181ca36fa5c4 1
+src/evalkit/external/forms_outside.py
+  s_a13908d8c3ae20::t_154a755cc029be 7
+  s_a13908d8c3ae20::t_ddb7424ae41f83 132-133
+  s_a13908d8c3ae20::t_9a793c73e97846 411
+  s_a13908d8c3ae20::t_0dd4d503370f6d 1-6,8-96,98-131,134-293,296-410,412-425
+  s_a13908d8c3ae20::t_9ee213d211eaab 97
+  s_a13908d8c3ae20::t_79812b78bfafdb 294-295
+tests/evalkit/test_forms_outside.py
+  s_a13908d8c3ae20::t_aa2b6c36549c19 1-28,30-33,37-71
+  s_a13908d8c3ae20::t_a529404963b5bd 29,34-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bbd6360d46c887738359209b3848caaba31d7ced",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
