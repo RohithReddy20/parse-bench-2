@@ -22,8 +22,6 @@ import unicodedata
 from collections import Counter
 from difflib import SequenceMatcher
 
-from rapidfuzz.distance import Levenshtein
-
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align import TOKEN, key
 
@@ -79,6 +77,17 @@ def _text_tokens(raw: str) -> list[tuple[int, int, str]]:
     return [(m.start(), m.end(), m.group()) for m in TOKEN.finditer(masked)]
 
 
+def _distance(a: str, b: str) -> int:
+    """Levenshtein distance (words are short; plain dynamic programming)."""
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
 def _artefact(read: str, layer: str) -> bool:
     """Would the swap copy a text-layer artefact rather than fix a misreading?"""
     if any(unicodedata.category(c) == "Lm" for c in layer):
@@ -89,7 +98,7 @@ def _artefact(read: str, layer: str) -> bool:
     low = read.lower()
     spots = {p for lig in LIGATURES for m in re.finditer(lig, low) for p in range(m.start(), m.end())}
     if spots:
-        for tag, i1, i2, _j1, _j2 in Levenshtein.opcodes(low, layer.lower()):
+        for tag, i1, i2, _j1, _j2 in SequenceMatcher(None, low, layer.lower(), autojunk=False).get_opcodes():
             if tag != "equal" and spots.intersection(range(i1, max(i2, i1 + 1))):
                 return True
     return False
@@ -98,7 +107,7 @@ def _artefact(read: str, layer: str) -> bool:
 def _close(read: str, layer: str) -> bool:
     if read.lower() == layer.lower() or _artefact(read, layer):
         return False
-    distance = Levenshtein.distance(read.lower(), layer.lower())
+    distance = _distance(read.lower(), layer.lower())
     if any(c.isdigit() for c in read + layer):
         return len(read) == len(layer) >= 2 and distance <= 1
     longest = max(len(read), len(layer))
