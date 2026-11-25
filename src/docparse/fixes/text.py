@@ -3,10 +3,11 @@
     respell   a word the reading spells slightly differently from the text layer takes the layer's spelling, where
               the layer can be trusted: it is visible (not an OCR layer under a scan or in invisible text), its
               glyphs map to unicode, and it holds the reading's words (80% of its tokens occur in the reading).
-              Only one-for-one swaps anchored by two matching words on each side count, and only small ones: one
-              edit in a short word, a quarter of the letters in a long one, one digit in a number of the same
-              length. Edits where the layer shows its own artefacts are refused: a modifier letter, a capital
-              inside a lower-case word, or a change at a ligature (fi, fl, ff, ft) the layer may have mis-mapped
+              Only one-for-one swaps (up to two words in a row) anchored by two matching words on each side count,
+              and only small ones: one edit in a short word, a quarter of the letters in a long one, one digit in a
+              number of the same length. Edits where the layer shows its own artefacts are refused: a modifier
+              letter, a capital inside a lower-case word, or a change at a ligature (fi, fl, ff, ft) the layer may
+              have mis-mapped
     empty_read  a read holding under 5% of the words of a visible, well-mapped text layer of 50 words or more (the
               model wrote next to nothing for a page full of text) is replaced by the text layer as plain lines
 
@@ -31,6 +32,7 @@ LAYER_SUPPORT = 0.8  # share of the layer's tokens the reading must hold
 MAX_HIDDEN = 0.5
 MAX_MAP_ERRORS = 0.01
 CONTEXT = 2  # matching tokens needed on each side of a swap
+MAX_SWAP = 2  # tokens swapped one for one in a row
 MIN_LETTERS = 4
 LETTER_RATE = 0.25
 LIGATURES = ("fi", "fl", "ff", "ft")
@@ -125,13 +127,15 @@ def refine_text(page: Page, rendered, options: dict) -> None:
     swaps: dict[int, list[tuple[int, int, str]]] = {}
     ops = SequenceMatcher(None, reading_keys, layer_keys, autojunk=False).get_opcodes()
     for x, (tag, i1, i2, j1, j2) in enumerate(ops):
-        if tag != "replace" or i2 - i1 != 1 or j2 - j1 != 1:
+        if tag != "replace" or i2 - i1 != j2 - j1 or i2 - i1 > MAX_SWAP:
             continue
         before = x > 0 and ops[x - 1][0] == "equal" and ops[x - 1][2] - ops[x - 1][1] >= CONTEXT
         after = x + 1 < len(ops) and ops[x + 1][0] == "equal" and ops[x + 1][2] - ops[x + 1][1] >= CONTEXT
-        r, (start, end, surface) = flat[i1]
-        if before and after and _close(surface, layer[j1]):
-            swaps.setdefault(r, []).append((start, end, layer[j1]))
+        pairs = list(zip(range(i1, i2), range(j1, j2), strict=True))
+        if before and after and all(_close(flat[i][1][2], layer[j]) for i, j in pairs):
+            for i, j in pairs:
+                r, (start, end, _surface) = flat[i]
+                swaps.setdefault(r, []).append((start, end, layer[j]))
     for r, edits in swaps.items():
         raw = raws[r]
         for start, end, text in sorted(edits, reverse=True):
