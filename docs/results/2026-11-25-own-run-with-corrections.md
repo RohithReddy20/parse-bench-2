@@ -6,7 +6,7 @@ nothing here uses OCRia-1's published outputs.
 
 | Dimension | Published OCRia-1 | Our run + corrections | Change | Dev | Check | Target |
 |---|---:|---:|---:|---:|---:|---:|
-| **Overall** | 85.24 | **87.67** | +2.42 | 87.72 | 87.51 | 89 |
+| **Overall** | 85.24 | **87.67** | +2.42 | 87.71 | 87.52 | 89 |
 | Text | 87.87 | 88.43 | +0.55 | 88.38 | 88.60 | 89.5 |
 | Formatting | 91.58 | 93.04 | +1.46 | 93.19 | 92.55 | 93 |
 | Tables | 86.28 | 88.97 | +2.68 | 88.32 | 91.58 | 90 |
@@ -17,7 +17,7 @@ nothing here uses OCRia-1's published outputs.
 - **Against the board:** second place is Claude Opus 5.5 at 87.13 and first is LlamaParse Agentic Plus at
   90.95. 87.67 is 0.54 above second place. That is a real but thin margin: one OCRia-1 run differs from
   another by up to 0.4 on a single dimension (charts), which is under 0.1 on the overall score.
-- **The check slice** (pages no rule was tuned on) scores 87.51, close to the development part (87.72), so
+- **The check slice** (pages no rule was tuned on) scores 87.52, close to the development part (87.71), so
   the result is not fitted to the development pages.
 - **History of this number:** 86.93 with the first round of corrections, 87.14 with KDL nano v2 added as a
   second layout detector (run `own-best`), 87.41 with the second round on forms, charts and tables (run
