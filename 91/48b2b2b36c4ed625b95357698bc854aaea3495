@@ -1,0 +1,47 @@
+src/docparse/fixes/layout_kdl.py
+  s_a13908d8c3ae20::t_8304e3a7b3503c 1-70,74-130
+  s_a13908d8c3ae20::t_f6e9d2fa59f2a3 71-73
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_071ed726479425 18
+tests/fixes/test_layout_kdl.py
+  s_a13908d8c3ae20::t_7fdad257409e0b 31
+  s_a13908d8c3ae20::t_3a616eb1041972 1-30,32-96
+tests/models/test_kdl_adapter.py
+  s_a13908d8c3ae20::t_c9b111a0f4f3e5 1-47,52-57
+  s_a13908d8c3ae20::t_e4431ac898b807 48-51
+  s_a13908d8c3ae20::t_780252f800295f 58-62
+serve/local_detector.py
+  s_a13908d8c3ae20::t_edd5c7bb9ffd58 132
+  s_a13908d8c3ae20::t_f6e9d2fa59f2a3 95-97
+  s_a13908d8c3ae20::t_88d795b61e35af 129
+  s_a13908d8c3ae20::t_ce5c6bd16ab099 3
+  s_a13908d8c3ae20::t_3028a2d424fd68 65-94,98-120
+src/docparse/models/adapters/kdl.py
+  s_a13908d8c3ae20::t_d8b6b3fcda1761 106-112
+  s_a13908d8c3ae20::t_1d22090c1fe3e3 89
+  s_a13908d8c3ae20::t_97288b9490c313 50-57
+  s_a13908d8c3ae20::t_df72b68448ab46 122
+  s_a13908d8c3ae20::t_61399aa6a431a1 1-49,58-88,90-100,103-105,113-121,123
+  s_a13908d8c3ae20::t_b6bb0793d687d6 101-102
+  s_a13908d8c3ae20::t_c4ca6d0859969b 124-125
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_bd8b2eeb307f13 19-20
+  s_a13908d8c3ae20::t_694153d93067da 42,45-47
+  s_a13908d8c3ae20::t_addfb64b9ee2d9 76-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9148b2b2b36c4ed625b95357698bc854aaea3495",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
