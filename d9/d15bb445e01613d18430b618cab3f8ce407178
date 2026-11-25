@@ -1,0 +1,27 @@
+tests/fixes/test_formatting.py
+  s_a13908d8c3ae20::t_9a78b1a03ffcc5 67-71
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_6ab7568118209e 68-71
+src/docparse/fixes/text.py
+  s_a13908d8c3ae20::t_6ab7568118209e 10-11,28,40-42,44-57
+src/docparse/fixes/formatting.py
+  s_a13908d8c3ae20::t_d14f8824a2efc6 12-13,25,33-34,175-177
+tests/fixes/test_text.py
+  s_a13908d8c3ae20::t_c47b24363db6cd 75-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9d15bb445e01613d18430b618cab3f8ce407178",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
