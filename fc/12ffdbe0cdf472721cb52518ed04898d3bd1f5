@@ -1,0 +1,28 @@
+tests/fixes/test_layout_refine.py
+  s_a13908d8c3ae20::t_b6047ee8cd3b1e 142
+src/docparse/fixes/layout_refine.py
+  s_a13908d8c3ae20::t_b6047ee8cd3b1e 14-15
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_b6047ee8cd3b1e 17
+  s_a13908d8c3ae20::t_3e8803f41b11f9 16,19
+docs/results/2026-11-25-layout-swap.md
+  s_a13908d8c3ae20::t_1f517c9870fa7b 69,71-72,74-116,118-122,124-133,139
+docs/superpowers/plans/2026-11-24-docparse-v2-m0-m1.md
+  s_a13908d8c3ae20::t_e42af08167c0b7 619,623,626
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc12ffdbe0cdf472721cb52518ed04898d3bd1f5",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
