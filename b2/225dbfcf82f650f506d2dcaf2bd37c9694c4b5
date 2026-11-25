@@ -1,0 +1,22 @@
+docs/results/2026-11-25-text-fix.md
+  s_a13908d8c3ae20::t_ff13ce51d8a763 26,31-34
+  s_a13908d8c3ae20::t_190393a85ba6eb 1-25,27-30,35-98
+docs/results/2026-11-25-formatting-fix.md
+  s_a13908d8c3ae20::t_304c45c07f84e1 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2225dbfcf82f650f506d2dcaf2bd37c9694c4b5",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
