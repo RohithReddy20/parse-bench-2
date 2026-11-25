@@ -102,7 +102,7 @@ def _even(coords: list[float]) -> bool:
     return max(gaps) - min(gaps) <= 0.08 * (sum(gaps) / len(gaps)) + 0.3
 
 
-def _axis_from(members: list[tuple[float, float, object]], orient: str) -> Axis | None:
+def _axis_from(members: list[tuple[float, float, object]], orient: str, upright: bool = True) -> Axis | None:
     """members: (coord along the axis, value, word). Evenly spaced, strictly monotone, linear (or log-linear)."""
     members = sorted(members, key=lambda m: m[0])
     coords = [m[0] for m in members]
@@ -121,6 +121,8 @@ def _axis_from(members: list[tuple[float, float, object]], orient: str) -> Axis 
         log = True
         if worst > 0.01:
             return None
+    if upright and (a > 0 if orient == "v" else a < 0):
+        return None  # values growing downward or leftward: a misread scale (lost minus signs), not a value axis
     words = [m[2] for m in members]
     if orient == "v":
         pos = sum(w.x1 for w in words) / len(words)
@@ -175,6 +177,22 @@ def _bent(run: list[tuple[float, float, object]], nums: list[tuple[object, float
     return False
 
 
+def _restore_signs(row: list[tuple[float, float, object]], orient: str) -> list[tuple[float, float, object]]:
+    """Labels that fall to 0 and rise again ("20 10 0 10 20 30" down a column) lost their minus signs (a font
+    without the glyph in its text map): the side below zero (left of it on a horizontal axis) is negative."""
+    vals = [v for _, v, _ in row]
+    zeros = [i for i, v in enumerate(vals) if v == 0]
+    if len(zeros) != 1 or not 0 < zeros[0] < len(vals) - 1 or min(vals) < 0:
+        return row
+    z = zeros[0]
+    if not all(p > q for p, q in zip(vals[:z], vals[1 : z + 1], strict=True)):
+        return row
+    if not all(p < q for p, q in zip(vals[z:], vals[z + 1 :], strict=False)):
+        return row
+    flip = (lambda i: i > z) if orient == "v" else (lambda i: i < z)
+    return [(c, -v if flip(i) else v, w) for i, (c, v, w) in enumerate(row)]
+
+
 def _expand_years(row: list[tuple[float, float, object]]) -> list[tuple[float, float, object]]:
     """A year axis printed "2006 07 08 ... 23": two-digit labels after a full year are years of its century
     (rolling over at 00)."""
@@ -194,7 +212,9 @@ def _expand_years(row: list[tuple[float, float, object]]) -> list[tuple[float, f
     return out
 
 
-def find_axes(words: list, years: bool = True, bent: bool = True) -> list[Axis]:
+def find_axes(
+    words: list, years: bool = True, bent: bool = True, signs: bool = True, upright: bool = True
+) -> list[Axis]:
     """Value axes printed as numeric tick labels (words with x0, y0, x1, y1, cx, cy and text, in points)."""
     nums = [(w, v) for w in words if (v := tick_value(w.text)) is not None]
     axes: list[tuple[frozenset[int], Axis]] = []
@@ -218,11 +238,13 @@ def find_axes(words: list, years: bool = True, bent: bool = True) -> list[Axis]:
                 along = sorted((((w.cy if orient == "v" else w.cx), v, w) for w, v in g), key=lambda m: (m[0], m[1]))
                 if orient == "h" and years:
                     along = _expand_years(along)
+                if signs:
+                    along = _restore_signs(along, orient)
                 for run in _runs(along):
                     ids = frozenset(id(m[2]) for m in run)
                     if ids in seen or (bent and _bent(run, nums, orient)):
                         continue
-                    ax = _axis_from(run, orient)
+                    ax = _axis_from(run, orient, upright)
                     if ax is not None:
                         seen.add(ids)
                         axes.append((ids, ax))

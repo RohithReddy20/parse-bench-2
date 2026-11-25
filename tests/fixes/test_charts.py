@@ -81,6 +81,17 @@ def test_two_digit_years_and_a_bent_scale():
     assert find_axes([*bent, PtWord("0", 46, 438, 52, 444)]) == []
 
 
+def test_category_labels_place_categories_in_order():
+    from docparse.fixes.charts_cats import label_positions
+
+    words = [PtWord(t, 100 + 50 * i, 210, 110 + 50 * i, 216) for i, t in enumerate(("A", "B", "C", "D"))]
+    words += [PtWord("North", 300, 210, 320, 216), PtWord("Sea", 322, 210, 334, 216), PtWord("B", 400, 100, 406, 106)]
+    box = (90, 50, 350, 205)  # the plot; labels just under it
+    assert label_positions(["A", "B", "C", "D", "North Sea"], words, box, True) == [105, 155, 205, 255, 317]
+    assert label_positions(["D", "C", "B", "A"], words, box, True) is None  # out of order under a vertical chart
+    assert label_positions(["A", "X", "Y", "Z"], words, box, True) is None  # too few found
+
+
 def test_legend_names_colours():
     from docparse.fixes.charts_geometry import find_legend
 

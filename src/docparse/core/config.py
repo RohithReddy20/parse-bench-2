@@ -28,9 +28,14 @@ CHART_OPTIONS = frozenset(
         "bar_mode",
         "legend",
         "legend_max",
+        "legend_corr",
         "zero_reach",
         "years",
         "bent",
+        "signs",
+        "upright",
+        "reverse",
+        "labels",
     }
 )
 

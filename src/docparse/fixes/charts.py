@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from docparse.core.config import CHART_OPTIONS  # noqa: F401  (the option names, validated in Config.load)
 from docparse.core.ir import Candidate, Page, Provenance
@@ -161,6 +161,9 @@ class Zone:
     markers: list[tuple[float, float, tuple[int, int, int]]]
     cat_axis: Axis | None  # a numeric axis across the categories (years under a line chart)
     reach: float = 1.0  # label steps past the axis end at which a zero line is still taken as the base
+    side: str = ""  # "left": the labels are left of the marks (a left axis); "right": right of them
+    plot: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # the plot area, for its category labels
+    words: list = field(default_factory=list)
 
 
 @dataclass
@@ -168,6 +171,7 @@ class Measured:
     key: tuple  # the physical marks (a series binds once, whatever axis or reading it is tried with)
     axis: Axis
     values: list[float | None]
+    side: str = ""  # "left" / "right": which side of its marks the (vertical) axis is printed on
 
 
 def _swatch(b: Bar, words: list) -> bool:
@@ -222,7 +226,7 @@ def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: fl
         ]
         before = max((o.hi for o in same if o.hi <= ax.lo), default=0.0)
         after = min((o.lo for o in same if o.lo >= ax.hi), default=page_w if ax.orient == "v" else page_h)
-        for side in ((before, ax.lo), (ax.hi, after)):
+        for side, where in (((before, ax.lo), "right"), ((ax.hi, after), "left")):
             if ax.orient == "v":
                 box = (side[0], lo_c - pad, side[1], hi_c + pad)
             else:
@@ -243,7 +247,11 @@ def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: fl
                     and min(o.extent[1], box[2]) - max(o.extent[0], box[0]) > 0.5 * (o.extent[1] - o.extent[0])
                 ]
                 cat_axis = min(under, key=lambda o: o.pos) if under else None
-            out.append(Zone(ax, box, zb, zl, zm, cat_axis, reach))
+            if ax.orient == "v":
+                plot = (box[0], lo_c, box[2], hi_c)
+            else:
+                plot = (lo_c, box[1], hi_c, box[3])
+            out.append(Zone(ax, box, zb, zl, zm, cat_axis, reach, where if ax.orient == "v" else "", plot, words))
     return out
 
 
@@ -316,12 +324,48 @@ def _vertices(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return out
 
 
-def measured_series(z: Zone, cats: list[str], bar_mode: str = "auto") -> list[Measured]:
+def measured_series(
+    z: Zone, cats: list[str], bar_mode: str = "auto", reverse: bool = False, labels: bool = False
+) -> list[Measured]:
+    out = _measured(z, cats, bar_mode, reverse, labels)
+    for m in out:
+        m.side = z.side
+    return out
+
+
+def _bar_key(z: Zone, color: tuple[int, int, int]) -> tuple:
+    return ("bars", color, frozenset((round(b.x0, 1), round(b.y0, 1)) for b in z.bars if b.color == color))
+
+
+def _by_position(bars: list[Bar], pos: list[float | None], vertical: bool) -> list[list[Bar]] | None:
+    """Bars assigned to the category whose label they stand on (centre within half a category spacing)."""
+    found = [(i, p) for i, p in enumerate(pos) if p is not None]
+    steps = [abs(q - p) / (j - i) for (i, p), (j, q) in zip(found, found[1:], strict=False)]
+    if not steps:
+        return None
+    half = 0.5 * sorted(steps)[len(steps) // 2]
+    out: list[list[Bar]] = [[] for _ in pos]
+    for b in bars:
+        c = b.cx if vertical else b.cy
+        near = [i for i, p in found if abs(c - p) <= half]
+        if len(near) == 1:
+            out[near[0]].append(b)
+    return out
+
+
+def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bool = False) -> list[Measured]:
     n = len(cats)
     ax = z.axis
     out: list[Measured] = []
     vertical = ax.orient == "v"
     slots = _slots(z.bars, n, vertical)
+    pos = None
+    if labels and z.words:
+        from docparse.fixes.charts_cats import label_positions
+
+        pos = label_positions(cats, z.words, z.plot, vertical)
+        if slots is None and pos is not None:
+            slots = _by_position(z.bars, pos, vertical)
     if slots is not None:
         colors = {b.color for b in z.bars}
         for color in colors:
@@ -341,18 +385,19 @@ def measured_series(z: Zone, cats: list[str], bar_mode: str = "auto") -> list[Me
                     ends.append(None)
                     lens.append(None)
             if ok and sum(v is not None for v in ends) >= 2:
-                key = (
-                    "bars",
-                    color,
-                    frozenset((round(b.x0, 1), round(b.y0, 1)) for s in slots for b in s if b.color == color),
-                )
+                key = _bar_key(z, color)
                 # bars grow from zero when the axis shows it (their length is the value, stacked or not); on an
                 # axis that starts above zero a bar's value is where it ends
                 from_zero = _zero_in_reach(z.axis, z.reach)
+                reads = []
                 if bar_mode == "both" or from_zero:
-                    out.append(Measured(key, ax, lens))
+                    reads.append(lens)
                 if bar_mode == "both" or not from_zero:
-                    out.append(Measured(key, ax, ends))
+                    reads.append(ends)
+                for vals in reads:
+                    out.append(Measured(key, ax, vals))
+                    if reverse and not vertical:  # categories listed bottom to top
+                        out.append(Measured(key, ax, vals[::-1]))
     if not vertical:  # horizontal value axis: markers of one colour, top to bottom, one per category
         groups: dict[tuple[int, int, int], list[tuple[float, float]]] = {}
         for x, y, c in z.markers:
@@ -360,7 +405,10 @@ def measured_series(z: Zone, cats: list[str], bar_mode: str = "auto") -> list[Me
         for color, pts in groups.items():
             pts = sorted(pts)
             if len(pts) == n and all(q[0] - p[0] > 0.5 for p, q in zip(pts, pts[1:], strict=False)):
-                out.append(Measured(("markers", color, round(pts[0][0], 1)), ax, [ax.value(x) for _, x in pts]))
+                vals = [ax.value(x) for _, x in pts]
+                out.append(Measured(("markers", color, round(pts[0][0], 1)), ax, vals))
+                if reverse:
+                    out.append(Measured(("markers", color, round(pts[0][0], 1)), ax, vals[::-1]))
         return out
     xs_num = _cat_numbers(cats)
     cat_x: list[float | None] | None = None
@@ -496,6 +544,19 @@ def _norm(s: str) -> str:
     return re.sub(r"[^\w]+", " ", s.casefold()).strip()
 
 
+_RIGHT = re.compile(r"\b(?:rhs|r\.h\.s\.?|right(?:[- ]hand)?(?: side)?(?: axis| scale))\b", re.IGNORECASE)
+_LEFT = re.compile(r"\b(?:lhs|l\.h\.s\.?|left(?:[- ]hand)?(?: side)?(?: axis| scale))\b", re.IGNORECASE)
+
+
+def _axis_side(name: str) -> str:
+    """The axis a series name says it is read on ("(right axis)", "RHS")."""
+    if _RIGHT.search(name):
+        return "right"
+    if _LEFT.search(name):
+        return "left"
+    return ""
+
+
 def legend_bind(
     options: list[tuple[Unit, list[Measured]]],
     pairs: list[tuple[Unit, Measured]],
@@ -510,6 +571,9 @@ def legend_bind(
     for color, text in legend.items():
         k = _norm(text)
         by_name[k] = None if k in by_name else color  # one name, two colours: no entry
+    # a legend that marks one series "(right axis)" puts the unmarked ones on the left axis (and vice versa)
+    marked = {_axis_side(t) for t in legend.values()} - {""}
+    implied = {"right": "left", "left": "right"}[next(iter(marked))] if len(marked) == 1 else ""
     out = list(pairs)
     done = {id(u) for u, _ in pairs}
     used = {m.key for _, m in pairs}
@@ -520,9 +584,12 @@ def legend_bind(
             continue
         have = [i for i, v in enumerate(u.values) if v is not None]
         best: dict[tuple, tuple[float, Measured]] = {}
+        want = _axis_side(u.name) or implied
         for m in cands:
             if m.key[1] != color or m.key in used or any(_same(m, o) for _, o in out):
                 continue
+            if want and m.side and m.side != want:
+                continue  # the legend names the other axis
             both = [i for i in have if m.values[i] is not None]
             if len(have) < 3 or len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
                 continue
@@ -531,6 +598,11 @@ def legend_bind(
                 continue
             errs = sorted(abs(u.values[i] - m.values[i]) / span for i in both)
             err = errs[len(errs) // 2]
+            va, vb = [u.values[i] for i in both], [m.values[i] for i in both]
+            if _sd(va) >= 0.05 * span and _corr(va, vb) < opts.get("legend_corr", 0.5):
+                continue  # the reading moves, and not with this series: a wrong category order or panel
+            if _sd(vb) < 0.01 * span and _sd(va) >= 0.01 * span:
+                continue  # a flat reading (stubs measured as bars) for a series that moves
             if m.key not in best or err < best[m.key][0]:
                 best[m.key] = (err, m)
         ranked = sorted(best.values(), key=lambda t: t[0])
@@ -605,7 +677,13 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
     marks = find_marks(shapes, page.width, page.height)
     axes = [
         snap_axis(a, marks)
-        for a in find_axes(words, years=bool(opts.get("years", True)), bent=bool(opts.get("bent", True)))
+        for a in find_axes(
+            words,
+            years=bool(opts.get("years", True)),
+            bent=bool(opts.get("bent", True)),
+            signs=bool(opts.get("signs", False)),
+            upright=bool(opts.get("upright", False)),
+        )
     ]
     if not axes:
         return 0
@@ -625,7 +703,14 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
             for u in units:
                 key = tuple(u.cats)
                 if key not in by_cats:
-                    by_cats[key] = [m for z in zs for m in measured_series(z, u.cats, mode) if m.key not in used]
+                    by_cats[key] = [
+                        m
+                        for z in zs
+                        for m in measured_series(
+                            z, u.cats, mode, bool(opts.get("reverse", False)), bool(opts.get("labels", False))
+                        )
+                        if m.key not in used
+                    ]
             options = [(u, by_cats[tuple(u.cats)]) for u in units]
             pairs = bind(options, opts)
             if legend:
