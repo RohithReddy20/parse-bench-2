@@ -8,6 +8,12 @@
                  text stays.
     split_gap    a text item is split where the vertical gap between two of its lines exceeds
                  split_gap x the item's median line height (each part gets its own words as text)
+    orphans      PDF words that lie in no item at all become new Text items, one per block of lines, when the
+                 text layer is healthy (the words the items do hold agree with the reading). orphan_gap is the
+                 largest vertical gap inside one block, in line heights (default 1.0); orphan_min is the
+                 fewest letters or digits a block needs (default 1). Three optional filters: orphan_ink
+                 (the page shows something there), orphan_support (that share of the block's tokens is in
+                 the reading) and orphan_clear (the block's box holds no word that already has an item)
 
 A word belongs to the smallest text item holding its centre. Pictures and tables are never changed, and an
 item holding no PDF words (a scan, text drawn as an image) is left exactly as it was.
@@ -112,6 +118,55 @@ def split_lines(lines: list[list[PtWord]], split_gap: float) -> list[list[list[P
     return parts
 
 
+def _segments(line: list[PtWord], gap: float) -> list[list[PtWord]]:
+    """A line cut where two neighbouring words are more than gap x the line height apart (a column gutter)."""
+    limit = gap * median(w.y1 - w.y0 for w in line)
+    parts = [[line[0]]]
+    for prev, word in zip(line, line[1:], strict=False):
+        if word.x0 - prev.x1 > limit:
+            parts.append([])
+        parts[-1].append(word)
+    return parts
+
+
+def _holds(b: Box, w: PtWord, edge: float = EDGE) -> bool:
+    return b.x0 - edge <= w.cx <= b.x1 + edge and b.y0 - edge <= w.cy <= b.y1 + edge
+
+
+def has_ink(rendered: RenderedPage, box: Box, contrast: int = 48) -> bool:
+    """Does the rendered page show anything inside the box? Invisible text leaves a flat patch of background."""
+    k = 1.0 / rendered.scale
+    crop = rendered.image.convert("L").crop(
+        (int(box.x0 * k), int(box.y0 * k), int(box.x1 * k) + 1, int(box.y1 * k) + 1)
+    )
+    low, high = crop.getextrema()
+    return high - low >= contrast
+
+
+def orphan_blocks(items: list[LayoutItem], words: list[PtWord], gap: float = 1.0) -> list[list[list[PtWord]]]:
+    """Words whose centre lies in no item, as blocks of lines. A line joins the block above it when the two
+    overlap sideways, are under gap x the line height apart and have about the same height."""
+    free = [w for w in words if not any(_holds(it.bbox, w) for it in items)]
+    blocks: list[list[list[PtWord]]] = []
+    for line in lines_of(free):
+        for seg in _segments(line, 1.5):
+            x0, x1 = seg[0].x0, seg[-1].x1
+            top, height = min(w.y0 for w in seg), median(w.y1 - w.y0 for w in seg)
+            home = None
+            for block in blocks:
+                last = block[-1]
+                last_height = median(w.y1 - w.y0 for w in last)
+                apart = top - max(w.y1 for w in last)
+                overlap = min(x1, max(w.x1 for w in last)) - max(x0, min(w.x0 for w in last))
+                if overlap > 0 and -0.5 * height <= apart <= gap * height and 0.77 <= height / last_height <= 1.3:
+                    home = block
+            if home is None:
+                blocks.append([seg])
+            else:
+                home.append(seg)
+    return blocks
+
+
 _TOKEN = re.compile(r"[^\W_]+", re.UNICODE)
 
 
@@ -140,7 +195,8 @@ def refine(
     pad = float(options.get("tighten_pad") or 0.0)
     page = (rendered.width_pt, rendered.height_pt)
     words = words_in_points(rendered)
-    if not words or not (tighten or native or split_gap):
+    orphans = bool(options.get("orphans"))
+    if not words or not (tighten or native or split_gap or orphans):
         return items
     owned = assign_words(items, words)
     support = float(options.get("native_support", 0.8))
@@ -163,4 +219,22 @@ def refine(
         if native and supported(mine, page_tokens, support):
             update["md"] = _text(lines)
         out.append(item.model_copy(update=update) if update else item)
+    if orphans:
+        held = [w for mine in owned for w in mine]
+        if supported(held or words, page_tokens, support):
+            least = int(options.get("orphan_min", 1))
+            need = float(options.get("orphan_support") or 0.0)
+            taken = [w for w in words if any(_holds(it.bbox, w) for it in items)]
+            for block in orphan_blocks(items, words, float(options.get("orphan_gap", 1.0))):
+                flat = [w for line in block for w in line]
+                box = _union(flat, pad, page)
+                if sum(len(t) for w in flat for t in tokens(w.text)) < least:
+                    continue
+                if need and not supported(flat, page_tokens, need):
+                    continue  # the model did not read these words: hidden text, or text the page does not show
+                if options.get("orphan_ink") and not has_ink(rendered, _union(flat)):
+                    continue  # nothing is drawn there: invisible text
+                if options.get("orphan_clear") and any(_holds(box, w, 0.0) for w in taken):
+                    continue  # the block wraps around words that already have an item
+                out.append(LayoutItem(type="Text", label="text", md=_text(block), bbox=box))
     return out

@@ -101,3 +101,55 @@ def test_native_text_needs_support_from_the_model_reading():
     assert kept.md == "model text"  # the text layer disagrees with the reading everywhere: keep the model's text
     (forced,) = refine([_item()], rendered, {"native_text": True, "native_support": 0}, page_markdown=garbage)
     assert forced.md.startswith("First paragraph")
+
+
+def test_orphan_words_become_text_items():
+    rendered = _rendered()
+    first = _item(box=(60, 80, 420, 112))  # holds the first paragraph only
+    out = refine([first], rendered, {"orphans": True})
+    assert out[0] is first and len(out) == 2
+    added = out[1]
+    assert (added.type, added.label, added.md) == ("Text", "text", "\n".join(P2))
+    words = [w for w in words_in_points(rendered) if w.cy > 112]
+    assert added.bbox.x0 == pytest.approx(min(w.x0 for w in words))
+    assert added.bbox.y1 == pytest.approx(max(w.y1 for w in words))
+    assert len(refine([_item()], rendered, {"orphans": True})) == 1  # every word already sits in an item
+    assert len(refine([first, _item("Picture")], rendered, {"orphans": True})) == 2  # words in a picture stay there
+
+
+def test_orphan_words_split_into_blocks_by_gap_and_column():
+    left = [(72, 700, 11, "Left column line one"), (72, 686, 11, "left column line two")]
+    right = [(330, 700, 11, "Right column line one"), (330, 686, 11, "right column line two")]
+    below = [(72, 600, 11, "A paragraph far below")]
+    rendered = render_pages(make_pdf([{"texts": left + right + below}]))[0]
+    out = refine([], rendered, {"orphans": True})
+    assert sorted(i.md for i in out) == [
+        "A paragraph far below",
+        "Left column line one\nleft column line two",
+        "Right column line one\nright column line two",
+    ]
+
+
+def test_orphan_words_need_a_healthy_text_layer():
+    rendered = _rendered()
+    first = _item(box=(60, 80, 420, 112))
+    garbage = "completely different words came out of the model for this page"
+    assert refine([first], rendered, {"orphans": True}, page_markdown=garbage) == [first]
+    reading = "\n".join(P1)  # the model read the first paragraph and skipped the second
+    assert len(refine([first], rendered, {"orphans": True}, page_markdown=reading)) == 2
+
+
+def test_orphan_filters_ink_support_and_clear():
+    rendered = _rendered()
+    first = _item(box=(60, 80, 420, 112))
+    assert len(refine([first], rendered, {"orphans": True, "orphan_ink": True})) == 2  # the words are drawn
+    blank = rendered.image.copy()
+    blank.paste("white", (0, 0, *blank.size))
+    hidden = render_pages(make_pdf([{"texts": [(72, 640, 11, P2[0])]}]))[0]
+    hidden.image = blank  # a text layer with nothing drawn: invisible text
+    assert refine([], hidden, {"orphans": True, "orphan_ink": True}) == []
+    reading = "\n".join(P1)  # the model did not read the second paragraph
+    assert len(refine([first], rendered, {"orphans": True, "orphan_support": 0.5}, page_markdown=reading)) == 1
+    assert (
+        len(refine([first], rendered, {"orphans": True, "orphan_support": 0.5}, page_markdown="\n".join(P1 + P2))) == 2
+    )
