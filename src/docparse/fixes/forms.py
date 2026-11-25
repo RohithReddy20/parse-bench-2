@@ -356,16 +356,17 @@ _BLANK_MARK = re.compile(r"\[[ \t]*_{2,}[ \t]*\]")
 
 
 def _blank_form(markdown: str, rendered: RenderedPage, options: dict) -> str:
-    """Option `blank_forms`: the slot repairs (`blanks`, `cells`, `hints`) on a page without an overlay whose read
-    writes several blank markers. Nothing on such a page is typed: every word aligned to the PDF is printed."""
-    if not options.get("blank_forms") or len(_BLANK_MARK.findall(markdown)) < BLANK_FORM_MARKS:
+    """Option `blank_forms`: the blank-marker line repair (`blanks`) on a page without an overlay whose read writes
+    several blank markers. Nothing on such a page is typed: every word aligned to the PDF is printed. (Table cells
+    are left alone: without typed values a data table looks like a grid of printed captions.)"""
+    if not options.get("blank_forms") or not options.get("blanks"):
         return markdown
-    if not (options.get("blanks") or options.get("cells") or options.get("hints")):
+    if len(_BLANK_MARK.findall(markdown)) < BLANK_FORM_MARKS:
         return markdown
     from docparse.fixes.forms_slots import slot_edits
 
     printed, _ = page_words(rendered, frozenset())
     if not printed:
         return markdown
-    slots = slot_edits(read_form(markdown, printed, []), options)
+    slots = slot_edits(read_form(markdown, printed, []), {"blanks": True})
     return apply_edits(markdown, slots) if slots else markdown

@@ -35,6 +35,9 @@ def test_blank_line_rules():
     assert blank_line("First Name: [___] Middle Name: [___]") == "First Name: [___]\nMiddle Name: [___]"
     assert blank_line("Day: [___] Month: [___] Year: [___]") == "Day: [___] Month: [___] Year: [___]"  # date parts
     assert blank_line("I am fluent in English and [___], which is") == "I am fluent in English and [___], which is"
+    line = "A. Introducing: the [___] — a specialist in the law"
+    assert blank_line(line) == line  # a blank inside a sentence
+    assert blank_line("1. The priest? The [___]? The [___]?") == "1. The priest? The [___]? The [___]?"
     assert blank_line("Elle s'est terminée le : D15 [___]") == "D15 Elle s'est terminée le: [___]"
     assert blank_line("252 – dont intérêts: [___] (2TR)") == "252 – dont intérêts: [___]\n(2TR)"
     assert blank_line("* Namenszusatz (Beispiel: Freifrau, Graf): [___]") == (
@@ -71,6 +74,7 @@ def test_a_cell_ending_in_box_decoration_or_a_worded_hint_gets_a_blank_marker():
     assert hint_text("22. Chassis No. (Affix Pencil print)") == "22. Chassis No. (Affix Pencil print): [___]"
     assert hint_text("IHT401") is None  # a code, not a decoration
     assert hint_text("Déclaration de l'assuré(e)") is None
+    assert hint_text("May. 2020") is None
     assert hint_text("Advertising") is None
     assert hint_text("Yes [ ] 5") is None  # a box
 
@@ -110,3 +114,6 @@ def test_blank_forms_needs_several_blank_markers_and_words_from_the_pdf():
     assert repair(two, rp, fonts, on, data) == two
     absent = "Behinderung: 9 = Nein [___]\nName: [___]\nOrt: [___]"  # the tail is not on the page
     assert repair(absent, rp, fonts, on, data) == absent
+    cells = md + "\n<table><tr><td>Totale credito 5 ,00</td><td></td></tr></table>"
+    out = repair(cells, rp, fonts, {**on, "cells": True}, data)
+    assert out.endswith("<table><tr><td>Totale credito 5 ,00</td><td></td></tr></table>")  # tables left alone

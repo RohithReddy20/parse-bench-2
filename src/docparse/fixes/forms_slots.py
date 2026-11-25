@@ -162,11 +162,14 @@ def _before_colon(cap: str, at: int, printed: Printed | None) -> str | None:
     return out
 
 
+def _continues(text: str) -> bool:
+    """Text after a blank marker that goes on with its sentence (`, which ...`, `— a specialist`, `?`)."""
+    return bool(re.match(r"[ \t]*[,.;:)\]/?!—–-]|[ \t]*[a-z]", text))
+
+
 def _opens_field(text: str) -> bool:
-    """Text after a blank marker that opens a field of its own: not a continuation (`, which ...`) nor a date part."""
-    if re.match(r"[ \t]*[,.;:)\]/-]|[ \t]*[a-z]", text):
-        return False
-    return not _unit(re.split(r"[:：]", text)[0])
+    """Text after a blank marker that opens a field of its own: not a continuation nor a date part."""
+    return not _continues(text) and not _unit(re.split(r"[:：]", text)[0])
 
 
 def blank_line(line: str, at: int = 0, printed: Printed | None = None) -> str:
@@ -182,7 +185,9 @@ def blank_line(line: str, at: int = 0, printed: Printed | None = None) -> str:
     out, last = "", 0
     for i, (g0, g1) in enumerate(groups):
         head = line[last:g0]
-        new = _head(head, at + last, printed)
+        after = line[g1 : groups[i + 1][0] if i + 1 < len(groups) else len(line)]
+        # a blank inside a sentence (`Introducing: the [___] — a specialist`) is no field's slot
+        new = head if re.search(r"\w|[?!]", after) and _continues(after) else _head(head, at + last, printed)
         out += ("\n" + new.lstrip() if i and _opens_field(head) else new) + line[g0:g1]
         last = g1
     rest = line[last:]
@@ -224,8 +229,11 @@ def _deco(text: str, lead: int = 0) -> tuple[str, str] | None:
     m = _DECO.search(text)
     if not m or m.start() <= lead or not re.search(r"[0-9A-Za-z]", m.group(0)):
         return None
-    if m.start() > 0 and text[m.start() - 1].isalnum() and (m.group(0)[0].isalnum() or m.group(0)[0] in "-–([/"):
-        return None  # part of a word: IHT401, W-2, assuré(e)
+    if m.start() > 0 and text[m.start() - 1].isalnum():
+        if m.group(0)[0].isalnum() or m.group(0)[0] in "-–([/":
+            return None  # part of a word: IHT401, W-2, assuré(e)
+        if m.group(0)[0] in ".,;:" and not re.match(r"[.,;:][ \t]*[(\[]", m.group(0)):
+            return None  # a word's own punctuation before a number (`May. 2020`); only a hint may follow (`No. (...)`)
     body, deco = text[: m.start()], m.group(0)
     if not _WORDS.search(EMPH.sub(" ", body[lead:])):
         return None
