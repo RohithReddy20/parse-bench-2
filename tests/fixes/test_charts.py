@@ -92,6 +92,24 @@ def test_category_labels_place_categories_in_order():
     assert label_positions(["A", "X", "Y", "Z"], words, box, True) is None  # too few found
 
 
+def test_small_multiples_keep_their_own_axis():
+    from docparse.fixes.charts import zones
+
+    draw, texts = [], []
+    for x_axis, x_bars, scale in ((52, 100, 5), (302, 350, 2.5)):  # two panels, each with its axis on the left
+        texts += [(x_axis, 100 + 50 * k - 1.5, 8, str(int(k * 50 / scale))) for k in range(5)]
+        draw += [f"0.1 0.3 0.8 rg {x_bars + 40 * i} 100 20 {30 + 20 * i} re f" for i in range(3)]
+    pdf = make_pdf([{"draw": draw, "texts": texts}])
+    page, words, shapes = _page(TABLE, pdf)
+    marks = find_marks(shapes, page.width, page.height)
+    axes = find_axes(words)
+    assert len(axes) == 2
+    every = zones(axes, marks, words, page.width, page.height)
+    own = zones(axes, marks, words, page.width, page.height, panels=True)
+    assert len(every) == 3 and len(own) == 2  # the right panel's axis no longer reads the left panel
+    assert all(z.side == "left" for z in own)
+
+
 def test_legend_names_colours():
     from docparse.fixes.charts_geometry import find_legend
 
@@ -99,6 +117,14 @@ def test_legend_names_colours():
     page, words, shapes = _page(TABLE, pdf)
     marks = find_marks(shapes, page.width, page.height)
     assert find_legend(marks, words) == {(26, 77, 204): "Sales"}
+    from docparse.fixes.charts import _axis_side
+
+    assert [_axis_side(t) for t in ("Rate (right axis)", "GDP, RHS", "Average (left axis)", "Sales")] == [
+        "right",
+        "right",
+        "left",
+        "",
+    ]
 
 
 def test_labels_beside_their_gridlines_snap_to_them():

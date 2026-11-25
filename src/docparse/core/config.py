@@ -36,6 +36,10 @@ CHART_OPTIONS = frozenset(
         "upright",
         "reverse",
         "labels",
+        "sides",
+        "snap",
+        "snap_tol",
+        "panels",
     }
 )
 

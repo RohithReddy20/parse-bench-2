@@ -55,6 +55,7 @@ class Axis:
     log: bool = False
     a: float = 0.0
     b: float = 0.0
+    rules: tuple[float, float] | None = None  # extent across the axis of the gridlines the ticks snapped to
 
     def value(self, coord: float) -> float:
         v = self.a * coord + self.b
@@ -430,12 +431,12 @@ def snap_axis(axis: Axis, marks: Marks) -> Axis:
     coords = axis.coords
     spacing = (coords[-1] - coords[0]) / (len(coords) - 1)
     if axis.orient == "v":  # rules reaching to within 30 points of the label column
-        rules = [y for y, x0, x1 in marks.hrules if x1 - x0 > 1 and x0 <= axis.hi + 30 and x1 >= axis.lo - 30]
+        segs = [(y, x0, x1) for y, x0, x1 in marks.hrules if x1 - x0 > 1 and x0 <= axis.hi + 30 and x1 >= axis.lo - 30]
     else:
-        rules = [x for x, y0, y1 in marks.vrules if y1 - y0 > 1 and y0 <= axis.hi + 30 and y1 >= axis.lo - 30]
-    if not rules:
+        segs = [(x, y0, y1) for x, y0, y1 in marks.vrules if y1 - y0 > 1 and y0 <= axis.hi + 30 and y1 >= axis.lo - 30]
+    if not segs:
         return axis
-    rules = sorted(set(round(r, 2) for r in rules))
+    rules = sorted(set(round(r, 2) for r, _, _ in segs))
     best: tuple[int, float, float] | None = None  # (matches, -|offset|, offset)
     for c in coords:
         for r in rules:
@@ -459,4 +460,6 @@ def snap_axis(axis: Axis, marks: Marks) -> Axis:
         a, b, worst = _fit(snapped, axis.values)
     if worst > 0.01:
         return axis
-    return Axis(axis.orient, snapped, axis.values, axis.pos, axis.lo, axis.hi, axis.log, a, b)
+    on = [(lo, hi) for r, lo, hi in segs if any(abs(r - c) <= SNAP for c in snapped)]
+    extent = (min(lo for lo, _ in on), max(hi for _, hi in on)) if on else None
+    return Axis(axis.orient, snapped, axis.values, axis.pos, axis.lo, axis.hi, axis.log, a, b, extent)

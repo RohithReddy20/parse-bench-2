@@ -172,6 +172,8 @@ class Measured:
     axis: Axis
     values: list[float | None]
     side: str = ""  # "left" / "right": which side of its marks the (vertical) axis is printed on
+    where: list | None = None  # per category, the box of the mark read (for printed labels beside it)
+    box: tuple[float, float, float, float] | None = None  # the zone (plot) the marks were read in
 
 
 def _swatch(b: Bar, words: list) -> bool:
@@ -209,7 +211,16 @@ def _zero_in_reach(ax: Axis, reach: float = 1.0) -> bool:
     return not ax.log and min(ax.values) - slack <= 0 <= max(ax.values) + slack
 
 
-def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: float, reach: float = 1.0) -> list[Zone]:
+def zones(
+    axes: list[Axis],
+    marks: Marks,
+    words: list,
+    page_w: float,
+    page_h: float,
+    reach: float = 1.0,
+    fit_rules: bool = False,
+    panels: bool = False,
+) -> list[Zone]:
     """For each value axis, the regions on either side of its labels up to the next label column (or row)."""
     bars = [b for b in marks.bars if not _swatch(b, words)]
     out: list[Zone] = []
@@ -226,7 +237,16 @@ def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: fl
         ]
         before = max((o.hi for o in same if o.hi <= ax.lo), default=0.0)
         after = min((o.lo for o in same if o.lo >= ax.hi), default=page_w if ax.orient == "v" else page_h)
-        for side, where in (((before, ax.lo), "right"), ((ax.hi, after), "left")):
+        sides = [((before, ax.lo), "right"), ((ax.hi, after), "left")]
+        if fit_rules and ax.rules is not None:
+            # the gridlines tie the axis to its plot: on the side they run to, and no further than they do
+            r_lo, r_hi = ax.rules
+            sides = [((max(before, r_lo - 3), ax.lo), "right"), ((ax.hi, min(after, r_hi + 3)), "left")]
+            if r_lo >= ax.hi - 3:
+                sides = sides[1:]
+            elif r_hi <= ax.lo + 3:
+                sides = sides[:1]
+        for side, where in sides:
             if ax.orient == "v":
                 box = (side[0], lo_c - pad, side[1], hi_c + pad)
             else:
@@ -252,7 +272,26 @@ def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: fl
             else:
                 plot = (lo_c, box[1], hi_c, box[3])
             out.append(Zone(ax, box, zb, zl, zm, cat_axis, reach, where if ax.orient == "v" else "", plot, words))
+    if panels:
+        out = _own_panels(out)
     return out
+
+
+def _own_panels(zs: list[Zone]) -> list[Zone]:
+    """Small multiples, each with its axis on the left: the plot left of an axis that has a plot of its own on
+    its right belongs to the axis on that plot's left, not to this one (a true right axis has nothing to its
+    right)."""
+    left_axes = {id(z.axis) for z in zs if z.side == "left"}
+    keep = []
+    for z in zs:
+        if (
+            z.side == "right"
+            and id(z.axis) in left_axes
+            and any(o.side == "left" and o.axis is not z.axis and _overlap(o.box, z.box) for o in zs)
+        ):
+            continue
+        keep.append(z)
+    return keep
 
 
 def _slots(bars: list[Bar], n: int, vertical: bool) -> list[list[Bar]] | None:
@@ -329,7 +368,7 @@ def measured_series(
 ) -> list[Measured]:
     out = _measured(z, cats, bar_mode, reverse, labels)
     for m in out:
-        m.side = z.side
+        m.side, m.box = z.side, z.box
     return out
 
 
@@ -371,6 +410,7 @@ def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bo
         for color in colors:
             ends: list[float | None] = []
             lens: list[float | None] = []
+            boxes: list = []
             ok = True
             for slot in slots:
                 mine = [b for b in slot if b.color == color]
@@ -381,9 +421,11 @@ def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bo
                     far, length = _bar_values(mine[0], ax)
                     ends.append(far)
                     lens.append(length)
+                    boxes.append((mine[0].x0, mine[0].y0, mine[0].x1, mine[0].y1))
                 else:
                     ends.append(None)
                     lens.append(None)
+                    boxes.append(None)
             if ok and sum(v is not None for v in ends) >= 2:
                 key = _bar_key(z, color)
                 # bars grow from zero when the axis shows it (their length is the value, stacked or not); on an
@@ -395,9 +437,9 @@ def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bo
                 if bar_mode == "both" or not from_zero:
                     reads.append(ends)
                 for vals in reads:
-                    out.append(Measured(key, ax, vals))
+                    out.append(Measured(key, ax, vals, where=boxes))
                     if reverse and not vertical:  # categories listed bottom to top
-                        out.append(Measured(key, ax, vals[::-1]))
+                        out.append(Measured(key, ax, vals[::-1], where=boxes[::-1]))
     if not vertical:  # horizontal value axis: markers of one colour, top to bottom, one per category
         groups: dict[tuple[int, int, int], list[tuple[float, float]]] = {}
         for x, y, c in z.markers:
@@ -418,7 +460,7 @@ def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bo
         pts = _vertices(ln.points)
         key = ("line", ln.color, round(pts[0][0], 1), round(pts[0][1], 1))
         if len(pts) == n:
-            out.append(Measured(key, ax, [ax.value(y) for _, y in pts]))
+            out.append(Measured(key, ax, [ax.value(y) for _, y in pts], where=[(x, y, x, y) for x, y in pts]))
         if cat_x is not None:
             vals = [None if x is None else _sample(pts, x) for x in cat_x]
             out.append(Measured(key, ax, [None if y is None else ax.value(y) for y in vals]))
@@ -429,7 +471,7 @@ def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bo
         pts = sorted(pts)
         key = ("markers", color, round(pts[0][0], 1))
         if len(pts) == n:
-            out.append(Measured(key, ax, [ax.value(y) for _, y in pts]))
+            out.append(Measured(key, ax, [ax.value(y) for _, y in pts], where=[(x, y, x, y) for x, y in pts]))
         elif cat_x is not None:
             vals = []
             for x in cat_x:
@@ -578,10 +620,23 @@ def legend_bind(
     done = {id(u) for u, _ in pairs}
     used = {m.key for _, m in pairs}
     rng = data_range([u for u, _ in options]) or math.inf
+
+    def group(u: Unit) -> str:
+        return u.name.rsplit(" / ", 1)[0] if " / " in u.name else ""
+
+    # the plots the values already tied each column group to (the panel a table's columns describe)
+    panels: dict[str, list] = {}
+    for u, m in pairs:
+        if m.box is not None:
+            panels.setdefault(group(u), []).append(m.box)
     for u, cands in options:
         color = by_name.get(_norm(u.name.split(" / ")[-1]))
         if id(u) in done or color is None:
             continue
+        mine = {m.key for m in cands if m.key[1] == color}
+        home = panels.get(group(u))
+        if home is None and len(mine) > 1:
+            continue  # several panels draw this colour and nothing says which one this column reads
         have = [i for i, v in enumerate(u.values) if v is not None]
         best: dict[tuple, tuple[float, Measured]] = {}
         want = _axis_side(u.name) or implied
@@ -590,6 +645,8 @@ def legend_bind(
                 continue
             if want and m.side and m.side != want:
                 continue  # the legend names the other axis
+            if home is not None and not any(_overlap(m.box, b) for b in home):
+                continue  # another panel than the one this column group's other series are read in
             both = [i for i in have if m.values[i] is not None]
             if len(have) < 3 or len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
                 continue
@@ -608,13 +665,23 @@ def legend_bind(
         ranked = sorted(best.values(), key=lambda t: t[0])
         if not ranked or ranked[0][0] > opts.get("legend_max", 0.35):
             continue
-        if len(ranked) > 1 and ranked[0][0] > 0.5 * ranked[1][0]:
-            continue  # two drawn series of that colour fit about as well: no choice
+        if len(ranked) > 1:
+            continue  # two drawn series of that colour could be this one: the legend cannot choose
         m = ranked[0][1]
         out.append((u, m))
         used.add(m.key)
         done.add(id(u))
     return out
+
+
+def _overlap(a, b) -> bool:
+    """Two zones covering mostly the same plot."""
+    if a is None or b is None:
+        return False
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    small = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+    return small > 0 and ix * iy >= 0.5 * small
 
 
 def _same(a: Measured, b: Measured) -> bool:
@@ -644,19 +711,47 @@ def printed_numbers(words: list, axes: list[Axis]) -> set[tuple[float, int]]:
     return out
 
 
+def printed_words(words: list, axes: list[Axis]) -> list[tuple[float, int, float, float]]:
+    """(value, decimals, x, y) of every number printed on the page outside the tick labels."""
+    ticks = [(c, v) for a in axes for c, v in zip(a.coords, a.values, strict=True)]
+    out = []
+    for w in words:
+        v = tick_value(w.text.strip(".,;:"))
+        if v is None or any(abs(v - tv) < 1e-9 and min(abs(w.cy - tc), abs(w.cx - tc)) < 8 for tc, tv in ticks):
+            continue
+        frac = re.search(r"\.(\d+)", w.text)
+        out.append((v, len(frac.group(1)) if frac else 0, w.cx, w.cy))
+    return out
+
+
+def _label_at(box, v: float, span: float, labels: list[tuple[float, int, float, float]], tol: float):
+    """The printed number beside a mark (within 18 points of its box) that agrees with its measured value."""
+    x0, y0, x1, y1 = box
+    near = [
+        (abs(p - v), p, d)
+        for p, d, x, y in labels
+        if x0 - 18 <= x <= x1 + 18 and y0 - 18 <= y <= y1 + 18 and abs(p - v) <= tol * span
+    ]
+    return min(near)[1:] if near else None
+
+
 def _printed(num: Number, printed: set[tuple[float, int]]) -> bool:
     return (round(num.value, 6), num.decimals) in printed or (round(-num.value, 6), num.decimals) in printed
 
 
 def _edits(
-    raw: str, pairs: list[tuple[Unit, Measured]], opts: dict, printed: set[tuple[float, int]]
+    raw: str,
+    pairs: list[tuple[Unit, Measured]],
+    opts: dict,
+    printed: set[tuple[float, int]],
+    labels: list[tuple[float, int, float, float]] | None = None,
 ) -> list[tuple[tuple[int, int], str]]:
     edits = []
     for u, m in pairs:
         ax = m.axis
         span = ax.span
         d = _decimals(ax, u)
-        for num, v in zip(u.nums, m.values, strict=True):
+        for i, (num, v) in enumerate(zip(u.nums, m.values, strict=True)):
             if num is None or v is None:
                 continue
             if _printed(num, printed):
@@ -664,6 +759,10 @@ def _edits(
             if abs(v - num.value) <= opts.get("replace_min", 0.0) * span:
                 continue
             text = format_number(v, d, num)
+            box = m.where[i] if labels and m.where else None
+            hit = _label_at(box, v, span, labels, float(opts.get("snap_tol", 0.03))) if box else None
+            if hit is not None:  # the label printed at the mark: its exact number
+                text = format_number(hit[0], hit[1], num)
             if text != raw[num.span[0] : num.span[1]]:
                 edits.append((num.span, text))
     return edits
@@ -687,13 +786,23 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
     ]
     if not axes:
         return 0
-    zs = zones(axes, marks, words, page.width, page.height, float(opts.get("zero_reach", 1.0)))
+    zs = zones(
+        axes,
+        marks,
+        words,
+        page.width,
+        page.height,
+        float(opts.get("zero_reach", 1.0)),
+        bool(opts.get("sides", False)),
+        bool(opts.get("panels", False)),
+    )
     if not zs:
         return 0
     changed = 0
     used: set[tuple] = set()
     mode = str(opts.get("bar_mode", "auto"))
     printed = printed_numbers(words, axes)
+    labels = printed_words(words, axes) if opts.get("snap") else None
     legend = find_legend(marks, words) if opts.get("legend") else {}
     for region in tables:
         base = region.chosen()
@@ -722,7 +831,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                 best = (n, pairs)
         if best is None:
             continue
-        edits = _edits(base.raw, best[1], opts, printed)
+        edits = _edits(base.raw, best[1], opts, printed, labels)
         used |= {m.key for _, m in best[1]}
         if not edits:
             continue
