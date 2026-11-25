@@ -12,13 +12,39 @@ from dataclasses import replace
 from docparse.core.ir import Box
 from docparse.pdf.render import RenderedPage, Word
 
+RTL_SHARE = 0.3  # right-to-left scripts are stored "backwards" on an upright page
+DECISIVE = 8  # lines reading forward after the turn, for every line still reading backwards
+TALL_SHARE = 0.9  # share of longer words standing on end before a quarter turn is believed
+
 
 def page_turn(rendered: RenderedPage) -> int:
-    """The clockwise turn (0, 90, 180, 270) that sets this page's text upright; 0 without firm evidence."""
-    from docparse.fixes.tables_align import page_words, upright_turn
+    """The clockwise turn (0, 90, 180, 270) that sets this page's text upright; 0 without firm evidence.
+
+    `upright_turn` proposes a turn from the direction the text layer's lines run. It is believed only when the
+    page is not in a right-to-left script, nearly every line agrees after the turn, and (for a quarter turn)
+    nearly all longer words stand on end: a chart with upright text and a few rotated axis labels is not a
+    sideways page."""
+    import unicodedata
+
+    from docparse.fixes.tables_align import _direction, page_words, turned, upright_turn
 
     words = page_words(rendered)
-    return upright_turn(words, rendered.width_pt, rendered.height_pt) if words else 0
+    if not words:
+        return 0
+    angle = upright_turn(words, rendered.width_pt, rendered.height_pt)
+    if not angle:
+        return 0
+    letters = [c for w in words for c in w.text if c.isalpha()]
+    if letters and sum(unicodedata.bidirectional(c) in ("R", "AL") for c in letters) > RTL_SHARE * len(letters):
+        return 0
+    forward, backward = _direction(turned(words, rendered.width_pt, rendered.height_pt, angle))
+    if forward < DECISIVE * backward:
+        return 0
+    if angle in (90, 270):
+        longer = [w for w in words if len(w.text) >= 4]
+        if not longer or sum((w.y1 - w.y0) > 1.5 * (w.x1 - w.x0) for w in longer) < TALL_SHARE * len(longer):
+            return 0
+    return angle
 
 
 def _turn_xy(x: float, y: float, w: float, h: float, angle: int) -> tuple[float, float]:

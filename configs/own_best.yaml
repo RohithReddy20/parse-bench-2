@@ -8,6 +8,7 @@ page_runtime: vllm-0.34.0
 prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38   # sha256 of prompt.txt at the pinned revision
 dpi: 300
 fallback_below: 0.5
+upright_read: true  # pages printed sideways or upside down are read upright (needs those page reads in the cache)
 layout: ground
 layout_attention: always
 layout_options:
