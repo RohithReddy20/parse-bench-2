@@ -370,8 +370,10 @@ def measured_series(
     reverse: bool = False,
     labels: bool = False,
     anchors: bool = False,
+    rotated: str = "",
+    pos_marks: bool = False,
 ) -> list[Measured]:
-    out = _measured(z, cats, bar_mode, reverse, labels, anchors)
+    out = _measured(z, cats, bar_mode, reverse, labels, anchors, rotated, pos_marks)
     for m in out:
         m.side, m.box = z.side, z.box
     return out
@@ -385,6 +387,12 @@ def _by_position(bars: list[Bar], pos: list[float | None], vertical: bool) -> li
     """Bars assigned to the category whose label they stand on (centre within half a category spacing)."""
     found = [(i, p) for i, p in enumerate(pos) if p is not None]
     steps = [abs(q - p) / (j - i) for (i, p), (j, q) in zip(found, found[1:], strict=False)]
+    ps = [p for _, p in found]
+    if not (
+        all(q > p for p, q in zip(ps, ps[1:], strict=False)) or all(q < p for p, q in zip(ps, ps[1:], strict=False))
+    ):
+        ps = sorted(ps)  # labels in another order than the table's: the spacing of neighbouring labels
+        steps = [q - p for p, q in zip(ps, ps[1:], strict=False)]
     if not steps:
         return None
     half = 0.5 * sorted(steps)[len(steps) // 2]
@@ -397,8 +405,39 @@ def _by_position(bars: list[Bar], pos: list[float | None], vertical: bool) -> li
     return out
 
 
+def _marks_by_position(
+    pts: list[tuple[float, float]], pos: list[float | None]
+) -> list[tuple[float, float] | None] | None:
+    """Markers of one colour placed on the categories whose labels they stand over (within a third of the
+    label spacing); None when a category has two such markers or fewer than half the categories get one."""
+    found = sorted(p for p in pos if p is not None)
+    steps = [q - p for p, q in zip(found, found[1:], strict=False) if q > p]
+    if not steps:
+        return None
+    tol = sorted(steps)[len(steps) // 2] / 3
+    out: list[tuple[float, float] | None] = []
+    for c in pos:
+        near = [] if c is None else [p for p in pts if abs(p[0] - c) <= tol]
+        near = [
+            p for i, p in enumerate(near) if all(abs(p[0] - q[0]) > 0.5 or abs(p[1] - q[1]) > 0.5 for q in near[:i])
+        ]
+        if len(near) > 1:
+            return None
+        out.append(near[0] if near else None)
+    if sum(p is not None for p in out) < max(2, 0.5 * len(pos)):
+        return None
+    return out
+
+
 def _measured(
-    z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bool = False, anchors: bool = False
+    z: Zone,
+    cats: list[str],
+    bar_mode: str,
+    reverse: bool,
+    labels: bool = False,
+    anchors: bool = False,
+    rotated: str = "",
+    pos_marks: bool = False,
 ) -> list[Measured]:
     n = len(cats)
     ax = z.axis
@@ -407,9 +446,16 @@ def _measured(
     slots = _slots(z.bars, n, vertical)
     pos = None
     if labels and z.words:
-        from docparse.fixes.charts_cats import label_positions
+        from docparse.fixes.charts_cats import label_positions, rotated_positions
 
         pos = label_positions(cats, z.words, z.plot, vertical)
+        if pos is None and rotated and vertical:
+            # labels printed rotated under the plot; "any": each category placed by its own label, in
+            # whatever order the chart draws them (a panel sorted differently from the table)
+            pos = rotated_positions(cats, z.words, z.plot, ordered=rotated != "any")
+            found = [p for p in pos or [] if p is not None]
+            if pos is not None and not all(q > p for p, q in zip(found, found[1:], strict=False)):
+                slots = None  # the bars' order is not the table's: place them by their labels only
         if slots is None and pos is not None:
             slots = _by_position(z.bars, pos, vertical)
     if slots is None and anchors and z.bars:
@@ -487,6 +533,11 @@ def _measured(
     for color, pts in by_color.items():
         pts = sorted(pts)
         key = ("markers", color, round(pts[0][0], 1))
+        if pos_marks and pos is not None:
+            placed = _marks_by_position(pts, pos)
+            if placed is not None:
+                out.append(Measured(key, ax, [None if p is None else ax.value(p[1]) for p in placed]))
+                continue
         if len(pts) == n:
             out.append(Measured(key, ax, [ax.value(y) for _, y in pts], where=[(x, y, x, y) for x, y in pts]))
         elif cat_x is not None:
@@ -799,6 +850,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
             bent=bool(opts.get("bent", True)),
             signs=bool(opts.get("signs", False)),
             upright=bool(opts.get("upright", False)),
+            lost=bool(opts.get("lost", False)),
         )
     ]
     if not axes:
@@ -839,6 +891,8 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                             bool(opts.get("reverse", False)),
                             bool(opts.get("labels", False)),
                             bool(opts.get("anchors", False)),
+                            str(opts.get("rotated", "") or ""),
+                            bool(opts.get("pos_marks", False)),
                         )
                         if m.key not in used
                     ]

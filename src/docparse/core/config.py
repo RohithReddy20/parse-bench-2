@@ -43,6 +43,9 @@ CHART_OPTIONS = frozenset(
         "snap_tol",
         "panels",
         "anchors",
+        "lost",  # round two: tick labels with leading digits missing from the text layer
+        "rotated",  # round two: rotated category labels ("ordered" or "any")
+        "pos_marks",  # round two: markers placed on categories by their labels
     }
 )
 
