@@ -1,0 +1,34 @@
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_8d523f9fa621d8 22-40
+src/docparse/fixes/tables_align.py
+  s_a13908d8c3ae20::t_8d523f9fa621d8 59-108
+src/docparse/fixes/tables_split.py
+  s_a13908d8c3ae20::t_8d523f9fa621d8 1-112
+configs/standin_best.yaml
+  s_a13908d8c3ae20::t_8d523f9fa621d8 28-31
+  s_a13908d8c3ae20::t_91aa58e6814436 43-48
+docs/results/2026-11-25-tables-fix.md
+  s_a13908d8c3ae20::t_8d523f9fa621d8 183-330
+src/docparse/fixes/tables.py
+  s_a13908d8c3ae20::t_8d523f9fa621d8 19-34,47-57,59,64,79,82-85,98,108-116,123,126-128,131-134,252-416,498-500,504-506,524-527
+tests/fixes/test_tables_round2.py
+  s_a13908d8c3ae20::t_8d523f9fa621d8 1-195
+configs/own_best.yaml
+  s_a13908d8c3ae20::t_99ecddc7596cfc 28-31,35-38,43-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e9e87fa4a14e63e88b34266dc22de8b58252495b",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
