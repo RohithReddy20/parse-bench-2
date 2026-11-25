@@ -33,7 +33,6 @@ TABLE_OPTIONS = frozenset(
         "absorb",
         "leaf",
         "leaf_mode",
-        "join",
         "complete_extent",
     }
 )  # fixes/tables.py

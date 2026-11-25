@@ -1,7 +1,7 @@
-"""Round-two table options: leaf, absorb, split, upright, dedupe, complete_extent, unspan, join."""
+"""Round-two table options: leaf, absorb, split, upright, dedupe, complete_extent, unspan."""
 
 from docparse.base.ocria_parse import parse_page
-from docparse.fixes.tables import fix_tables, join_bracket_rows, looped_copies, right_align_leaf
+from docparse.fixes.tables import fix_tables, looped_copies, right_align_leaf
 from docparse.fixes.tables_align import TWord, lines_of, turned, upright_turn
 from docparse.fixes.tables_html import parse_table
 from docparse.pdf.render import render_pages
@@ -193,19 +193,3 @@ def test_a_spanning_value_printed_in_one_column_moves_to_that_column():
     )
     out = _fixed(md, _page(texts), {"unspan": True, "unspan_mode": 2})
     assert "<tr><td>Bits</td><td>12</td><td></td><td></td></tr>" in out
-
-
-# --- join (rejected; kept off): a row of bracketed second lines joins the row above -------------------------------
-
-
-def test_bracketed_continuation_rows_join_the_row_above():
-    t = parse_table(
-        "<table><tr><th></th><th>N</th><th>RR</th></tr><tr><td>Visits</td><td>40</td><td>1.8</td></tr>"
-        "<tr><td></td><td>(82)</td><td>[1.5–2.0]</td></tr><tr><td>Tests</td><td>33</td><td>11.0</td></tr></table>"
-    )
-    assert join_bracket_rows(t)
-    t.changed = True
-    assert t.render() == (
-        "<table><tr><th></th><th>N</th><th>RR</th></tr><tr><td>Visits</td><td>40 (82)</td><td>1.8 [1.5–2.0]</td></tr>"
-        "<tr><td>Tests</td><td>33</td><td>11.0</td></tr></table>"
-    )

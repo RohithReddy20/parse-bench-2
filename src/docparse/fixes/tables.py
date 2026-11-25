@@ -16,6 +16,22 @@
              table is changed (default 0.5). A broken font map or a stale OCR layer finds few cells, and the
              model's table stays as it is.
 
+Round two (docs/results/2026-11-25-tables-fix.md, round-two section):
+
+    leaf     (kept) on a table no page geometry places (a scan, or a text layer that did not match), a last header
+             row short of its table is moved right over the last columns: leaf headers name the value columns,
+             and the reading left out the blank corner over the row labels. Not when a one-column header ends the
+             row above (then the gap may be under it). `leaf_mode` 3 is the measured rule.
+    dedupe   copies of a table that a looping read wrote again and again (only on a read `fallback.looped` flags).
+    complete_extent  with complete, a cut-off table is completed from the words inside its own horizontal extent,
+             so a table printed in column groups side by side is completed down its own group.
+    upright  the text layer of a page printed sideways or upside down is turned to read upright before matching.
+    absorb   a unit printed under a header that spans down ("(DKK 1,000)" under "Assets") joins that header.
+    split    two numbers in one cell, on either side of a gutter running through the column, become two columns
+             (tables_split.py).
+    unspan   a body value spanning columns whose words lie in one of them moves to that column (`unspan_mode` 2:
+             its centre lies inside that column).
+
 A table the options do not change is written back byte for byte, and a page without a text layer is untouched by
 every option but `extend`.
 The corrected table is a new candidate of its region (reader "fix.tables.pdf"); OCRia-1's reading stays in the IR.
@@ -60,7 +76,7 @@ class _Found:
 
 def fix_tables(page: Page, rendered: RenderedPage, options: dict) -> None:
     """Apply the enabled options to every HTML table region of the page, in reading order."""
-    if not any(options.get(k) for k in ("regrid", "complete", "merge", "extend")):
+    if not any(options.get(k) for k in ("regrid", "complete", "merge", "extend", "leaf", "dedupe")):
         return
     words = page_words(rendered)
     if words and options.get("upright"):
@@ -98,8 +114,6 @@ def fix_tables(page: Page, rendered: RenderedPage, options: dict) -> None:
             placed = bool(lines) and healthy
             if options.get("leaf") and not placed and right_align_leaf(table, float(options.get("leaf_mode", 0))):
                 what.append("leaf")
-            if options.get("join") and join_bracket_rows(table):
-                what.append("join")
             if options.get("extend") and extend_header(table):
                 what.append("extend")
             if what:
@@ -238,54 +252,12 @@ _COLSPAN = re.compile(r"colspan\s*=\s*[\"']?\d+[\"']?", re.I)
 _COLSPAN_ATTR = re.compile(r"\s*colspan\s*=\s*[\"']?\d+[\"']?", re.I)  # with the space before it
 
 
-_BRACKETED = re.compile(r"[(\[].*[)\]]%?\*?", re.S)
-
-
-def join_bracket_rows(table: HTable) -> bool:
-    """A body row that only continues the row above it: no row label, and every cell it fills holds a bracketed
-    value ("(82)", "[1.5-2.0]") under a filled cell of the row above. The reading wrote a cell's second line
-    (a share or an interval under a count or an estimate) as a row of its own; it joins the cell above.
-    True when any row was joined."""
-    h = _header_rows(table)
-    changed = False
-    r = max(h, 1)
-    while r < len(table.rows):
-        row, prev = table.rows[r], table.rows[r - 1]
-        filled = [c for c in row.cells if c.text]
-        above = {c.col: c for c in prev.cells if c.rowspan == 1}
-        if (
-            r - 1 < h
-            or not filled
-            or any(c.tag == "th" for c in row.cells + prev.cells)
-            or any(c.rowspan > 1 for c in row.cells)
-            or any(c.col == 0 for c in filled)
-            or table.spanned_into(r) != table.spanned_into(r - 1)
-            or not all(_BRACKETED.fullmatch(c.text) for c in filled)
-            or not all(c.col in above and above[c.col].text and above[c.col].colspan == c.colspan for c in filled)
-        ):
-            r += 1
-            continue
-        for c in filled:
-            host = above[c.col]
-            host.inner, host.raw = f"{host.inner} {c.inner}", ""
-        prev.edited = True
-        del table.rows[r]
-        del table.seps[r]  # the text before the row (the one after the last row holds "</table>")
-        table.place()
-        changed = True
-    return changed
-
-
-def _numeric_share(table: HTable, col: int, first_body: int) -> float | None:
-    vals = [c.text for row in table.rows[first_body:] for c in row.cells if c.col == col and c.colspan == 1 and c.text]
-    return sum(1 for v in vals if _NUMBER.fullmatch(v)) / len(vals) if vals else None
-
-
 def right_align_leaf(table: HTable, mode: float = 0) -> bool:
     """With no page geometry to place it (a scan, or a text layer that did not match): the last header row, one
     or more cells short of its table, is moved right so that its cells stand over the last columns. Leaf headers
     name the value columns, which follow the row-label columns; a short leaf row left out the blank corner.
-    mode 1: only when the columns it then covers hold numbers in the body. True when the row changed."""
+    mode 0: only when every body row is as wide as the table; mode 2: whatever the body rows; mode 3 (the one
+    kept): as mode 2, but not when a one-column header ends the row above. True when the row changed."""
     h = _header_rows(table)
     if h == 0 or h == len(table.rows):
         return False
@@ -311,10 +283,6 @@ def right_align_leaf(table: HTable, mode: float = 0) -> bool:
     if len(free) - missing != len(row.cells):
         return False
     first = free[missing]  # where the row's first cell goes
-    if mode == 1:
-        shares = [_numeric_share(table, k, h) for k in free[missing:]]
-        if any(s is None or s < 0.5 for s in shares[: max(1, len(shares) // 2)]):
-            return False
     tag = row.cells[0].tag
     row.cells = [HCell.empty(tag) for k in free if k < first] + row.cells
     row.edited = True

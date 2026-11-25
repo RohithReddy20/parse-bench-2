@@ -22,6 +22,10 @@ table_options:
   complete: true
   merge: true
   extend: true
+  leaf: true  # round two: a short leaf header row over the last columns where no page geometry places it
+  leaf_mode: 3
+  dedupe: true  # round two: copies of a table a looping read wrote again and again are dropped
+  complete_extent: true  # round two: a cut-off table is completed down its own column group
 form_options:
   combs: true
   boxes: true
