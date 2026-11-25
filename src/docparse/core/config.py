@@ -17,6 +17,8 @@ LAYOUT_OPTIONS = frozenset(
         "orphans", "orphan_gap", "orphan_min", "orphan_ink",
     }
 )  # fmt: skip
+# chart tables corrected from the PDF's vector drawing (fixes/charts.py)
+CHART_OPTIONS = frozenset({"measure", "agree", "agree_tol", "replace_min", "coverage", "bar_mode"})
 
 
 class Config(BaseModel):
@@ -32,6 +34,8 @@ class Config(BaseModel):
     # is replaced by the text layer (0 = off)
     fallback_below: float = 0.0
     layout_options: dict[str, float | bool] = Field(default_factory=dict)
+    # chart values measured from vector bars, lines and markers against tick-label axes; empty = off
+    chart_options: dict[str, float | bool | str] = Field(default_factory=dict)
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:
@@ -54,6 +58,8 @@ class Config(BaseModel):
             target[leaf] = yaml.safe_load(value)
         if set(data.get("layout_options") or {}) - LAYOUT_OPTIONS:
             raise ValueError(f"unknown layout option(s): {sorted(set(data['layout_options']) - LAYOUT_OPTIONS)}")
+        if set(data.get("chart_options") or {}) - CHART_OPTIONS:
+            raise ValueError(f"unknown chart option(s): {sorted(set(data['chart_options']) - CHART_OPTIONS)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")

@@ -57,6 +57,12 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 markdown = text_dump(words)
         page = parse_page(markdown, index=index, call_key=call.key())
         page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
+        if config.chart_options.get("measure") and any(r.kind == "table" for r in page.regions):
+            from docparse.fixes.charts import correct_tables
+            from docparse.fixes.layout_refine import words_in_points
+            from docparse.pdf.graphics import load_shapes
+
+            correct_tables(page, words_in_points(rp), load_shapes(pdf_bytes, index), config.chart_options)
         page.cost = CostRecord(
             calls=1,
             gpu_seconds=result.gpu_seconds or 0.0,
