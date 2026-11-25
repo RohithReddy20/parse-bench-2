@@ -1,0 +1,33 @@
+docs/results/2026-11-25-own-run-with-corrections.md
+  s_a13908d8c3ae20::t_5fcfd6a920180e 1-54
+docs/superpowers/plans/2026-11-24-docparse-v2-m0-m1.md
+  s_a13908d8c3ae20::t_f12b1961f964d2 598,600,602-603,606,633,636
+configs/own_best.yaml
+  s_1bb3c87cb9aa4a::t_08b87a016eca88 19-21
+configs/standin_best.yaml
+  s_1bb3c87cb9aa4a::t_b5080be61120f0 19-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "541f81ccfee8f872abdab4241e17dede451f84ef",
+  "prompts": {},
+  "sessions": {
+    "s_1bb3c87cb9aa4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a775a4d8908cdda15",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    },
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
