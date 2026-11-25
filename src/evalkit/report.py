@@ -19,11 +19,16 @@ def scores_markdown(
     ours = {"overall": run.overall, **run.dimensions}
     head = "| | Overall | " + " | ".join(d.capitalize() for d in DIMS) + " |"
     lines = [head, "|---|" + "---:|" * 7]
+
+    def row(name: str, values: dict[str, float]) -> str:  # a partial run has only some dimensions
+        cells = (f"{values[k]:.2f}" if k in values else "—" for k in ("overall", *DIMS))
+        return f"| {name} | " + " | ".join(cells) + " |"
+
     if reference:
-        lines.append(f"| {ref_name} | " + " | ".join(f"{reference[k]:.2f}" for k in ("overall", *DIMS)) + " |")
-    lines.append("| This run, all pages | " + " | ".join(f"{ours[k]:.2f}" for k in ("overall", *DIMS)) + " |")
-    lines.append("| Development part (80%) | " + " | ".join(f"{dev[k]:.2f}" for k in ("overall", *DIMS)) + " |")
-    lines.append("| Check slice (20%) | " + " | ".join(f"{check[k]:.2f}" for k in ("overall", *DIMS)) + " |")
+        lines.append(row(ref_name, reference))
+    lines.append(row("This run, all pages", ours))
+    lines.append(row("Development part (80%)", dev))
+    lines.append(row("Check slice (20%)", check))
     return "\n".join(lines)
 
 
