@@ -1,0 +1,24 @@
+tests/fixes/test_forms_slots.py
+  s_a13908d8c3ae20::t_1714baeaa77842 71,73
+  s_a13908d8c3ae20::t_26920c556a0e26 55-58
+src/docparse/fixes/forms_slots.py
+  s_a13908d8c3ae20::t_73b447e077cd12 138-139
+  s_a13908d8c3ae20::t_82c560e38a70b4 137
+  s_a13908d8c3ae20::t_db8387cb958204 227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2366029393053915c070357b1745340ef8975f8",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
