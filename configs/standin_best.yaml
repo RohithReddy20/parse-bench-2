@@ -16,9 +16,8 @@ layout_options:
   native_text: true
   orphans: true
   orphan_ink: true
-  kdl_arbiter: true        # a second detector (KDL nano v2) votes between nested boxes ...
-  kdl_keep_pictures: true  # ... never against a picture ...
-  kdl_add: true            # ... and adds regions no item covers. Needs KDL detections in the cache.
+  # the second layout detector (KDL nano v2) is in configs/standin_layout_kdl.yaml: its detections are cached
+  # for the layout subset only, so it cannot be on for the other subsets
 table_options:
   regrid: true
   regrid_wide: true
