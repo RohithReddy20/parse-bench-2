@@ -1,1 +1,2 @@
-"""Checks on document sets outside ParseBench 2. Their data lives under `<data root>/external/`, never in the repo."""
+"""Checks on document sets outside ParseBench 2. Data and pinned scorers live under `<data root>/external/`,
+never in the repo."""
