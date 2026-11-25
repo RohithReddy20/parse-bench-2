@@ -1,0 +1,27 @@
+docs/results/2026-11-25-tables-fix.md
+  s_a13908d8c3ae20::t_2b831e1050ae51 124-140
+  s_a13908d8c3ae20::t_4ade24697243ef 93-94
+  s_a13908d8c3ae20::t_31129e3577c1f8 144-182
+  s_a13908d8c3ae20::t_fa12bfca9bd564 68
+  s_a13908d8c3ae20::t_719ce35bb69041 67
+  s_a13908d8c3ae20::t_8ee66047bb0bae 98-104
+configs/standin_tables.yaml
+  s_a13908d8c3ae20::t_fdf2e0b9945756 19
+  s_a13908d8c3ae20::t_3ba5a213f1cbc5 4-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7211d9accc602cdfa9c1928f1b9fb51f0cee227",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
