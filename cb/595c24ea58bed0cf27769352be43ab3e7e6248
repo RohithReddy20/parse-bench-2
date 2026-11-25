@@ -1,0 +1,47 @@
+src/docparse/fixes/charts_geometry.py
+  s_a13908d8c3ae20::t_70a353a84ac55b 160,173
+  s_a13908d8c3ae20::t_d6a97238b4c06d 158-159,175-177
+  s_a13908d8c3ae20::t_be0d3f0241cbef 272
+  s_a13908d8c3ae20::t_26064ec4c7bce1 151-157,161-166,168-172,174
+  s_a13908d8c3ae20::t_a6d15778cbd113 338-339
+  s_a13908d8c3ae20::t_75c27d9ccc2c2f 178-196
+  s_a13908d8c3ae20::t_cea3ef6694512a 220
+  s_a13908d8c3ae20::t_338e8b4eb9f389 218
+  s_a13908d8c3ae20::t_f03394da5f0b53 167
+  s_a13908d8c3ae20::t_0a133ba99abf9a 353-362,364-384
+  s_a13908d8c3ae20::t_d23eb77bf811f9 33-34
+  s_a13908d8c3ae20::t_c0b79fa9a34dbb 197,219,223
+  s_a13908d8c3ae20::t_47847adbc548c2 363
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_801b96b2c3bbf9 18
+  s_a13908d8c3ae20::t_4c3e3269245e1e 65-70
+src/docparse/fixes/charts.py
+  s_a13908d8c3ae20::t_0b61f9f5d4a484 216-217
+  s_a13908d8c3ae20::t_7766d2e53637d0 629-632
+  s_a13908d8c3ae20::t_c0b79fa9a34dbb 163,201-205,208,215,246,351,606-609,612
+  s_a13908d8c3ae20::t_8dd6797c2a03d6 495-547
+  s_a13908d8c3ae20::t_cf4583eb1580b4 619
+  s_a13908d8c3ae20::t_f448f890ddca69 206-207
+  s_a13908d8c3ae20::t_d0fc7948ebefa2 34-44
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_c0b79fa9a34dbb 22-34
+  s_a13908d8c3ae20::t_666e29082111aa 21,35
+tests/fixes/test_charts.py
+  s_a13908d8c3ae20::t_5c9d49c8e98c9d 75-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb595c24ea58bed0cf27769352be43ab3e7e6248",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
