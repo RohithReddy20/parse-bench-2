@@ -175,6 +175,9 @@ on charts). That is about +0.13 on the overall score. **The target was 83: this 
 (1.32 on dev).** Four variants passed the keep rule; each moves three to five source documents of the dev
 part, ten documents in all: 31 pages change, 28 up, 3 down by at most 0.035.
 
+On all 4,317 pages (`c2-final-all`, `configs/standin_charts2.yaml`, against `v-best2`): overall 87.07 → 87.19;
+charts +0.76; text, formatting, tables, layout and forms unchanged (dev and check identical to `v-best2`).
+
 Config: `configs/standin_charts2.yaml` (= `standin_best.yaml` plus `lost`, `legend`, `titles`, `legend_min: 2`,
 `legend_override`, `panel_override` under `chart_options`). Code: `src/docparse/fixes/charts.py`,
 `charts_geometry.py`, `charts_cats.py`; tests in `tests/fixes/test_charts_round2.py`.
