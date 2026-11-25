@@ -361,6 +361,7 @@ def repair(
 
         edits += trailing_edits(page)
     out = apply_edits(markdown, edits) if edits else markdown
+    # the other line's steps before `ids`/`codes`: the reverse order measured dev +0.10, check -0.06 (ni-general-o2)
     out, page = _neon_steps(out, page, printed, overlay, options, drawn)
     if options.get("ids") or options.get("codes") or options.get("grids"):  # whole tables: after the edits inside them
         from docparse.fixes.forms_rows import row_edits
