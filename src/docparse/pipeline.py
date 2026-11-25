@@ -46,7 +46,16 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             pending += waiting
             continue
         read = read_page_result(result)
-        page = parse_page(read.markdown, index=index, call_key=call.key())
+        markdown = read.markdown
+        if config.fallback_below > 0:
+            from docparse.fixes.fallback import MIN_TOKENS, looped, reading_recall, text_dump
+            from docparse.fixes.layout_refine import words_in_points
+
+            words = words_in_points(rp)
+            cut_short = read.finish_reason == "length" or looped(markdown)
+            if cut_short and len(words) >= MIN_TOKENS and reading_recall(markdown, words) < config.fallback_below:
+                markdown = text_dump(words)
+        page = parse_page(markdown, index=index, call_key=call.key())
         page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
         page.cost = CostRecord(
             calls=1,
