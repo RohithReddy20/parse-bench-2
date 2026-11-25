@@ -47,7 +47,13 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     rendered = render_pages(pdf_bytes, config.dpi, decorations=decorations, styles=styles, layer=layer)
     doc_sha = sha256_hex(pdf_bytes)
     pages, pending = [], []
-    for index, rp in enumerate(rendered):
+    for index, stored in enumerate(rendered):
+        rp, turn = stored, 0
+        if config.upright_read:  # a page printed sideways or upside down is read, and corrected, upright
+            from docparse.pdf.upright import page_turn, turn_page
+
+            turn = page_turn(stored)
+            rp = turn_page(stored, turn)
         call, blobs = build_page_call(rp.image, config.page_model, config.page_runtime, config.prompt_sha)
         meta = {"doc": doc_sha, "page": index, "dpi": rp.dpi}
         result = client.get(call, blobs, meta)
@@ -112,7 +118,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.formatting import refine_format
 
             refine_format(page, rp, config.format_options)
-        page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
+        page.width, page.height, page.rotation = stored.width_pt, stored.height_pt, stored.rotation
         if config.table_options:
             from docparse.fixes.tables import fix_tables
 
@@ -149,6 +155,13 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.layout_refine import refine
 
             page.layout = refine(page.layout, rp, config.layout_options, read.markdown)
+        if turn and page.layout:  # boxes were found on the upright page; report them on the page as stored
+            from docparse.pdf.upright import unturn_box
+
+            page.layout = [
+                item.model_copy(update={"bbox": unturn_box(item.bbox, turn, rp.width_pt, rp.height_pt)})
+                for item in page.layout
+            ]
         pages.append(page)
     if pending:
         return ParseResult(document=None, pending=pending)

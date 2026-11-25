@@ -266,3 +266,34 @@ def test_a_truncated_read_is_read_again_and_the_second_read_wins_when_it_ends_no
     fine = Cache(tmp_path / "c3")
     fine.put(ModelResult(key=first.key(), output={"answer": "All good.", "finish_reason": "stop"}), first)
     assert parse(pdf, cfg, ReplayClient(fine)).document is not None
+
+
+def test_a_sideways_page_is_read_upright(tmp_path):
+    from docparse.pdf.render import render_pages
+
+    lines = [
+        (72, 700 - 14 * i, 11, f"Line {i} of a page that was scanned in sideways and needs a quarter turn")
+        for i in range(12)
+    ]
+    pdf = make_pdf([{"texts": lines, "rotate": 90}])
+    cfg = CONFIG.model_copy(update={"layout": "none", "upright_read": True})
+    plain = CONFIG.model_copy(update={"layout": "none"})
+    parse(pdf, plain, CacheOnlyClient(Cache(tmp_path / "c0"), ManifestWriter(tmp_path / "m0")))
+    parse(pdf, cfg, CacheOnlyClient(Cache(tmp_path / "c1"), ManifestWriter(tmp_path / "m1")))
+    (as_stored,) = (c for c, _ in read_manifest(tmp_path / "m0"))
+    (upright,) = (c for c, _ in read_manifest(tmp_path / "m1"))
+    assert upright.inputs != as_stored.inputs  # another image is read: the turned one
+    stored = render_pages(pdf)[0].image
+    from io import BytesIO
+
+    from PIL import Image
+
+    sent = Image.open(BytesIO((tmp_path / "m1" / "blobs" / upright.inputs[0]).read_bytes()))
+    assert sent.size == stored.size[::-1]  # a quarter turn swaps width and height
+    # an upright page is sent exactly as before
+    straight = make_pdf([{"texts": lines}])
+    parse(straight, plain, CacheOnlyClient(Cache(tmp_path / "c2"), ManifestWriter(tmp_path / "m2")))
+    parse(straight, cfg, CacheOnlyClient(Cache(tmp_path / "c3"), ManifestWriter(tmp_path / "m3")))
+    assert [c.inputs for c, _ in read_manifest(tmp_path / "m2")] == [
+        c.inputs for c, _ in read_manifest(tmp_path / "m3")
+    ]

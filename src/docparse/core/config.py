@@ -92,6 +92,8 @@ class Config(BaseModel):
     # a page read that looped or hit the token limit, and holds under this share of the PDF text layer's words,
     # is replaced by the text layer (0 = off)
     fallback_below: float = 0.0
+    # a page whose text layer runs sideways or upside down is turned upright before it is read and corrected
+    upright_read: bool = False
     # a page read that hit the token limit is read once more with these extra request parameters, and the second
     # read is used when it ends normally (empty = no second read). Keys: repetition_penalty, image_scale
     reread_truncated: dict[str, float] = Field(default_factory=dict)

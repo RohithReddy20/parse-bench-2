@@ -55,3 +55,20 @@ swap (90.24).
 
 Formatting and layout are at or above their targets. Also open: the 58 page reads that hit the token limit
 lose about 0.5 overall points between them; second reads for those pages are being evaluated.
+
+## Second reads of truncated pages: measured, not kept
+
+58 of the 4,247 page reads hit the 24,576-token limit. Each was read once more in two ways (116 calls, 38
+minutes on an A100-40GB, about $1.35), and the second read used when it ended normally
+(`reread_truncated`, runs `own-rr-img` and `own-rr-rp` against `own-best2`, five non-layout dimensions).
+
+| Variant | Second reads that ended normally | Text | Formatting | Tables | Charts | Forms |
+|---|---:|---:|---:|---:|---:|---:|
+| Image at 75% size | 23 of 58 | -0.03 | +0.03 | +0.04 | +0.00 | +0.10 |
+| Repetition penalty 1.05 | 20 of 58 | -0.03 | +0.00 | +0.04 | +0.16 | +0.02 |
+
+Each variant is worth about +0.02 to +0.03 overall, and both lose 0.13 to 0.15 on text on the check slice, so
+neither passes the keep rule as it stands. The upper bound had looked like 0.5 points, but most second reads
+that finish are no better than the first read cut short, and the looped-read fallback already covers the
+worst pages. The option stays in the code, off. A sharper rule (use the second read only when it holds more
+of the PDF's words than the first) is the obvious next try if this is revisited.
