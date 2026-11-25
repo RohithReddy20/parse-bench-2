@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -118,7 +119,20 @@ def run(manifest: str, workers: int = 32, limit: int = 0) -> dict:
         executor = openai_chat_executor(
             "http://localhost:8000/v1", SERVED_NAME, prompt, max_model_len=MAX_MODEL_LEN, gpu_type=gpu_name
         )
-        stats = run_manifest(run_dir, mdir / "results.jsonl", executor, max_workers=workers)
+        stop = threading.Event()
+
+        def keep_committing() -> None:  # a timeout kill must not lose hours of answers
+            while not stop.wait(120):
+                try:
+                    manifests.commit()
+                except Exception as exc:
+                    print(f"periodic commit failed: {exc}")
+
+        threading.Thread(target=keep_committing, daemon=True).start()
+        try:
+            stats = run_manifest(run_dir, mdir / "results.jsonl", executor, max_workers=workers)
+        finally:
+            stop.set()
     finally:
         proc.terminate()
         manifests.commit()
