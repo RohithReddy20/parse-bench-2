@@ -1,0 +1,36 @@
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_047665c7a7691f 46
+  s_a13908d8c3ae20::t_35d3edc6ae7a48 47-48
+src/docparse/fixes/charts_cats.py
+  s_a13908d8c3ae20::t_bf230bd415de89 43-47
+  s_a13908d8c3ae20::t_6f93afbd812c68 14,40-42,48,84
+  s_a13908d8c3ae20::t_79606e95e7f5ca 21-39,49-83,85-108
+src/docparse/fixes/charts_geometry.py
+  s_a13908d8c3ae20::t_09ee2c96c6b170 229,232,262,264
+  s_a13908d8c3ae20::t_679a52b8904147 317-318
+  s_a13908d8c3ae20::t_ddbe3295f9a801 218-228,230-231,233-261,263,265-266
+  s_a13908d8c3ae20::t_1b32f47e99bb4d 287-292
+src/docparse/fixes/charts.py
+  s_a13908d8c3ae20::t_35d3edc6ae7a48 373-374,376,408-420,424-431,433-440,449,452-458,536-540,894-895
+  s_a13908d8c3ae20::t_bf230bd415de89 390-395,421-423
+  s_a13908d8c3ae20::t_047665c7a7691f 853
+tests/fixes/test_charts_round2.py
+  s_a13908d8c3ae20::t_b38aaa5a888c28 6,8,13-14,19-20,22-23,25
+  s_a13908d8c3ae20::t_a51ef0bcdee25a 1-5,7,9-12,15-18,21,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac745c2119c0a870bdb06f338012cccc392136a8",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
