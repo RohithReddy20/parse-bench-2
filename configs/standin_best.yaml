@@ -36,6 +36,9 @@ form_options:
   codes: true
   outlines: true  # character-box outlines read as empty check boxes before a typed value dropped
   trailing: true  # printed text far right of a typed value on its own line
+  blanks: true  # round three: printed text out of blank fields' slots, lines with blank markers ...
+  cells: true  # ... and printed caption cells (box decoration, worded hints) ...
+  blank_forms: true  # ... and blank-marker lines on pages without an overlay that write 3+ blank markers
 chart_options:
   measure: true
   labels: true
