@@ -24,6 +24,7 @@ _PDFIUM_LOCK = threading.Lock()  # PDFium is not thread-safe
 class Word:
     text: str
     box: list[float]  # [x0, y0, x1, y1] in pixels of the rendered image
+    font: str = ""  # base font of the first character (text_words only), without a subset prefix
 
 
 @dataclass
@@ -117,10 +118,23 @@ def page_text_words(page, dpi: float = DPI) -> list[Word]:
             cb = cur.box
             cur.box = [min(cb[0], box[0]), min(cb[1], box[1]), max(cb[2], box[2]), max(cb[3], box[3])]
         else:
-            cur = Word(text=ch, box=box)
+            cur = Word(text=ch, box=box, font=_char_font(tp, i))
     if cur:
         out.append(cur)
     return out
+
+
+def _char_font(textpage, index: int) -> str:
+    import ctypes
+
+    import pypdfium2.raw as raw
+
+    from docparse.pdf.overlay import font_name
+
+    buf = ctypes.create_string_buffer(256)
+    flags = ctypes.c_int()
+    n = raw.FPDFText_GetFontInfo(textpage.raw, index, buf, 256, ctypes.byref(flags))
+    return font_name(buf.value.decode("utf-8", "replace")) if n else ""
 
 
 def _render_image(data: bytes, dpi: float) -> list[RenderedPage]:

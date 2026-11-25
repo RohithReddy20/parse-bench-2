@@ -101,7 +101,20 @@ A word-level check of the unfound captions against the markdown overstates how m
 matches `NUMBER` inside `Client ID number`), so the split between the two causes still needs the alignment
 described below to count properly.
 
-## 6. Repairs worth building next, in order
+## 6. Overlay detection (built)
+
+`docparse.pdf.overlay.overlay_fonts(pdf_bytes)` returns the fonts of the overlay stream, and every text-layer
+word now carries its font, so a word is overlay text when its font is in that set.
+
+| Check | Result |
+|---|---|
+| Filled `forms` pages with an overlay found | 450 of 450 |
+| Blank `forms` pages with an overlay found | 0 of 50 |
+| Reference text values present in the overlay words | 4,510 of 4,513 |
+| Tick glyphs in the overlay (`✓`, `X`, ...) against checked reference boxes | 1,319 against 1,220 |
+| Pages with an overlay found in 3,391 pages of eight other subsets | 3 |
+
+## 7. Repairs worth building next, in order
 
 Each needs the same base: an alignment of the markdown's words with the PDF's words, so that every markdown
 word is known to be printed form text, overlay (filled) text, or neither.
