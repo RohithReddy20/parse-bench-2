@@ -685,11 +685,15 @@ def panel_titles(zs: list[Zone], words: list, groups: set[str]) -> dict[str, lis
     out: dict[str, list[tuple[float, float, float, float]]] = {}
     for z in zs:
         x0, y0, x1, _ = z.plot
-        above = sorted(
-            (w for w in words if y0 - 40 <= w.y1 <= y0 + 3 and x0 - 10 <= w.cx <= x1 + 10),
-            key=lambda w: (round(w.cy), w.x0),
-        )
-        text = _letters("".join(w.text for w in above))
+        lines: list[list] = []
+        for w in sorted(
+            (w for w in words if y0 - 40 <= w.y1 <= y0 + 3 and x0 - 10 <= w.cx <= x1 + 10), key=lambda w: w.cy
+        ):
+            if lines and w.cy - lines[-1][-1].cy <= 3:
+                lines[-1].append(w)
+            else:
+                lines.append([w])
+        text = _letters("".join(w.text for line in lines for w in sorted(line, key=lambda w: w.x0)))
         for g in groups:
             letters = _letters(g)
             if len(letters) >= 4 and _lcs(letters, text) >= 0.85 * len(letters):
@@ -783,11 +787,14 @@ def legend_override(
     options: list[tuple[Unit, list[Measured]]],
     pairs: list[tuple[Unit, Measured]],
     legend: dict[tuple[int, int, int], str],
+    titles: dict[str, list[tuple[float, float, float, float]]] | None = None,
 ) -> list[tuple[Unit, Measured]]:
-    """Bindings whose colour contradicts the legend: the unit's name is a legend entry of one colour but the
-    values bound it to a series drawn in another legend colour (the reading put a series' numbers under its
+    """Bindings that contradict the legend: the unit's name is a legend entry of one colour but the values
+    bound it to a series drawn in another legend colour (the reading put a series' numbers under its
     neighbour's name). Within the same plot and category mapping, the series drawn in the unit's own legend
-    colour replaces it, when there is exactly one such series. Every other binding stays."""
+    colour replaces it, when there is exactly one such series. With `titles`, a binding to a plot other than
+    the one printed with the unit's group label above it moves to that plot (the legend's colour, or the
+    bound colour when the legend does not name the unit). Every other binding stays."""
     by_name: dict[str, tuple[int, int, int] | None] = {}
     for color, text in legend.items():
         k = _norm(text)
@@ -798,32 +805,98 @@ def legend_override(
     cands = {id(u): ms for u, ms in options}
     out: list[tuple[Unit, Measured]] = []
     changed = False
+
+    def near(box, boxes) -> bool:  # the plot of a binding being recoloured (or the zones of its two axes)
+        return box is not None and any(_overlap(box, b) or _same_plot(box, b) for b in boxes)
+
+    def inside(box, boxes) -> bool:  # a titled panel (side-by-side panels share their vertical extent)
+        return box is not None and any(_overlap(box, b) for b in boxes)
+
     for u, m in pairs:
         want = by_name.get(_norm(u.name.split(" / ")[-1]))
         have = m.key[1] if m.key[0] in ("bars", "line", "markers") else None
-        if want is None or have == want or have not in legend_colors:
+        home = None
+        if titles and u.group in titles and all(inside(b, titles[u.group][:1]) for b in titles[u.group]):
+            home = titles[u.group]
+        moved = home is not None and m.box is not None and not inside(m.box, home)
+        recolour = want is not None and have != want and have in legend_colors
+        if not (moved or recolour):
             out.append((u, m))
             continue
+        target = want if want is not None else have
         side = _axis_side(u.name) or implied
-        alt = {
-            o.key: o
-            for o in cands.get(id(u), [])
-            if o.key[1] == want
-            and o.key[0] == m.key[0]
-            and (o.side == side if side and o.side else o.axis is m.axis)
-            and (_overlap(o.box, m.box) or _same_plot(o.box, m.box))
-        }
-        if len(alt) != 1:
-            out.append((u, m))
+        found: dict[tuple, list[Measured]] = {}
+        for o in cands.get(id(u), []):
+            if o.key[1] != target or o.key[0] != m.key[0]:
+                continue
+            if not (inside(o.box, home) if moved else near(o.box, [m.box])):
+                continue
+            if side and o.side:
+                if o.side != side:
+                    continue
+            elif not moved and o.axis is not m.axis:
+                continue
+            found.setdefault(o.key, []).append(o)
+        reads = next(iter(found.values())) if len(found) == 1 else []
+        if any(r.values != reads[0].values for r in reads[1:]):
+            # one series read two ways (by its vertices, through a category axis) or on two axes: the way and
+            # the axis the values chose for the binding it replaces
+            same = [r for r in reads if (r.where is None) == (m.where is None)]
+            reads = [r for r in same if r.axis is m.axis] or same
+        if not reads or any(r.values != reads[0].values for r in reads[1:]):
+            out.append((u, m))  # no series, several, or readings that nothing chooses between
             continue
-        out.append((u, next(iter(alt.values()))))
+        out.append((u, reads[-1]))
         changed = True
+    if titles:
+        out, changed = _titled(options, out, by_name, inside, titles, changed)
     if not changed:
         return pairs
     keys = [m.key for _, m in out]
     if len(set(keys)) != len(keys):
         return pairs  # the corrected bindings would use one series twice: keep the values' bindings
     return out
+
+
+def _titled(options, pairs, by_name, near, titles, changed):
+    """Units whose panel is titled and whose name is a legend entry take the one series of that colour in
+    that panel, whatever the values bound; bindings that would then share a series are dropped, so the
+    legend and the titles decide where they both speak. Applies only when every such unit finds a distinct
+    series."""
+    fixed: dict[int, Measured] = {}
+    for u, cands in options:
+        color = by_name.get(_norm(u.name.split(" / ")[-1]))
+        home = titles.get(u.group) if u.group else None
+        if color is None or not home or not all(near(b, home[:1]) for b in home):
+            continue
+        found: dict[tuple, list[Measured]] = {}
+        for o in cands:
+            if o.key[1] == color and near(o.box, home):
+                found.setdefault(o.key, []).append(o)
+        reads = next(iter(found.values())) if len(found) == 1 else []
+        if not reads or any(r.values != reads[0].values for r in reads[1:]):
+            return pairs, changed
+        fixed[id(u)] = reads[-1]
+    keys = [m.key for m in fixed.values()]
+    if len(fixed) < 2 or len(set(keys)) != len(keys):
+        return pairs, changed
+    taken = set(keys)
+    out = []
+    seen = set()
+    for u, m in pairs:
+        seen.add(id(u))
+        if id(u) in fixed:
+            out.append((u, fixed[id(u)]))
+            changed |= fixed[id(u)] is not m
+        elif m.key not in taken:
+            out.append((u, m))
+        else:
+            changed = True
+    for u, _ in options:
+        if id(u) in fixed and id(u) not in seen:
+            out.append((u, fixed[id(u)]))
+            changed = True
+    return out, changed
 
 
 def _same_plot(a, b) -> bool:
@@ -992,7 +1065,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                 titles = panel_titles(zs, words, {u.group for u in units if u.group}) if titled else None
                 pairs = legend_bind(options, pairs, legend, opts, titles)
                 if opts.get("legend_override"):
-                    pairs = legend_override(options, pairs, legend)
+                    pairs = legend_override(options, pairs, legend, titles if opts.get("panel_override") else None)
             n = sum(
                 sum(v is not None and x is not None for v, x in zip(u.values, m.values, strict=True)) for u, m in pairs
             )

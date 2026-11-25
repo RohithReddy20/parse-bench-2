@@ -49,6 +49,7 @@ CHART_OPTIONS = frozenset(
         "titles",  # round two: legend binding finds a series' panel by the title printed above it
         "legend_min",  # round two: fewest cells a legend-bound series may have (default 3)
         "legend_override",  # round two: a binding whose colour contradicts the legend takes the legend's series
+        "panel_override",  # round two: ... and a binding to another panel than the titled one moves to it
     }
 )
 

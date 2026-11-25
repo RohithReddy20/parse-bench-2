@@ -87,3 +87,32 @@ def test_a_binding_against_the_legend_takes_the_series_drawn_in_the_named_colour
     assert "<th>A</th><td>10</td><td>12</td>" in plain  # the values bound Red to the blue bars
     fixed = _corrected(table, pdf, {"measure": True, "legend": True, "legend_override": True})
     assert "<th>A</th><td>12</td><td>10</td>" in fixed and "<th>D</th><td>26</td><td>31</td>" in fixed
+
+
+def test_a_series_bound_in_another_panel_moves_to_the_panel_titled_with_its_group():
+    panels = {
+        "North region": (52, 100, {"Red": [12, 30, 20, 26], "Blue": [10, 27, 18, 31]}),
+        "South region": (302, 350, {"Red": [22, 8, 34, 14], "Blue": [6, 20, 30, 12]}),
+    }
+    rgb = {"Red": "0.9 0.1 0.1", "Blue": "0.1 0.1 0.9"}
+    draw, texts = [], []
+    for title, (x_axis, x_bars, series) in panels.items():
+        texts += [(x_axis, 100 + 50 * k - 1.5, 8, str(10 * k)) for k in range(5)]
+        texts.append((x_bars + 20, 320, 8, title))
+        for j, (name, vals) in enumerate(series.items()):
+            draw += [f"{rgb[name]} rg {x_bars + 45 * i + 12 * j} 100 10 {5 * v} re f" for i, v in enumerate(vals)]
+    draw += ["0.9 0.1 0.1 rg 150 350 8 8 re f", "0.1 0.1 0.9 rg 250 350 8 8 re f"]
+    texts += [(162, 351, 8, "Red"), (262, 351, 8, "Blue")]
+    pdf = make_pdf([{"draw": draw, "texts": texts}])
+    rows = ""
+    for group, reading in (("North region", panels["South region"][2]), ("South region", panels["North region"][2])):
+        for i, cat in enumerate("ABCD"):  # each panel read with the other panel's numbers, off by one
+            head = f'<th rowspan="4">{group}</th>' if i == 0 else ""
+            rows += f"<tr>{head}<th>{cat}</th><td>{reading['Red'][i] + 1}</td><td>{reading['Blue'][i] + 1}</td></tr>"
+    table = f"<table><tr><th>Region</th><th>Category</th><th>Red</th><th>Blue</th></tr>{rows}</table>"
+    opts = {"measure": True, "panels": True, "legend": True, "titles": True, "legend_override": True}
+    plain = _corrected(table, pdf, opts)
+    assert "<th>A</th><td>22</td><td>6</td>" in plain  # North read in the South panel
+    moved = _corrected(table, pdf, {**opts, "panel_override": True})
+    assert '<th rowspan="4">North region</th><th>A</th><td>12</td><td>10</td>' in moved
+    assert "<th>D</th><td>14</td><td>12</td>" in moved
