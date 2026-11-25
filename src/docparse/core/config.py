@@ -18,6 +18,7 @@ LAYOUT_OPTIONS = frozenset(
     }
 )  # fmt: skip
 TABLE_OPTIONS = frozenset({"regrid", "regrid_wide", "complete", "merge", "extend", "health"})  # fixes/tables.py
+FORM_OPTIONS = frozenset({"combs", "boxes"})
 
 
 class Config(BaseModel):
@@ -38,6 +39,8 @@ class Config(BaseModel):
     layout_options: dict[str, float | bool] = Field(default_factory=dict)
     # corrections of HTML tables from the PDF text layer (fixes/tables.py); empty = none
     table_options: dict[str, float | bool] = Field(default_factory=dict)
+    # repairs of form pages from the text a fill tool typed on top of the page (fixes/forms.py); empty = none
+    form_options: dict[str, float | bool] = Field(default_factory=dict)
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:
@@ -62,6 +65,8 @@ class Config(BaseModel):
             raise ValueError(f"unknown layout option(s): {sorted(set(data['layout_options']) - LAYOUT_OPTIONS)}")
         if set(data.get("table_options") or {}) - TABLE_OPTIONS:
             raise ValueError(f"unknown table option(s): {sorted(set(data['table_options']) - TABLE_OPTIONS)}")
+        if set(data.get("form_options") or {}) - FORM_OPTIONS:
+            raise ValueError(f"unknown form option(s): {sorted(set(data['form_options']) - FORM_OPTIONS)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")

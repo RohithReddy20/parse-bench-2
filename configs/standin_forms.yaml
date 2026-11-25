@@ -1,0 +1,16 @@
+# Stand-in readings with the form repairs that passed on the development part (docs/results, forms fix):
+# looped reads fall back to the PDF text layer, values typed one glyph per box are written as one string, and
+# check-box states come from the tick marks typed on the page. The repairs act only on pages with an overlay
+# (text a fill tool typed on top of the finished page); every other page writes back unchanged.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+fallback_below: 0.5
+layout: from_page_read
+form_options:
+  combs: true
+  boxes: true
