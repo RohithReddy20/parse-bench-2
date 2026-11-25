@@ -1,0 +1,23 @@
+docs/results/2026-11-25-charts-fix.md
+  s_a13908d8c3ae20::t_ce1933a90af7c5 176
+  s_a13908d8c3ae20::t_e28143f3311362 167-174,177-312
+  s_a13908d8c3ae20::t_1a93c86c792d10 175
+configs/standin_charts2.yaml
+  s_a13908d8c3ae20::t_091b4c55481c82 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8adaa6910fd0905846fe3b5ad61454576dea67ff",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
