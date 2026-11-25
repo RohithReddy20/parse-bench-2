@@ -336,6 +336,46 @@ def _slots(bars: list[Bar], n: int, vertical: bool) -> list[list[Bar]] | None:
     return out
 
 
+def _pitch_slots(bars: list[Bar], n: int, vertical: bool) -> list[list[Bar]] | None:
+    """Bars (or stacks) at a regular pitch with categories missing between them: every gap between
+    neighbouring stacks is a whole number of pitches, and the stacks span exactly n - 1 pitches, so each stack
+    has one category and the empty ones fall in the wider gaps. None for anything less regular, or when a
+    category could be missing at either end."""
+    if n < 3 or not bars:
+        return None
+    lo = (lambda b: b.x0) if vertical else (lambda b: b.y0)
+    hi = (lambda b: b.x1) if vertical else (lambda b: b.y1)
+    runs: list[list[Bar]] = []
+    end = -math.inf
+    for b in sorted(bars, key=lo):
+        if runs and lo(b) < end - 0.3:
+            runs[-1].append(b)
+            end = max(end, hi(b))
+        else:
+            runs.append([b])
+            end = hi(b)
+    if not 2 <= len(runs) < n:
+        return None
+    width = [max(hi(b) for b in r) - min(lo(b) for b in r) for r in runs]
+    if max(width) - min(width) > 0.1 * max(width) + 0.3:
+        return None  # stacks of one width
+    centres = [(min(lo(b) for b in r) + max(hi(b) for b in r)) / 2 for r in runs]
+    diffs = [q - p for p, q in zip(centres, centres[1:], strict=False)]
+    pitch = min(diffs)
+    if pitch <= max(width):
+        return None
+    steps = [round(d / pitch) for d in diffs]
+    if any(abs(d - k * pitch) > 0.1 * pitch for d, k in zip(diffs, steps, strict=True)) or sum(steps) != n - 1:
+        return None
+    out: list[list[Bar]] = [[] for _ in range(n)]
+    i = 0
+    for k, r in enumerate(runs):
+        out[i] = r
+        if k < len(steps):
+            i += steps[k]
+    return out
+
+
 def _bar_values(b: Bar, ax: Axis) -> tuple[float, float]:
     """(value at the bar's far end, signed length from its near end): the near end is the one closer to zero."""
     if ax.orient == "v":
@@ -380,8 +420,9 @@ def measured_series(
     anchors: bool = False,
     rotated: str = "",
     pos_marks: bool = False,
+    pitch: bool = False,
 ) -> list[Measured]:
-    out = _measured(z, cats, bar_mode, reverse, labels, anchors, rotated, pos_marks)
+    out = _measured(z, cats, bar_mode, reverse, labels, anchors, rotated, pos_marks, pitch)
     for m in out:
         m.side, m.box = z.side, z.box
     return out
@@ -446,6 +487,7 @@ def _measured(
     anchors: bool = False,
     rotated: str = "",
     pos_marks: bool = False,
+    pitch: bool = False,
 ) -> list[Measured]:
     n = len(cats)
     ax = z.axis
@@ -466,6 +508,8 @@ def _measured(
                 slots = None  # the bars' order is not the table's: place them by their labels only
         if slots is None and pos is not None:
             slots = _by_position(z.bars, pos, vertical)
+    if slots is None and pitch and z.bars:
+        slots = _pitch_slots(z.bars, n, vertical)
     if slots is None and anchors and z.bars:
         # a series of markers with one mark per category places the categories for bars with gaps
         groups: dict[tuple[int, int, int], list[float]] = {}
@@ -899,6 +943,50 @@ def _titled(options, pairs, by_name, near, titles, changed):
     return out, changed
 
 
+def eliminate(
+    options: list[tuple[Unit, list[Measured]]], pairs: list[tuple[Unit, Measured]], opts: dict
+) -> list[tuple[Unit, Measured]]:
+    """In a plot where some of a table group's series are bound, the last unbound series of that group takes
+    the last unused drawn series of that plot, when there is exactly one of each and the drawn series covers
+    it (the other series of the plot are accounted for, so only this one is left)."""
+    out = list(pairs)
+    used = {m.key for _, m in pairs}
+    done = {id(u) for u, _ in pairs}
+    for box in {m.box for _, m in pairs if m.box is not None}:
+        groups = {(u.group, tuple(u.cats)) for u, m in pairs if m.box == box}
+        for group in groups:
+            free = [
+                (u, ms)
+                for u, ms in options
+                if id(u) not in done and (u.group, tuple(u.cats)) == group and sum(v is not None for v in u.values) >= 3
+            ]
+            if len(free) != 1:
+                continue
+            u, ms = free[0]
+            left = {}
+            for m in ms:
+                if m.box == box and m.key not in used and not any(_same(m, o) for _, o in out):
+                    left.setdefault(m.key, []).append(m)
+            if len(left) != 1:
+                continue
+            reads = next(iter(left.values()))
+            if any(r.values != reads[0].values for r in reads[1:]):
+                continue
+            m = reads[0]
+            have = [i for i, v in enumerate(u.values) if v is not None]
+            both = [i for i in have if m.values[i] is not None]
+            if len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
+                continue
+            vb = [m.values[i] for i in both]
+            span = m.axis.span or 1.0
+            if _sd(vb) < 0.01 * span:
+                continue  # a flat reading: a rule or stubs, not a series
+            out.append((u, m))
+            used.add(m.key)
+            done.add(id(u))
+    return out
+
+
 def _same_plot(a, b) -> bool:
     """Two zones of one plot read on its left and right axes: they share the plot's vertical extent."""
     return abs(a[1] - b[1]) < 2 and abs(a[3] - b[3]) < 2
@@ -1056,6 +1144,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                             bool(opts.get("anchors", False)),
                             str(opts.get("rotated", "") or ""),
                             bool(opts.get("pos_marks", False)),
+                            bool(opts.get("pitch", False)),
                         )
                         if m.key not in used
                     ]
@@ -1066,6 +1155,8 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                 pairs = legend_bind(options, pairs, legend, opts, titles)
                 if opts.get("legend_override"):
                     pairs = legend_override(options, pairs, legend, titles if opts.get("panel_override") else None)
+            if opts.get("elim") and pairs:
+                pairs = eliminate(options, pairs, opts)
             n = sum(
                 sum(v is not None and x is not None for v, x in zip(u.values, m.values, strict=True)) for u, m in pairs
             )
