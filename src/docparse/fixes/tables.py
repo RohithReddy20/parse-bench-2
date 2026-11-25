@@ -159,6 +159,8 @@ def _header_spans(row_cells: list[HCell], lines: list[list[TWord]], top: int, us
 
 
 def regrid(table: HTable, al: Alignment, lines: list[list[TWord]], used: set[int], wide: bool = False) -> bool:
+    """Rows narrower than the table (and with `wide`, wider ones holding empty cells) laid out so that each cell
+    found on the page starts in the column its words lie in. True when any row changed."""
     width = table.width()
     bands = _bands(table, al, width)
     if len(bands) < max(2, width - 2) or not al.row_line:
