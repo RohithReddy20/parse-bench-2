@@ -1,0 +1,32 @@
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_34ba463afb86e2 19
+pyproject.toml
+  s_a13908d8c3ae20::t_8e5eb4cfd20246 28
+src/docparse/fixes/layout_kdl.py
+  s_a13908d8c3ae20::t_a346c0f2b9258a 159,161-170,174-176
+  s_a13908d8c3ae20::t_10a8e7382f3db5 206
+  s_a13908d8c3ae20::t_d2529536f3d647 207-210
+  s_a13908d8c3ae20::t_258e3e931e791a 158,160,171-173
+  s_a13908d8c3ae20::t_a07a295bb03b29 16-17
+  s_a13908d8c3ae20::t_9846484bb7cc74 32-34
+tests/fixes/test_layout_kdl.py
+  s_a13908d8c3ae20::t_79224142bbeb16 140
+  s_a13908d8c3ae20::t_2bf9ce6bc21e15 129-139,141-142
+  s_a13908d8c3ae20::t_8cdbec335b5045 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "95554978a9b1eb1b164a9e1c28e87c553016cda9",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
