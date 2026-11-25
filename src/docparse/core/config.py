@@ -15,7 +15,7 @@ LAYOUT_OPTIONS = frozenset(
     {
         "tighten", "tighten_pad", "native_text", "native_support", "split_gap",
         "orphans", "orphan_gap", "orphan_min", "orphan_ink",
-        "kdl_replace", "kdl_words", "kdl_add", "kdl_split",
+        "kdl_replace", "kdl_words", "kdl_add", "kdl_split", "kdl_children", "kdl_pictures", "kdl_picbox",
     }
 )  # fmt: skip
 

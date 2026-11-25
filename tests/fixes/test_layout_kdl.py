@@ -1,6 +1,15 @@
 from docparse.core.config import Config
 from docparse.core.ir import Box, LayoutItem
-from docparse.fixes.layout_kdl import add_uncovered, apply_kdl, regions_in_points, split_coarse, words_as_items
+from docparse.fixes.layout_kdl import (
+    add_uncovered,
+    apply_kdl,
+    picture_boxes,
+    regions_in_points,
+    split_coarse,
+    split_pictures,
+    table_children,
+    words_as_items,
+)
 from docparse.fixes.layout_refine import words_in_points
 from docparse.models.adapters.heron import Detection
 from docparse.pdf.render import render_pages
@@ -76,6 +85,44 @@ def test_split_coarse_replaces_a_table_holding_several_text_regions():
     # one text region inside is not enough
     one = [_det("Text", a, rendered)]
     assert split_coarse([table], regions_in_points(one, rendered), words_in_points(rendered)) == [table]
+    # text regions holding no PDF words (text drawn in a raster picture) do not count
+    blank = _item("Picture", (300, 300, 560, 500), label="image")
+    empty = [_det("Text", (310, 310, 400, 330), rendered), _det("Text", (310, 350, 400, 370), rendered)]
+    assert split_coarse([blank], regions_in_points(empty, rendered), words_in_points(rendered)) == [blank]
+
+
+def test_table_children_keeps_the_table_and_adds_its_text_regions():
+    rendered = _rendered()
+    a, b, c = _boxes(rendered)
+    table = _item("Table", (a[0] - 5, a[1] - 5, b[2] + 5, b[3] + 5), "| x |", label="table")
+    picture = _item("Picture", (a[0] - 5, a[1] - 5, b[2] + 5, b[3] + 5), label="image")
+    dets = [_det("Text", a, rendered), _det("Text", b, rendered)]
+    regions, words = regions_in_points(dets, rendered), words_in_points(rendered)
+    out = table_children([table], regions, words)
+    assert out[0] is table and [i.md for i in out[1:]] == ["Alpha paragraph text here", "Beta paragraph text here"]
+    assert table_children([picture], regions, words) == [picture]  # pictures are left alone
+    assert table_children([table], regions[:1], words) == [table]  # one region inside is not enough
+    covered = _item("Text", a, "Alpha paragraph text here")  # a region another item already covers is skipped
+    assert table_children([table, covered], regions, words) == [table, covered]
+
+
+def test_split_pictures_replaces_one_picture_over_several_kdl_pictures():
+    rendered = _rendered()
+    big = _item("Picture", (300, 300, 560, 500), label="image")
+    dets = [_det("Picture", (305, 305, 420, 490), rendered), _det("Chart", (430, 305, 555, 490), rendered)]
+    out = split_pictures([big], regions_in_points(dets, rendered), words_in_points(rendered))
+    assert [(i.type, round(i.bbox.x0)) for i in out] == [("Picture", 305), ("Picture", 430)]
+    same = dets + [_det("Picture", (300, 300, 560, 500), rendered)]  # KDL also sees the whole picture
+    assert split_pictures([big], regions_in_points(same, rendered), words_in_points(rendered)) == [big]
+
+
+def test_picture_boxes_take_the_matching_kdl_box():
+    rendered = _rendered()
+    pic, text = _item("Picture", (300, 300, 560, 500), label="image"), _item("Text", (300, 300, 560, 500), "t")
+    dets = [_det("Picture", (310, 290, 560, 510), rendered), _det("Picture", (10, 10, 50, 50), rendered)]
+    moved, same = picture_boxes([pic, text], regions_in_points(dets, rendered))
+    assert round(moved.bbox.x0) == 310 and round(moved.bbox.y1) == 510 and same is text
+    assert picture_boxes([pic], regions_in_points(dets[1:], rendered)) == [pic]  # no match: unchanged
 
 
 def test_apply_kdl_changes_nothing_without_options_or_text_layer():
