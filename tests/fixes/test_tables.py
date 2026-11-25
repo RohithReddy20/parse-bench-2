@@ -144,6 +144,54 @@ def test_a_table_cut_off_by_the_token_limit_is_completed_from_the_text_layer():
     assert page.regions[1].chosen().prov[0].detail == "complete"
 
 
+SIDE_TEXTS = [
+    (180, 700, "Quarterly"),
+    (350, 700, "Rolling"),
+    (150, 685, "Claims"),
+    (220, 685, "Paid"),
+    (320, 685, "Claims"),
+    (390, 685, "Paid"),
+    (72, 692, "Year"),
+] + [
+    (x, y, t)
+    for y, row in zip(
+        (670, 655, 640, 625),
+        (["2021", "10", "100"], ["2022", "20", "200", "30", "300"], ["2023", "40", "400", "50", "500"],
+         ["2024", "60", "600", "70", "700"]),
+        strict=True,
+    )
+    for x, t in zip((72, 150, 220, 320, 390), row, strict=False)
+]  # fmt: skip
+LEFT = (
+    '<table><tr><th rowspan="2">Year</th><th colspan="2">Quarterly</th></tr><tr><th>Claims</th><th>Paid</th></tr>'
+    "<tr><td>2021</td><td>10</td><td>100</td></tr><tr><td>2022</td><td>20</td><td>200</td></tr>"
+    "<tr><td>2023</td><td>40</td><td>400</td></tr><tr><td>2024</td><td>60</td><td>600</td></tr></table>"
+)
+RIGHT = (
+    '<table><tr><th colspan="2">Rolling</th></tr><tr><th>Claims</th><th>Paid</th></tr>'
+    "<tr><td>30</td><td>300</td></tr><tr><td>50</td><td>500</td></tr><tr><td>70</td><td>700</td></tr></table>"
+)
+
+
+def test_one_table_read_as_two_side_by_side_is_merged():
+    rendered = render_pages(make_pdf([{"texts": [(x, y, 10, t) for x, y, t in SIDE_TEXTS]}]))[0]
+    md = LEFT + "\n\n" + RIGHT
+    assert write_page(_fixed(md, rendered, {"regrid": True})) == md
+    page = _fixed(md, rendered, {"merge": True})
+    merged = (
+        '<table><tr><th rowspan="2">Year</th><th colspan="2">Quarterly</th><th colspan="2">Rolling</th></tr>'
+        "<tr><th>Claims</th><th>Paid</th><th>Claims</th><th>Paid</th></tr>"
+        "<tr><td>2021</td><td>10</td><td>100</td><td></td><td></td></tr>"
+        "<tr><td>2022</td><td>20</td><td>200</td><td>30</td><td>300</td></tr>"
+        "<tr><td>2023</td><td>40</td><td>400</td><td>50</td><td>500</td></tr>"
+        "<tr><td>2024</td><td>60</td><td>600</td><td>70</td><td>700</td></tr></table>"
+    )
+    assert write_page(page) == merged + "\n\n"
+    # a right table repeating the left one's row-label header is a repeated column group: kept apart
+    repeated = RIGHT.replace('<tr><th colspan="2">Rolling</th></tr>', '<tr><th colspan="2">Year</th></tr>')
+    assert write_page(_fixed(LEFT + "\n\n" + repeated, rendered, {"merge": True})) == LEFT + "\n\n" + repeated
+
+
 def test_tables_that_fit_their_page_are_written_back_unchanged():
     md = TITLE + SHORT_HEADER.replace("<tr><th>Year</th>", "<tr><th></th><th>Year</th>")
     page = _fixed(md, _rendered())

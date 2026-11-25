@@ -8,8 +8,8 @@
     complete a table the reading left unclosed (cut off by the token limit) gets the rows the text layer shows
              below its last row: each line whose words all fall in the table's columns and fill half of them.
     merge    two tables the reading wrote one after the other but that stand side by side on the same text lines
-             become one table, when the right one has no row labels of its own and repeats none of the left
-             one's column headers (repeated column groups stay separate tables).
+             become one table, when the right one has no row labels of its own and does not repeat the left
+             one's row-label header (repeated column groups stay separate tables).
     health   share of a table's text cells that must be found word for word on the page before anything in the
              table is changed (default 0.5). A broken font map or a stale OCR layer finds few cells, and the
              model's table stays as it is.
@@ -204,17 +204,18 @@ def _header_rows(table: HTable) -> int:
 def merge_side_by_side(left: _Found, right: _Found) -> str | None:
     """`left` and `right` as one table, when the reading wrote one table as two: every body row of `right` lies
     on the text line of a body row of `left`, to its right; `right` has no row labels (its first column holds
-    numbers) and repeats none of `left`'s column headers (repeated column groups are separate tables); both have
-    the same number of header rows. Rows of `left` with nothing beside them get empty cells."""
+    numbers) and does not repeat `left`'s row-label header (a repeated column group is a separate table); both
+    have the same number of header rows. Rows of `left` with nothing beside them get empty cells."""
     if not (left.healthy and right.healthy):
         return None
     t1, t2 = left.table, right.table
     h1, h2 = _header_rows(t1), _header_rows(t2)
     if h1 != h2 or h1 == 0 or len(t2.rows) - h2 < 3:
         return None
-    heads = [{fold(c.text) for row in t.rows[:h] for c in row.cells if c.text} for t, h in ((t1, h1), (t2, h2))]
-    if heads[0] & heads[1]:
-        return None
+    corner = next((fold(c.text) for c in t1.rows[0].cells if c.col == 0 and c.text), "")
+    heads = [[fold(c.text) for row in t.rows[:h] for c in row.cells] for t, h in ((t1, h1), (t2, h2))]
+    if heads[0] == heads[1] or (corner and corner in heads[1]):
+        return None  # the same headers again, row-label header included: a repeated column group
     firsts = [row.cells[0].text for row in t2.rows[h2:] if row.cells and row.cells[0].text]
     if not firsts or sum(1 for f in firsts if _NUMBER.fullmatch(f)) < 0.8 * len(firsts):
         return None
