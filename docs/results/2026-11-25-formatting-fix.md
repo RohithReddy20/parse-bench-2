@@ -78,9 +78,13 @@ formatting points (×100 page mean) unless noted.
 | Italic removal, same rule as `unbold` | −0.01 | 0.00 | no |
 | Underline removal (`drop_underline`, then built and rejected above) | underline subset +0.07, text +0.06 | | no |
 | Demoting headings the PDF prints at body size in a regular face | −0.10 (headings subset −1.09) | −0.08 | no: such headings are real headings in the reference |
+| Dropping the reading's strikes where no drawn line crosses the words (pages that strike with lines) | strikeout −0.17 | strikeout +0.50 | no: 8 pages up, 8 down |
+| Inline code from monospaced fonts (glyph advances constant) | −0.02 | 0.00 | no (see below) |
 | `**`/`*` inside table cells as `<b>`/`<i>` | 0 | 0 | no effect on these subsets (left out) |
 
 ## What is left in formatting (all pages, dimension points)
+
+`fm-base` against the final run `fm-respell` (`evalkit` loss rows, subsets merged).
 
 | Loss | Base | Final | Change |
 |---|---:|---:|---:|
@@ -88,7 +92,7 @@ formatting points (×100 page mean) unless noted.
 | content: headings | 1.56 | 1.57 | +0.01 |
 | severity cap | 1.24 | 1.13 | −0.11 |
 | content: under half of the items found (coverage cap) | 1.03 | 1.03 | 0.00 |
-| content: strikeout | 0.85 | 0.29 | −0.57 |
+| content: strikeout | 0.85 | 0.28 | −0.57 |
 | content: underline | 0.68 | 0.68 | 0.00 |
 | content: lists | 0.59 | 0.52 | −0.07 |
 
@@ -98,9 +102,11 @@ formatting points (×100 page mean) unless noted.
   of the fonts, and inline code: four pages (`caldera`, `2colpa`, `overlapping`, `paper`) lose about 130 "inline
   code lost" events and sit at the 0.85 minor cap. A monospaced font is easy to detect from the PDF (the advance
   between glyph origins is constant: share at the median 0.95–1.00 for t1xtt, NimbusMonL, CMTT10, Courier; at
-  most 0.67 for proportional fonts), so wrapping monospaced runs in backticks on pages that also have
-  proportional text is the best next formatting idea. It was not built because form fill values are often set in
-  Courier and the forms dimension would need to be measured with it.
+  most 0.67 for proportional fonts). A first prototype (backticks around runs of monospaced words, `<code>` in
+  cells, on pages with at least 30% proportional text) scored −0.01 on 8 pages: it did not reach the three pages
+  that lose the most (their code sits in table cells or in lines the alignment did not pair), and added code
+  spans the reference leaves plain elsewhere. It needs that placement worked out, and the forms dimension
+  measured with it (form fill values are often set in Courier), before it is worth an evaluation run.
 - **Coverage cap** (1.03): pages where the reading lacks the text of most formatted items (scans, failed reads).
 - **Underline** (0.68): OCRia-1 already scores 96.9 on the underline subset; the PDF lines under words are
   ambiguous (link underlines, rules under form captions), and removal did not pass.
