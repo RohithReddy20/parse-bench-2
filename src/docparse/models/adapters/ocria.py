@@ -43,11 +43,19 @@ class LazyBlobs(Mapping):
         return 1
 
 
-def build_page_call(image, model: ModelRef, runtime: str, prompt_sha: str) -> tuple[ModelCall, LazyBlobs]:
-    """The one-image, system-prompt-only request the harness's `ocria_1` pipeline sends, as a keyed call."""
+def build_page_call(
+    image, model: ModelRef, runtime: str, prompt_sha: str, extra: dict | None = None
+) -> tuple[ModelCall, LazyBlobs]:
+    """The one-image, system-prompt-only request the harness's `ocria_1` pipeline sends, as a keyed call.
+    `extra` adds request parameters for a second read of a page (for example a repetition penalty)."""
     name = pixel_hash(image)
     call = ModelCall(
-        model=model, runtime=runtime, prompt_id=PROMPT_ID, prompt_sha=prompt_sha, params=dict(PARAMS), inputs=[name]
+        model=model,
+        runtime=runtime,
+        prompt_id=PROMPT_ID,
+        prompt_sha=prompt_sha,
+        params={**PARAMS, **(extra or {})},
+        inputs=[name],
     )
     return call, LazyBlobs(image, name)
 

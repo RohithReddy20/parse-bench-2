@@ -61,6 +61,17 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             pending += waiting
             continue
         read = read_page_result(result)
+        if config.reread_truncated and read.finish_reason == "length":
+            call2, _ = build_page_call(
+                rp.image, config.page_model, config.page_runtime, config.prompt_sha, dict(config.reread_truncated)
+            )
+            second = client.get(call2, blobs, meta)
+            if isinstance(second, Pending):
+                pending.append(second.key)
+                continue
+            again = read_page_result(second)
+            if again.finish_reason != "length" and again.markdown.strip():
+                read, result = again, second
         attention = None
         if config.layout == "ground" and config.layout_attention != "never":
             from docparse.fixes.layout import has_text_layer

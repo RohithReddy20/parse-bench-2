@@ -65,6 +65,9 @@ class Config(BaseModel):
     # a page read that looped or hit the token limit, and holds under this share of the PDF text layer's words,
     # is replaced by the text layer (0 = off)
     fallback_below: float = 0.0
+    # a page read that hit the token limit is read once more with these extra request parameters, and the second
+    # read is used when it ends normally (empty = no second read). Keys: repetition_penalty, image_scale
+    reread_truncated: dict[str, float] = Field(default_factory=dict)
     layout_options: dict[str, float | bool] = Field(default_factory=dict)
     # corrections of HTML tables from the PDF text layer (fixes/tables.py); empty = none
     table_options: dict[str, float | bool] = Field(default_factory=dict)

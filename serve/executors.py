@@ -61,7 +61,9 @@ def openai_chat_executor(
         (name,) = call.inputs
         original = blobs[name]
         max_tokens = int(call.params["max_tokens"])
-        mt, png, image_scale = max_tokens, original, 1.0
+        mt, png, image_scale = max_tokens, original, float(call.params.get("image_scale", 1.0))
+        if image_scale != 1.0:  # a second read of the page at a smaller size
+            png = _downscale(original, image_scale)
         started = time.monotonic()
         for attempt in range(4):
             body = {
@@ -82,6 +84,8 @@ def openai_chat_executor(
                 "max_tokens": mt,
                 "chat_template_kwargs": {"enable_thinking": bool(call.params.get("enable_thinking", False))},
             }
+            if "repetition_penalty" in call.params:
+                body["repetition_penalty"] = float(call.params["repetition_penalty"])
             resp = client.post("/chat/completions", json=body)
             if resp.status_code == 400 and attempt < 3:
                 msg = resp.text

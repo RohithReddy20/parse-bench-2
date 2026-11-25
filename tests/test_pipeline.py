@@ -239,3 +239,30 @@ def test_kdl_options_ask_for_a_kdl_call_on_the_same_image_and_add_its_regions(tm
     assert [it.md for it in doc.pages[0].layout] == ["x", text]
     plain = parse(pdf, CONFIG, ReplayClient(cache)).document  # options off: no KDL call, same markdown
     assert write_document(plain) == write_document(doc) and [it.md for it in plain.pages[0].layout] == ["x"]
+
+
+def test_a_truncated_read_is_read_again_and_the_second_read_wins_when_it_ends_normally(tmp_path):
+    pdf = make_pdf([{"texts": [(72, 660, 11, "A page whose first read ran into the token limit.")]}])
+    cfg = CONFIG.model_copy(update={"layout": "none", "reread_truncated": {"repetition_penalty": 1.05}})
+    cache = Cache(tmp_path / "c")
+    parse(pdf, cfg, CacheOnlyClient(cache, ManifestWriter(tmp_path / "m")))
+    (first,) = (c for c, _ in read_manifest(tmp_path / "m"))
+    cache.put(ModelResult(key=first.key(), output={"answer": "loop loop loop", "finish_reason": "length"}), first)
+    planned = parse(pdf, cfg, CacheOnlyClient(cache, ManifestWriter(tmp_path / "m2")))
+    (second,) = (c for c, _ in read_manifest(tmp_path / "m2"))
+    assert planned.document is None and second.params["repetition_penalty"] == 1.05
+    assert second.inputs == first.inputs and second.key() != first.key()
+    cache.put(
+        ModelResult(key=second.key(), output={"answer": "The page, read properly.", "finish_reason": "stop"}), second
+    )
+    doc = parse(pdf, cfg, ReplayClient(cache)).document
+    assert "read properly" in doc.pages[0].regions[0].chosen().raw
+    # a second read that is cut off too is not used
+    other = Cache(tmp_path / "c2")
+    other.put(ModelResult(key=first.key(), output={"answer": "loop loop loop", "finish_reason": "length"}), first)
+    other.put(ModelResult(key=second.key(), output={"answer": "again again", "finish_reason": "length"}), second)
+    assert "loop" in parse(pdf, cfg, ReplayClient(other)).document.pages[0].regions[0].chosen().raw
+    # a read that ended normally asks for nothing more
+    fine = Cache(tmp_path / "c3")
+    fine.put(ModelResult(key=first.key(), output={"answer": "All good.", "finish_reason": "stop"}), first)
+    assert parse(pdf, cfg, ReplayClient(fine)).document is not None
