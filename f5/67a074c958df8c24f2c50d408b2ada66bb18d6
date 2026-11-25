@@ -1,0 +1,41 @@
+tests/pdfgen.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 16,24-25
+docs/results/2026-11-25-forms-fix.md
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-179
+src/docparse/fixes/align.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-266
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 21,42-43,68-69
+src/docparse/fixes/forms.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-324
+src/docparse/fixes/forms_boxes.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-203
+configs/standin_forms.yaml
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-16
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 72-76
+tests/fixes/test_forms_boxes.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-43
+src/docparse/pdf/boxes.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-45
+tests/fixes/test_forms.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-81
+tests/fixes/test_align.py
+  s_a13908d8c3ae20::t_f41cc25364e9e1 1-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f567a074c958df8c24f2c50d408b2ada66bb18d6",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
