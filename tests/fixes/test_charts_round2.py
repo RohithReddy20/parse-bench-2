@@ -1,7 +1,13 @@
 import pytest
 
+from docparse.base.ocria_parse import parse_page
+from docparse.fixes.charts import correct_tables
 from docparse.fixes.charts_geometry import find_axes
-from docparse.fixes.layout_refine import PtWord
+from docparse.fixes.layout_refine import PtWord, words_in_points
+from docparse.pdf.graphics import load_shapes
+from docparse.pdf.render import render_pages
+from docparse.write.markdown import write_page
+from tests.pdfgen import make_pdf
 
 KEPT = {"signs": False, "upright": False}  # the kept configuration's axis rules
 
@@ -45,3 +51,39 @@ def test_rotated_category_labels_split_into_pieces_place_the_categories():
         152.5,
         102.5,
     ]
+
+
+def _two_series_pdf():
+    red, blue = {"A": 12, "B": 30, "C": 20, "D": 26}, {"A": 10, "B": 27, "C": 18, "D": 31}
+    draw = ["0.8 0.8 0.8 RG 0.5 w"]
+    draw += [f"70 {y} m 400 {y} l S" for y in (100, 150, 200, 250, 300)]  # gridlines at 0, 10, .. 40
+    for i, k in enumerate(red):
+        draw.append(f"0.9 0.1 0.1 rg {100 + 70 * i} 100 20 {5 * red[k]} re f")
+        draw.append(f"0.1 0.1 0.9 rg {122 + 70 * i} 100 20 {5 * blue[k]} re f")
+    draw += ["0.9 0.1 0.1 rg 420 320 8 8 re f", "0.1 0.1 0.9 rg 420 300 8 8 re f"]  # legend keys
+    texts = [(52, y - 1.5, 8, str(v)) for v, y in zip((0, 10, 20, 30, 40), (100, 150, 200, 250, 300), strict=True)]
+    texts += [(115 + 70 * i, 88, 8, k) for i, k in enumerate(red)]
+    texts += [(432, 321, 8, "Red"), (432, 301, 8, "Blue")]
+    return make_pdf([{"draw": draw, "texts": texts}])
+
+
+def _corrected(md, pdf, opts):
+    rendered = render_pages(pdf)[0]
+    page = parse_page(md)
+    page.width, page.height = rendered.width_pt, rendered.height_pt
+    correct_tables(page, words_in_points(rendered), load_shapes(pdf, 0), opts)
+    return write_page(page)
+
+
+def test_a_binding_against_the_legend_takes_the_series_drawn_in_the_named_colour():
+    # the reading put Blue's numbers under Red and Red's under Blue
+    table = (
+        "<table><tr><th>Category</th><th>Red</th><th>Blue</th></tr><tr><th>A</th><td>10</td><td>12</td></tr>"
+        "<tr><th>B</th><td>28</td><td>29</td></tr><tr><th>C</th><td>18</td><td>21</td></tr>"
+        "<tr><th>D</th><td>30</td><td>25</td></tr></table>"
+    )
+    pdf = _two_series_pdf()
+    plain = _corrected(table, pdf, {"measure": True, "legend": True})
+    assert "<th>A</th><td>10</td><td>12</td>" in plain  # the values bound Red to the blue bars
+    fixed = _corrected(table, pdf, {"measure": True, "legend": True, "legend_override": True})
+    assert "<th>A</th><td>12</td><td>10</td>" in fixed and "<th>D</th><td>26</td><td>31</td>" in fixed

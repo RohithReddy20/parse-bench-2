@@ -779,6 +779,53 @@ def legend_bind(
     return out
 
 
+def legend_override(
+    options: list[tuple[Unit, list[Measured]]],
+    pairs: list[tuple[Unit, Measured]],
+    legend: dict[tuple[int, int, int], str],
+) -> list[tuple[Unit, Measured]]:
+    """Bindings whose colour contradicts the legend: the unit's name is a legend entry of one colour but the
+    values bound it to a series drawn in another legend colour (the reading put a series' numbers under its
+    neighbour's name). Within the same plot and category mapping, the series drawn in the unit's own legend
+    colour replaces it, when there is exactly one such series. Every other binding stays."""
+    by_name: dict[str, tuple[int, int, int] | None] = {}
+    for color, text in legend.items():
+        k = _norm(text)
+        by_name[k] = None if k in by_name else color
+    legend_colors = set(legend)
+    marked = {_axis_side(t) for t in legend.values()} - {""}
+    implied = {"right": "left", "left": "right"}[next(iter(marked))] if len(marked) == 1 else ""
+    cands = {id(u): ms for u, ms in options}
+    out: list[tuple[Unit, Measured]] = []
+    changed = False
+    for u, m in pairs:
+        want = by_name.get(_norm(u.name.split(" / ")[-1]))
+        have = m.key[1] if m.key[0] in ("bars", "line", "markers") else None
+        if want is None or have == want or have not in legend_colors:
+            out.append((u, m))
+            continue
+        side = _axis_side(u.name) or implied
+        alt = {
+            o.key: o
+            for o in cands.get(id(u), [])
+            if o.key[1] == want
+            and o.key[0] == m.key[0]
+            and (o.side == side if side and o.side else o.axis is m.axis)
+            and (_overlap(o.box, m.box) or _same_plot(o.box, m.box))
+        }
+        if len(alt) != 1:
+            out.append((u, m))
+            continue
+        out.append((u, next(iter(alt.values()))))
+        changed = True
+    if not changed:
+        return pairs
+    keys = [m.key for _, m in out]
+    if len(set(keys)) != len(keys):
+        return pairs  # the corrected bindings would use one series twice: keep the values' bindings
+    return out
+
+
 def _same_plot(a, b) -> bool:
     """Two zones of one plot read on its left and right axes: they share the plot's vertical extent."""
     return abs(a[1] - b[1]) < 2 and abs(a[3] - b[3]) < 2
@@ -944,6 +991,8 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
             if legend:
                 titles = panel_titles(zs, words, {u.group for u in units if u.group}) if titled else None
                 pairs = legend_bind(options, pairs, legend, opts, titles)
+                if opts.get("legend_override"):
+                    pairs = legend_override(options, pairs, legend)
             n = sum(
                 sum(v is not None and x is not None for v, x in zip(u.values, m.values, strict=True)) for u, m in pairs
             )
