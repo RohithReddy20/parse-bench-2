@@ -1,0 +1,53 @@
+docs/results/2026-11-25-formatting-fix.md
+  s_a13908d8c3ae20::t_8c124158bc5347 1-138
+src/docparse/fixes/formatting.py
+  s_a13908d8c3ae20::t_5369f7ebd98e04 25
+  s_a13908d8c3ae20::t_8c124158bc5347 1-24,26-210
+src/docparse/pdf/drawings.py
+  s_a13908d8c3ae20::t_8c124158bc5347 1-195
+configs/standin_textfmt.yaml
+  s_a13908d8c3ae20::t_8c124158bc5347 1-20
+tests/pdf/test_drawings.py
+  s_a13908d8c3ae20::t_8c124158bc5347 1-54
+tests/fixes/test_text.py
+  s_a13908d8c3ae20::t_8c124158bc5347 1-105
+src/docparse/fixes/align_text.py
+  s_a13908d8c3ae20::t_8e6820e8c0e7e9 1-109
+tests/fixes/test_align_text.py
+  s_a13908d8c3ae20::t_5369f7ebd98e04 5
+  s_a13908d8c3ae20::t_8e6820e8c0e7e9 1-4,6-36
+tests/fixes/test_formatting.py
+  s_a13908d8c3ae20::t_8c124158bc5347 1-122
+src/docparse/fixes/text.py
+  s_a13908d8c3ae20::t_8c124158bc5347 1-25,27-154
+  s_a13908d8c3ae20::t_5369f7ebd98e04 26
+configs/standin_best.yaml
+  s_a13908d8c3ae20::t_71cbd849d7ae22 32-39
+src/docparse/pipeline.py
+  s_a13908d8c3ae20::t_8c124158bc5347 7,36-46,87-90,92-99
+src/docparse/pdf/render.py
+  s_a13908d8c3ae20::t_8c124158bc5347 28-31,46-50,102,104-106,111-112,120-121,136-139,142-157,161-246,272-282,307,316-320
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_8c124158bc5347 72-75,104-111
+docs/results/2026-11-25-text-fix.md
+  s_a13908d8c3ae20::t_8c124158bc5347 1-102
+tests/pdfgen.py
+  s_a13908d8c3ae20::t_8c124158bc5347 8,10,22-27,36,39-40,51
+  s_a13908d8c3ae20::t_007e8de79b8763 16-21,33,35,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07a8e001fac0884526494bb7b6f971be122ece12",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
