@@ -40,7 +40,14 @@ TABLE_OPTIONS = frozenset(
 )  # fixes/tables.py
 FORM_OPTIONS = frozenset(
     {"combs", "boxes", "outlines", "ids", "codes", "grids", "trailing", "blanks", "cells", "hints", "blank_forms"}
-)
+    # the separate forms round-two line ("Neon", 2026-11-25-forms-neon-integration.md); `n_blank_forms` is its own
+    # blank-form repair (forms_blank.py), not `blank_forms`
+    | {
+        "mini_tables", "table_rows", "box_grids", "bare_ticks", "field_lines", "table_clean", "acroform",
+        "comb_noise", "field_notes", "field_slots", "table_grids", "field_clean", "acro_clean", "blank_hints",
+        "n_blank_forms",
+    }
+)  # fmt: skip
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
 CHART_OPTIONS = frozenset(
     {

@@ -11,6 +11,10 @@ form's structure. Each repair is one option of `form_options`, and acts only on 
     blanks, cells, hints
              printed text out of the slots of blank fields (`forms_slots`), last
 
+The other forms line's options (`mini_tables`, `table_rows`, `bare_ticks`, ...; see `_neon_steps`) run between
+the first batch of edits and `ids`/`codes`/`grids`; `acroform`/`acro_clean` act on pages with AcroForm widgets and
+`n_blank_forms` on pages without an overlay.
+
 The overlay's words are grouped into fills (one typed value each); each fill is placed on the markdown tokens
 that spell it, next to the printed words around it (see `read_form`).
 """
@@ -311,7 +315,22 @@ def repair(
     """The page markdown with the enabled repairs; unchanged without an overlay or options (except `blank_forms`)."""
     if not options or not markdown:
         return markdown
+    if (options.get("acroform") or options.get("acro_clean")) and pdf_bytes:
+        from docparse.fixes.forms_acro import repair_acroform
+
+        markdown = repair_acroform(
+            markdown,
+            rendered,
+            pdf_bytes,
+            page_index,
+            do_id_boxes=bool(options.get("acroform")),
+            do_clean=bool(options.get("acro_clean")),
+        )
     if not fonts:
+        if options.get("n_blank_forms"):
+            from docparse.fixes.forms_blank import repair_blank_form
+
+            markdown = repair_blank_form(markdown)
         return _blank_form(markdown, rendered, options)
     printed, overlay = page_words(rendered, fonts)
     if not overlay:
@@ -320,11 +339,19 @@ def repair(
     edits: list[tuple[int, int, str]] = []
     if options.get("combs"):
         edits += comb_edits(page)
-    if options.get("boxes"):
-        from docparse.fixes.forms_boxes import box_edits
+    drawn = None
+    if options.get("boxes") or options.get("bare_ticks") or options.get("table_clean"):
         from docparse.pdf.boxes import check_boxes
 
-        edits += box_edits(page, check_boxes(pdf_bytes, page_index))
+        drawn = check_boxes(pdf_bytes, page_index)
+    if options.get("boxes"):
+        from docparse.fixes.forms_boxes import box_edits
+
+        edits += box_edits(page, drawn)
+    if options.get("bare_ticks"):
+        from docparse.fixes.forms_n_grids import bare_tick_edits
+
+        edits += bare_tick_edits(page, drawn)
     if options.get("outlines"):
         from docparse.fixes.forms_rows import outline_edits
 
@@ -334,10 +361,11 @@ def repair(
 
         edits += trailing_edits(page)
     out = apply_edits(markdown, edits) if edits else markdown
+    out, page = _neon_steps(out, page, printed, overlay, options, drawn)
     if options.get("ids") or options.get("codes") or options.get("grids"):  # whole tables: after the edits inside them
         from docparse.fixes.forms_rows import row_edits
 
-        if out != markdown:
+        if out != page.markdown:
             page = read_form(out, printed, overlay)
         rows = row_edits(page, options)
         out = apply_edits(out, rows) if rows else out
@@ -349,6 +377,57 @@ def repair(
         slots = slot_edits(page, options)
         out = apply_edits(out, slots) if slots else out
     return out
+
+
+_NEON_STEPS = (
+    "comb_noise", "box_grids", "mini_tables", "table_rows", "table_clean", "field_lines", "field_notes",
+    "field_slots", "table_grids", "field_clean", "blank_hints",
+)  # fmt: skip
+
+
+def _neon_steps(
+    markdown: str, page: FormPage, printed: list[PtWord], overlay: list[PtWord], options: dict, drawn
+) -> tuple[str, FormPage]:
+    """The other forms line's repairs, in its order, each on the page read again after the edits before it."""
+    if not any(options.get(o) for o in _NEON_STEPS):
+        return markdown, page
+    from docparse.fixes import (
+        forms_clean,
+        forms_combs,
+        forms_lines,
+        forms_n_grids,
+        forms_n_slots,
+        forms_tables,
+        forms_wave2,
+        forms_wave3,
+        forms_wave4,
+    )
+
+    steps = (  # option, function, what it reads
+        ("comb_noise", forms_combs.comb_noise_edits, "page"),
+        ("box_grids", forms_n_grids.box_grid_edits, "markdown"),
+        ("mini_tables", forms_combs.mini_table_edits, "page"),
+        ("table_rows", forms_tables.table_row_edits, "page"),
+        ("table_clean", forms_wave2.table_clean_edits, "page+drawn"),
+        ("field_lines", forms_lines.field_line_edits, "page"),
+        ("field_notes", forms_wave3.field_note_edits, "page"),
+        ("field_slots", forms_n_slots.field_slot_edits, "page"),
+        ("table_grids", forms_wave4.table_grid_edits, "page"),
+        ("field_clean", forms_clean.field_clean_edits, "page"),
+        ("blank_hints", forms_clean.blank_hint_edits, "page"),
+    )
+    for option, fn, reads in steps:
+        if not options.get(option):
+            continue
+        if reads == "markdown":
+            found = fn(markdown)
+        else:
+            if markdown != page.markdown:
+                page = read_form(markdown, printed, overlay)
+            found = fn(page, drawn) if reads == "page+drawn" else fn(page)
+        if found:
+            markdown = apply_edits(markdown, found)
+    return markdown, page
 
 
 BLANK_FORM_MARKS = 3  # a page read writing this many blank markers (`[___]`) is a form with blank fields
