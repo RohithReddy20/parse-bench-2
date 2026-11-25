@@ -1,0 +1,32 @@
+tests/pdf/test_overlay.py
+  s_a13908d8c3ae20::t_9508a0a952f502 1-23
+pyproject.toml
+  s_a13908d8c3ae20::t_9508a0a952f502 15-16
+src/docparse/pdf/render.py
+  s_a13908d8c3ae20::t_fce9e8ea9e9cf9 27,121,127-137
+  s_a13908d8c3ae20::t_f0308ee42e6cb2 138-139
+src/docparse/pdf/overlay.py
+  s_a13908d8c3ae20::t_fce9e8ea9e9cf9 1-54
+tests/pdfgen.py
+  s_a13908d8c3ae20::t_9508a0a952f502 6,10,15-17,19,34-35,38-42
+docs/results/2026-11-25-forms-findings.md
+  s_a13908d8c3ae20::t_db00ff3a641be1 104-117
+uv.lock
+  s_a13908d8c3ae20::t_92567ad84bb272 231,263,1045-1053
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7fdecc344a33bae7ef459ab7bab3c64f799b958",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
