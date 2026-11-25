@@ -13,14 +13,17 @@ def _text_ops(texts, font: str = "F1") -> bytes:
 
 def make_pdf(pages: list[dict]) -> bytes:
     """pages: [{"size": (w, h), "rotate": 0, "crop": (x0, y0, x1, y1) | None, "texts": [(x, y, size, text)],
-    "overlay": [(x, y, size, text)]}]. Text coordinates are PDF user space (origin bottom-left). "overlay" text
-    is drawn the way a fill tool adds it: the page wrapped in q ... Q, then one more stream in its own font."""
+    "overlay": [(x, y, size, text)], "draw": "raw content-stream operators"}]. Text coordinates are PDF user space
+    (origin bottom-left). "overlay" text is drawn the way a fill tool adds it: the page wrapped in q ... Q, then one
+    more stream in its own font. "draw" is appended to the page content as is (lines, rectangles)."""
     objects: list[bytes] = [b"", b"", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
     stream = lambda body: b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream"  # noqa: E731
     kids = []
     for page in pages:
         w, h = page.get("size", (612, 792))
         content = _text_ops(page.get("texts", []))
+        if page.get("draw"):
+            content += b"\n" + page["draw"].encode("latin-1")
         page_no = len(objects) + 1
         kids.append(f"{page_no} 0 R")
         extra = ""

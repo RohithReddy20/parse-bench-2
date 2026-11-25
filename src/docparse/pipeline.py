@@ -31,7 +31,12 @@ class ParseResult:
 
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
-    rendered = render_pages(pdf_bytes, config.dpi)
+    decorations = False
+    if config.format_options:
+        from docparse.fixes.formatting import needs_decorations
+
+        decorations = needs_decorations(config.format_options)
+    rendered = render_pages(pdf_bytes, config.dpi, decorations=decorations)
     doc_sha = sha256_hex(pdf_bytes)
     pages, pending = [], []
     for index, rp in enumerate(rendered):
@@ -56,6 +61,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             if cut_short and len(words) >= MIN_TOKENS and reading_recall(markdown, words) < config.fallback_below:
                 markdown = text_dump(words)
         page = parse_page(markdown, index=index, call_key=call.key())
+        if config.format_options:
+            from docparse.fixes.formatting import refine_format
+
+            refine_format(page, rp, config.format_options)
         page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
         page.cost = CostRecord(
             calls=1,

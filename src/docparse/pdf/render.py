@@ -25,6 +25,9 @@ class Word:
     text: str
     box: list[float]  # [x0, y0, x1, y1] in pixels of the rendered image
     font: str = ""  # base font of the first character (text_words only), without a subset prefix
+    # per character of `text`: "s" struck through, "u" underlined, "." neither (text_words, when decorations
+    # were requested; empty otherwise)
+    marks: str = ""
 
 
 @dataclass
@@ -90,13 +93,15 @@ def page_words(page, dpi: float = DPI) -> list[Word]:
     return out
 
 
-def page_text_words(page, dpi: float = DPI) -> list[Word]:
+def page_text_words(page, dpi: float = DPI, decorations: bool = False) -> list[Word]:
     """Text-layer words split at whitespace characters (PDFium inserts a space where the page shows one)
-    and at line changes. Boxes are pixels of the page render, as in `page_words`."""
+    and at line changes. Boxes are pixels of the page render, as in `page_words`. With `decorations`, each word
+    also gets the strikethrough / underline marks of its characters (`pdf.drawings`)."""
     s, rot, crop = dpi / 72, page.get_rotation() % 360, page.get_cropbox()
     tp = page.get_textpage()
     out: list[Word] = []
     cur: Word | None = None
+    geom: list[tuple[Word, int, object]] = []  # per kept character: its word, its length, its geometry
     for i in range(tp.count_chars()):
         ch = tp.get_text_range(i, 1)
         if not ch or ch.isspace() or ch in "\r\n\x00\ufffe":
@@ -104,7 +109,8 @@ def page_text_words(page, dpi: float = DPI) -> list[Word]:
                 out.append(cur)
                 cur = None
             continue
-        box = _to_image(*tp.get_charbox(i), crop, rot, s)
+        user_box = tp.get_charbox(i)
+        box = _to_image(*user_box, crop, rot, s)
         if box[2] <= box[0] or box[3] <= box[1]:
             continue  # a glyph without extent
         if cur:
@@ -119,9 +125,33 @@ def page_text_words(page, dpi: float = DPI) -> list[Word]:
             cur.box = [min(cb[0], box[0]), min(cb[1], box[1]), max(cb[2], box[2]), max(cb[3], box[3])]
         else:
             cur = Word(text=ch, box=box, font=_char_font(tp, i))
+        if decorations:
+            geom.append((cur, len(ch), _char_geom(tp, i, user_box)))
     if cur:
         out.append(cur)
+    if decorations:
+        from docparse.pdf.drawings import decoration_marks, horizontal_lines
+
+        marks = decoration_marks([g for _, _, g in geom], horizontal_lines(page))
+        for (word, n, _), mark in zip(geom, marks, strict=True):
+            word.marks += mark * n
     return out
+
+
+def _char_geom(textpage, index: int, user_box):
+    """A character's extent, baseline and height (font ascent - descent) in PDF user space."""
+    import ctypes
+
+    import pypdfium2.raw as raw
+
+    from docparse.pdf.drawings import CharGeom
+
+    x, y = ctypes.c_double(), ctypes.c_double()
+    raw.FPDFText_GetCharOrigin(textpage.raw, index, ctypes.byref(x), ctypes.byref(y))
+    loose = raw.FS_RECTF()
+    ok = raw.FPDFText_GetLooseCharBox(textpage.raw, index, ctypes.byref(loose))
+    height = abs(loose.top - loose.bottom) if ok else 0.0
+    return CharGeom(x0=user_box[0], x1=user_box[2], baseline=y.value, height=height)
 
 
 def _char_font(textpage, index: int) -> str:
@@ -149,8 +179,9 @@ def _render_image(data: bytes, dpi: float) -> list[RenderedPage]:
     return [RenderedPage(image=image, dpi=dpi, width_pt=image.width * 72 / dpi, height_pt=image.height * 72 / dpi)]
 
 
-def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400) -> list[RenderedPage]:
-    """One RenderedPage per page of a PDF (or one for an image file). Raises ParseError on unreadable bytes."""
+def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400, decorations: bool = False) -> list[RenderedPage]:
+    """One RenderedPage per page of a PDF (or one for an image file). Raises ParseError on unreadable bytes.
+    `decorations`: also mark struck-through and underlined characters of the text words."""
     import pypdfium2 as pdfium
 
     if not data:
@@ -183,7 +214,7 @@ def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400) -> list[Re
                         height_pt=float(h),
                         rotation=page.get_rotation() % 360,
                         words=page_words(page, scale * 72),
-                        text_words=page_text_words(page, scale * 72),
+                        text_words=page_text_words(page, scale * 72, decorations),
                     )
                 )
             return out

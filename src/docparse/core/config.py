@@ -32,6 +32,8 @@ class Config(BaseModel):
     # is replaced by the text layer (0 = off)
     fallback_below: float = 0.0
     layout_options: dict[str, float | bool] = Field(default_factory=dict)
+    # formatting corrections of the page reading from the PDF (fixes/formatting.py); empty = none
+    format_options: dict[str, float | bool] = Field(default_factory=dict)
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:
@@ -54,6 +56,10 @@ class Config(BaseModel):
             target[leaf] = yaml.safe_load(value)
         if set(data.get("layout_options") or {}) - LAYOUT_OPTIONS:
             raise ValueError(f"unknown layout option(s): {sorted(set(data['layout_options']) - LAYOUT_OPTIONS)}")
+        from docparse.fixes.formatting import FORMAT_OPTIONS
+
+        if set(data.get("format_options") or {}) - FORMAT_OPTIONS:
+            raise ValueError(f"unknown format option(s): {sorted(set(data['format_options']) - FORMAT_OPTIONS)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")
