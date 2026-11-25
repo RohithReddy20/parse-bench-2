@@ -65,6 +65,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             cut_short = read.finish_reason == "length" or looped(markdown)
             if cut_short and len(words) >= MIN_TOKENS and reading_recall(markdown, words) < config.fallback_below:
                 markdown = text_dump(words)
+        if config.text_options.get("empty_read"):
+            from docparse.fixes.text import empty_read
+
+            markdown = empty_read(markdown, rp) or markdown
         page = parse_page(markdown, index=index, call_key=call.key())
         if config.text_options:
             from docparse.fixes.text import refine_text

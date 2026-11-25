@@ -72,6 +72,30 @@ def test_untouched_regions_keep_their_base_candidate():
     assert len(intro.candidates) == 1 and body.chosen().reader == "fix.text"
 
 
+def test_an_empty_read_of_a_page_full_of_text_falls_back_to_the_text_layer():
+    from docparse.models.adapters import ocria
+    from docparse.models.calls import ModelResult
+    from docparse.pipeline import parse
+    from docparse.write.markdown import write_document
+
+    class Client:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def get(self, call, blobs, meta=None):
+            return ModelResult(key=call.key(), output={"markdown": self.answer})
+
+    lines = [(72, 700 - 14 * i, 11, f"line {i} of the page holds several words of body text") for i in range(8)]
+    pdf = make_pdf([{"texts": lines}])
+    config = Config(page_model=ocria.PUBLISHED, page_runtime="published", prompt_sha="published")
+    on = config.model_copy(update={"text_options": {"empty_read": True}})
+    assert write_document(parse(pdf, config, Client("NO_CONTENT_HERE")).document) == "NO_CONTENT_HERE"
+    dumped = write_document(parse(pdf, on, Client("NO_CONTENT_HERE")).document)
+    assert dumped.startswith("line 0 of the page holds") and dumped.count("\n") == 7
+    partial = "line 0 of the page holds several words of body text"  # a short read is still a read
+    assert write_document(parse(pdf, on, Client(partial)).document) == partial
+
+
 def test_text_options_are_validated():
     cfg = Config.load("configs/standin.yaml", ["text_options.respell=true"])
     assert cfg.text_options == {"respell": True}

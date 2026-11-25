@@ -9,6 +9,8 @@
     unbold       a `**...**` span in a paragraph or list loses its asterisks when the PDF sets at least 80% of its
                  aligned words in a regular face, on a page whose fonts do carry bold (some word is in a bold
                  face). Bold inside headings is the heading's and is left alone
+    list_marker  a list marker the reading wrapped in emphasis at the start of a line (`**1.** text`) becomes list
+                 syntax (`1. text`): markdown reads no list there, and the marker is list syntax either way
 
 A region the options do not change keeps its base candidate, so it is written back byte for byte.
 """
@@ -20,7 +22,7 @@ import re
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align import TOKEN, key, match, tokens
 
-FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "unbold"})
+FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "unbold", "list_marker"})
 READER = "fix.formatting"
 PROSE = frozenset({"paragraph", "list", "heading"})
 MIN_STRUCK = 0.5  # share of a PDF token's characters a line must cross
@@ -28,6 +30,8 @@ _TILDE_STRIKE = re.compile(r"~~(?=[^\s~])(.+?)(?<=[^\s~])~~", re.S)
 _STRIKE_SPAN = re.compile(r"~~(?=[^\s~]).+?(?<=[^\s~])~~|<(s|del|strike)\b[^>]*>.*?</\1\s*>", re.S | re.I)
 _RUN_BREAK = frozenset("\n<>|~*_[]()`$")  # a struck run never crosses a line, a tag, a cell or other markup
 _BOLD_SPAN = re.compile(r"(?<!\*)\*\*(?=[^\s*])(.+?)(?<=[^\s*])\*\*(?!\*)", re.S)
+_MARKER = r"(?:[-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z][.)]|[ivx]{1,4}[.)])"
+_STYLED_MARKER = re.compile(r"(?m)^([ \t]*)(\*\*|__)(" + _MARKER + r")\2[ \t]+(?=\S)")
 REGULAR_SHARE = 0.8  # of a bold span's aligned words that must be in a regular face
 ALIGNED_SHARE = 0.5  # of a bold span's words that must be aligned to the text layer
 
@@ -168,6 +172,9 @@ def refine_format(page: Page, rendered, options: dict) -> None:
         new = _strikes(page, new, words)
     if options.get("unbold") and words:
         new = _unbold(page, new, words)
+    if options.get("list_marker"):
+        new = [_STYLED_MARKER.sub(r"\1\3 ", raw) if region.kind in ("paragraph", "list") else raw
+               for region, raw in zip(page.regions, new, strict=True)]  # fmt: skip
     for region, old, raw in zip(page.regions, raws, new, strict=True):
         if raw != old:
             _select(region, raw, ",".join(sorted(k for k in FORMAT_OPTIONS if options.get(k))))

@@ -64,6 +64,11 @@ def test_nothing_changes_without_marks_or_options():
     assert _fixed(md, {"strike": True}, None) == md
 
 
+def test_a_list_marker_wrapped_in_emphasis_becomes_list_syntax():
+    md = "**Fact Check**\n**1.** a\n**2.** b\n\n__a)__ first\n\nSee **1.** above"
+    assert _fixed(md, {"list_marker": True}) == "**Fact Check**\n1. a\n2. b\n\na) first\n\nSee **1.** above"
+
+
 def _styled(texts):
     return render_pages(make_pdf([{"texts": texts}]), styles=True)[0]
 

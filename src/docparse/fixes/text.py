@@ -7,6 +7,8 @@
               edit in a short word, a quarter of the letters in a long one, one digit in a number of the same
               length. Edits where the layer shows its own artefacts are refused: a modifier letter, a capital
               inside a lower-case word, or a change at a ligature (fi, fl, ff, ft) the layer may have mis-mapped
+    empty_read  a read holding under 5% of the words of a visible, well-mapped text layer of 50 words or more (the
+              model wrote next to nothing for a page full of text) is replaced by the text layer as plain lines
 
 A region the options do not change keeps its base candidate, so it is written back byte for byte.
 """
@@ -23,7 +25,7 @@ from rapidfuzz.distance import Levenshtein
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align import TOKEN, key
 
-TEXT_OPTIONS = frozenset({"respell"})
+TEXT_OPTIONS = frozenset({"respell", "empty_read"})
 READER = "fix.text"
 LAYER_SUPPORT = 0.8  # share of the layer's tokens the reading must hold
 MAX_HIDDEN = 0.5
@@ -35,8 +37,24 @@ LIGATURES = ("fi", "fl", "ff", "ft")
 _MARKUP = re.compile(r"<[^>\n]*>|\]\([^)\n]*\)")  # tags and link targets are not text
 
 
+EMPTY_READ = 0.05  # share of the layer's words under which a read counts as empty
+
+
 def needs_layer(options: dict) -> bool:
-    return bool(options.get("respell"))
+    return bool(options.get("respell") or options.get("empty_read"))
+
+
+def empty_read(markdown: str, rendered) -> str | None:
+    """The text layer as plain lines when the read is empty next to a visible, well-mapped layer; else None."""
+    from docparse.fixes.fallback import MIN_TOKENS, reading_recall, text_dump
+    from docparse.fixes.layout_refine import words_in_points
+
+    if rendered.hidden is None or rendered.hidden > MAX_HIDDEN or (rendered.map_errors or 0) > MAX_MAP_ERRORS:
+        return None
+    words = words_in_points(rendered)
+    if len(words) < MIN_TOKENS or reading_recall(markdown, words) >= EMPTY_READ:
+        return None
+    return text_dump(words)
 
 
 def _select(region: Region, raw: str) -> None:
