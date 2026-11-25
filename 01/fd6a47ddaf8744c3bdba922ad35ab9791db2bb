@@ -1,0 +1,30 @@
+src/docparse/fixes/charts.py
+  s_a13908d8c3ae20::t_e842ca7a0f779e 841
+  s_a13908d8c3ae20::t_353d06d65cfb58 842-847
+  s_a13908d8c3ae20::t_67b5ecb3daa816 849
+  s_a13908d8c3ae20::t_3496ae1b169d8b 851,861-899
+  s_a13908d8c3ae20::t_17820fd2db0e51 809,812-814,819,821,832,852
+  s_a13908d8c3ae20::t_3e56e2a5e5c76b 790,792-793,795-797,808,810-811,818,820,822-823,826,828-831,833-840,1068
+  s_a13908d8c3ae20::t_212a964ba00655 688-696
+  s_a13908d8c3ae20::t_af7b89bc475b37 900-901
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_3e56e2a5e5c76b 52
+tests/fixes/test_charts_round2.py
+  s_a13908d8c3ae20::t_d6b3537690905a 90-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01fd6a47ddaf8744c3bdba922ad35ab9791db2bb",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
