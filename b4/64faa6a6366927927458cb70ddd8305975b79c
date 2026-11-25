@@ -1,0 +1,25 @@
+docs/results/2026-11-25-forms-neon-integration.md
+  s_a13908d8c3ae20::t_f508981f936669 1-190
+configs/standin_best.yaml
+  s_a13908d8c3ae20::t_33dfa51bb98ed4 41-46
+src/docparse/fixes/forms.py
+  s_a13908d8c3ae20::t_60c662c41042c8 364
+configs/own_best.yaml
+  s_a13908d8c3ae20::t_33dfa51bb98ed4 43-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b464faa6a6366927927458cb70ddd8305975b79c",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
