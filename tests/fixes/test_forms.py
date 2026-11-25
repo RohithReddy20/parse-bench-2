@@ -30,10 +30,30 @@ def test_a_comb_spelled_glyph_by_glyph_is_written_as_one_value():
     assert out == "**Family name**: TRIVEDI\n\n**Postcode**: B37PW\n\n**Date of birth**: 06 12 1930"
 
 
-def test_comb_glyphs_across_cells_or_bold_runs_are_handled_safely():
+def test_comb_glyphs_in_bold_runs_tags_or_cells_keep_the_markup_balanced():
     rendered, fonts = _page()
-    md = "**Postcode**: **B** **3** **7** **P** **W**\n\n<td>0</td><td>6</td>"
-    assert repair(md, rendered, fonts, {"combs": True}) == "**Postcode**: **B37PW**\n\n<td>0</td><td>6</td>"
+    md = "**Postcode**: **B** **3** **7** **P** **W**\n\n<td>0</td><td>6</td><td>x</td>"
+    out = '**Postcode**: **B37PW**\n\n<td colspan="2">06</td><td>x</td>'
+    assert repair(md, rendered, fonts, {"combs": True}) == out
+    md = "Postcode <u>B</u> <u>3</u> [ ] <u>7</u> [ ] <u>P</u> <u>W</u>"  # character boxes read as check boxes
+    assert repair(md, rendered, fonts, {"combs": True}) == "Postcode <u>B37PW</u>"
+    md = "Postcode: B 3 | 7 P W"  # a pipe is a column: not joined
+    assert repair(md, rendered, fonts, {"combs": True}) == md
+
+
+def test_a_printed_separator_inside_a_comb_stays():
+    typed = [(200 + 18 * i, 660, 11, ch) for i, ch in enumerate("17PW")]
+    rendered, fonts = _page([(72, 660, 11, "Amount"), (211, 658, 11, ", ")], typed)
+    out = repair("Amount: 1 , 7 P W", rendered, fonts, {"combs": True})
+    assert out == "Amount: 1,7PW"
+
+
+def test_dot_leaders_and_typewriter_spaces_do_not_split_a_typed_value():
+    leader = [(150, 700, 11, ". " * 30)]
+    typed = [(160, 700, 11, "County"), (206.6, 700, 11, "Court")]  # Courier: a space as wide as a glyph
+    rendered, fonts = _page([(72, 700, 11, "In the"), *leader], typed)
+    printed, overlay = page_words(rendered, fonts)
+    assert [f.text for f in fills(overlay, printed)] == ["County Court"]
 
 
 def test_pages_without_an_overlay_or_options_come_back_unchanged():

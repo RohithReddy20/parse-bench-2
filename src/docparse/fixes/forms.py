@@ -4,7 +4,9 @@ On a filled form the PDF holds every typed value exactly, with its position, and
 form's structure. Each repair is one option of `form_options`, and acts only on a page with an overlay:
 
     combs    a value typed one character per box ("2 2 8 6 2" in the read, one overlay glyph per box) is
-             written as one string ("22862") where the read spells out exactly those characters
+             written as one string ("22862") where the read spells out exactly those characters, with only
+             spaces, emphasis, a printed separator or a character box's outline (`[ ]`) between them; glyphs
+             read one per table cell become one cell spanning those columns
     boxes    check-box states from the overlay's tick glyphs (`forms_boxes`)
 
 The overlay's words are grouped into fills (one typed value each); each fill is placed on the markdown tokens
@@ -22,10 +24,14 @@ from docparse.pdf.render import RenderedPage
 
 TICKS = frozenset("✓✔✗✘☒☑xX")
 COMB_GAP = 2.6  # single glyphs this many glyph heights apart (or closer) are boxes of one comb field
-WORD_GAP = 0.8  # words of one typed value are at most this many heights apart
+WORD_GAP = 0.8  # words of one typed value are at most this many heights apart ...
+SPACE_GLYPHS = 1.6  # ... or this many of their average glyph widths
 PITCH_JUMP = 1.6  # a comb gap this many times its median gap separates two values
 PLACE_SHARE = 0.6  # a fill is placed where at least this share of its characters matched
-_JOINABLE = re.compile(r"[ \t*_]*")  # what may sit between the glyphs of a comb in the markdown
+_INLINE_TAG = re.compile(r"</?(?:u|strong|b|em|i)>")
+# what may sit between the glyphs of a comb in the markdown: spaces, emphasis, inline tags, one separator sign
+_JOINABLE = re.compile(r"(?:[ \t*_]|</?(?:u|strong|b|em|i)>)*(?:[,./\-](?:[ \t*_]|</?(?:u|strong|b|em|i)>)*)?")
+_CHAR_BOX = re.compile(r"[ \t]*\[[ \t]?\][ \t]*")  # the outline of a character box read as an empty check box
 
 
 @dataclass
@@ -59,9 +65,14 @@ def _same_line(a: PtWord, b: PtWord) -> bool:
     return abs(a.cy - b.cy) < 0.5 * max(a.y1 - a.y0, b.y1 - b.y0)
 
 
+def _wordy(w: PtWord) -> bool:
+    """Has letters or digits: a dot leader, a rule of underscores or a lone bracket is no word."""
+    return any(c.isalnum() for c in w.text)
+
+
 def _between(a: PtWord, b: PtWord, printed: list[PtWord]) -> bool:
-    """Is a printed word on the line between a and b?"""
-    return any(a.x1 - 0.5 <= p.cx <= b.x0 + 0.5 and _same_line(a, p) for p in printed)
+    """Is a printed word (not a leader or a separator sign) on the line between a and b?"""
+    return any(a.x1 - 0.5 <= p.cx <= b.x0 + 0.5 and _same_line(a, p) and _wordy(p) for p in printed)
 
 
 def _pitch_runs(words: list[PtWord]) -> list[list[PtWord]]:
@@ -94,9 +105,12 @@ def overlay_groups(overlay: list[PtWord], printed: list[PtWord]) -> list[list[Pt
         current = [row[0]]
         for prev, w in zip(row, row[1:], strict=False):
             height = max(prev.y1 - prev.y0, w.y1 - w.y0)
-            single = len(prev.text) == 1 and len(w.text) == 1
-            limit = COMB_GAP if single else WORD_GAP
-            if w.x0 - prev.x1 <= limit * height and not _between(prev, w, printed):
+            if len(prev.text) == 1 and len(w.text) == 1:
+                limit = COMB_GAP * height
+            else:  # a space is up to one glyph wide in a typewriter font
+                glyph = (prev.x1 - prev.x0 + w.x1 - w.x0) / (len(prev.text) + len(w.text))
+                limit = max(WORD_GAP * height, SPACE_GLYPHS * glyph)
+            if w.x0 - prev.x1 <= limit and not _between(prev, w, printed):
                 current.append(w)
             else:
                 out.append(current)
@@ -124,19 +138,22 @@ def _anchor(fill: Fill, printed: list[PtWord]) -> int | None:
     height, else the end of the label above it (the closest word above, followed along its line in content
     order while the words stay close)."""
     first, last = fill.words[0], fill.words[-1]
-    left = [i for i, p in enumerate(printed) if p.x1 <= first.x0 + 1.0 and p.y0 < first.y1 and p.y1 > first.y0]
+    words = [(i, p) for i, p in enumerate(printed) if _wordy(p)]
+    left = [i for i, p in words if p.x1 <= first.x0 + 1.0 and p.y0 < first.y1 and p.y1 > first.y0]
     if left:
         return max(left, key=lambda i: (printed[i].x1, printed[i].y0))
-    above = [i for i, p in enumerate(printed) if p.y1 <= first.y0 + 1.0 and p.x0 < last.x1]
+    above = [i for i, p in words if p.y1 <= first.y0 + 1.0 and p.x0 < last.x1]
     if not above:
         return None
     i = min(above, key=lambda i: (first.y0 - printed[i].y1) + 0.3 * max(0.0, first.x0 - printed[i].x1))
+    end = i
     while i + 1 < len(printed):
         p, q = printed[i], printed[i + 1]
         if not (_same_line(p, q) and 0 <= q.x0 - p.x1 <= p.y1 - p.y0):
             break
         i += 1
-    return i
+        end = i if _wordy(q) else end
+    return end
 
 
 @dataclass
@@ -219,9 +236,33 @@ def read_form(markdown: str, printed: list[PtWord], overlay: list[PtWord]) -> Fo
     return FormPage(markdown, printed, page_fills, ticks(overlay, printed), al, owner, placed)
 
 
+def _joinable(gap: str) -> bool:
+    """Spaces, emphasis closed and reopened (`** **`, `</u> <u>`), or a printed separator (`,` `.` `/` `-`)."""
+    if not _JOINABLE.fullmatch(gap) or gap.count("*") % 2 or gap.count("_") % 2:
+        return False
+    tags = _INLINE_TAG.findall(gap)
+    return sum(t.startswith("</") for t in tags) * 2 == len(tags)
+
+
+_CELL_GAP = re.compile(r"(?:\s|</?(?:u|strong|b|em|i)>|\*)*</td>\s*<td>(?:\s|</?(?:u|strong|b|em|i)>|\*)*")
+_CELL_OPEN = re.compile(r"<td>(?:\s|<(?:u|strong|b|em|i)>|\*)*$")
+_CELL_CLOSE = re.compile(r"(?:\s|</(?:u|strong|b|em|i)>|\*)*</td>")
+
+
+def _cell_run(markdown: str, start: int, end: int, gaps: list[str]) -> tuple[int, int] | None:
+    """(start, end) of a run of plain table cells holding one glyph each, from `<td>` to `</td>`."""
+    if not all(_CELL_GAP.fullmatch(g) for g in gaps):
+        return None
+    opened = _CELL_OPEN.search(markdown, 0, start)
+    closed = _CELL_CLOSE.match(markdown, end)
+    if opened is None or closed is None:
+        return None
+    return opened.start(), closed.end()
+
+
 def comb_edits(page: FormPage) -> list[tuple[int, int, str]]:
     """A comb value spelled out glyph by glyph becomes one string, where the markdown spells exactly its glyphs
-    with only spaces or emphasis marks between them."""
+    with only spaces, emphasis or printed separators between them (the separators stay)."""
     edits = []
     markdown, al = page.markdown, page.al
     for f, (t0, t1) in page.placed.items():
@@ -230,10 +271,19 @@ def comb_edits(page: FormPage) -> list[tuple[int, int, str]]:
             continue
         if "".join(fold(ch) for t in range(t0, t1 + 1) for ch in al.tokens[t].text) != fill.key:
             continue
-        gaps = [markdown[al.tokens[t].end : al.tokens[t + 1].start] for t in range(t0, t1)]
-        if not all(_JOINABLE.fullmatch(g) and g.count("*") % 2 == 0 and g.count("_") % 2 == 0 for g in gaps):
+        gaps = [_CHAR_BOX.sub(" ", markdown[al.tokens[t].end : al.tokens[t + 1].start]) for t in range(t0, t1)]
+        if not all(_joinable(g) for g in gaps):
+            cells = _cell_run(markdown, al.tokens[t0].start, al.tokens[t1].end, gaps)
+            if cells is not None:  # one glyph per table cell: one cell spanning them
+                edits.append((cells[0], cells[1], f'<td colspan="{len(gaps) + 1}">{fill.text}</td>'))
             continue
-        edits.append((al.tokens[t0].start, al.tokens[t1].end, fill.text))
+        seps = [_INLINE_TAG.sub("", g).strip(" \t*_") for g in gaps]
+        text = (
+            fill.text
+            if not any(seps)
+            else al.tokens[t0].text + "".join(sep + al.tokens[t0 + 1 + k].text for k, sep in enumerate(seps))
+        )
+        edits.append((al.tokens[t0].start, al.tokens[t1].end, text))
     return edits
 
 

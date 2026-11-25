@@ -19,8 +19,11 @@ from docparse.fixes.forms import TICKS, FormPage, _same_line
 from docparse.fixes.layout_refine import PtWord
 
 _MARK = re.compile(
-    r"\[[ \t]*(?:[xX✓✔✗✘☒☑*]|checked|selected|unchecked|not[ \t]?checked)?[ \t]*\]|[☐☑☒□■]", re.IGNORECASE
+    r"\[[ \t]*(?:[xX✓✔✗✘☒☑*]|checked|selected|unchecked|not[ \t]?checked)?[ \t]*\]|[☐☑☒□■]"
+    r"|[○◯●◉⦿⊗✓✔]",
+    re.IGNORECASE,
 )
+_ROUND_CHECKED = "●◉⦿⊗✓✔"
 _UNIT_END = re.compile(r"\n|<br[ \t]*/?>|</?t[dhr][^>\n]*>|(?<!\\)\|")
 BOX_REACH = 4.0  # a tick at most this many label heights beside the label's near edge
 LABEL_TOKENS = 6  # tokens of a label next to its box
@@ -36,14 +39,18 @@ class Mark:
 
 
 def _is_checked(text: str) -> bool:
+    if len(text) == 1:
+        return text in "☑☒■" + _ROUND_CHECKED
     inner = text.strip("[]").strip().lower()
-    return text in "☑☒■" or (inner != "" and not inner.startswith(("un", "not")) and text not in "☐□")
+    return inner != "" and not inner.startswith(("un", "not"))
 
 
 def _written(original: str, checked: bool) -> str:
     """The new state in the read's own spelling of a box."""
     if original in "☐☑☒□■":
         return "☒" if checked else "☐"
+    if len(original) == 1:  # round marks: ○ ● ✓ ⊗
+        return ("●" if original in "○◯" else original) if checked else "○"
     inner = original.strip("[]").strip().lower()
     if inner.isalpha() and len(inner) > 1:
         return "[checked]" if checked else "[unchecked]"
