@@ -1,0 +1,40 @@
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_986b616a557e7e 18
+tests/fixes/test_layout_kdl.py
+  s_a13908d8c3ae20::t_72c3599e7be499 109-125
+  s_a13908d8c3ae20::t_27ac04ec7ba0d2 94-100,104,107-108
+  s_a13908d8c3ae20::t_25ab66d637cc5b 3-5,7-8,10-12
+  s_a13908d8c3ae20::t_dcbfb3e4c4dd04 88-91
+  s_a13908d8c3ae20::t_f4ed862280de02 101-103
+  s_a13908d8c3ae20::t_366257491efd4c 6,9
+  s_a13908d8c3ae20::t_7f7ab3359b836f 105-106
+  s_a13908d8c3ae20::t_1c40965ecc85de 92-93
+src/docparse/fixes/layout_kdl.py
+  s_a13908d8c3ae20::t_7d4002e37897cc 181-182
+  s_a13908d8c3ae20::t_39e8076cb467ee 114,116-120,122-126
+  s_a13908d8c3ae20::t_c0fc0ff1dc6bcf 30
+  s_a13908d8c3ae20::t_59c7bde58fab92 10-12
+  s_a13908d8c3ae20::t_8bf60083e6cd94 100,102
+  s_a13908d8c3ae20::t_5dce59544c6935 127-153
+  s_a13908d8c3ae20::t_805ae4fd69fae9 7-9
+  s_a13908d8c3ae20::t_c80566dedc98e5 115,121
+  s_a13908d8c3ae20::t_0e2a5c2325ce81 13-15
+  s_a13908d8c3ae20::t_ddcd76a7553fe0 164-166,168-169
+  s_a13908d8c3ae20::t_421a67e16fe5d1 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d922b8680267243b8d918f2b842de4a1b7c79717",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
