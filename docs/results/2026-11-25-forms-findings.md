@@ -79,7 +79,29 @@ the PDF text layer's words is replaced by the text layer written as plain lines 
 
 The ungated version hurts pages where OCRia-1 deliberately skipped fine print, so the loop test stays.
 
-## 5. Repairs worth building next, in order
+On the whole benchmark (run `all-fbloop` against `m0-roundtrip`, stand-in readings) the gated fallback changes
+8 pages: overall 85.23 → 85.32, text 87.87 → 88.06 (one page from 0 to 0.94), formatting 91.59 → 91.66,
+forms 82.10 → 82.39; tables, charts and layout unchanged. One page loses 0.01, none loses more. The pages are
+too few for the bootstrap to call it (P = 0.6 on the development part), so it is kept as a safety net, not
+counted as a tuned gain. It is on in `configs/standin_layout.yaml`.
+
+## 5. Why captions are not found
+
+Unfound captions are behind "empty field omitted", "value without its caption", "field missing" and the
+omitted options: about 4,300 events. Two causes, seen by reading pages next to their events:
+
+- **Printed sub-labels the read leaves out.** A phone field prints `COUNTRY CODE`, `AREA CODE` and `NUMBER`
+  in small type inside its boxes; OCRia-1 writes `**Office hours**: ( 61 ) ( 03 ) 9608 2035`. The three
+  values are right and all three fields score "value without its caption". Date boxes (`Day`, `Month`,
+  `YYYY`) and address lines behave the same way. These labels are in the PDF text layer.
+- **Captions split over table header cells.** `Sex` in one header row and `M/F/X` in the next never form the
+  phrase `Sex (M/F/X)`.
+
+A word-level check of the unfound captions against the markdown overstates how many are "present" (it
+matches `NUMBER` inside `Client ID number`), so the split between the two causes still needs the alignment
+described below to count properly.
+
+## 6. Repairs worth building next, in order
 
 Each needs the same base: an alignment of the markdown's words with the PDF's words, so that every markdown
 word is known to be printed form text, overlay (filled) text, or neither.
@@ -90,5 +112,12 @@ word is known to be printed form text, overlay (filled) text, or neither.
    read dropped. Targets wrong value, value typo, value lost.
 3. **Blank slots.** A slot holding only printed text, on a field with no overlay text, should read blank.
    Targets invented value (critical, 83 pages) and printed text in a blank field.
-4. **Captions in table headers.** Fields whose caption is split over header cells (`Sex` / `M/F/X`) are not
-   found; this is the bulk of "empty field omitted" and needs a decision on reshaping form tables.
+4. **Printed labels the read left out.** A printed label that no markdown word aligns to, sitting directly
+   beside or above a filled value or an empty box, is written in front of that value (`COUNTRY CODE: 61`).
+   Targets value without its caption (major, 129 pages) and empty field omitted (226 pages). Probably the
+   largest of the four.
+5. **Captions in table headers.** Join a two-row header into one caption per column on form pages.
+
+Not a repair: adding PDF text the read lacks to text pages. On the 378 text pages with a text layer the
+read misses 2,696 expected words, 1,037 of them in the PDF, but the PDF holds 24,821 tokens the read
+lacks and only 1,871 of those are expected. Blanket insertion would add far more wrong text than right.

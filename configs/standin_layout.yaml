@@ -8,6 +8,7 @@ page_model:
 page_runtime: published
 prompt_sha: published
 dpi: 300
+fallback_below: 0.5  # looped or truncated reads fall back to the PDF text layer
 layout: from_page_read
 layout_options:
   tighten: true
