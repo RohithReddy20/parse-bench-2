@@ -128,35 +128,39 @@ def _before_colon(cap: str, at: int, printed: Printed | None) -> str | None:
     italic hint or a box's decoration becomes a bracketed hint (`gain imposable *Après abattement* 1TZ:` ->
     `1TZ gain imposable (Après abattement):`). None when it ends in neither."""
     lead = LEAD.match(cap).end()
-    code, body = "", cap
+    code, body, moved_from = "", cap, len(cap)
     m = _CODE_END.search(cap)
     if m and m.start(1) > lead and _WORDS.search(EMPH.sub(" ", cap[lead : m.start(1)])):
         before = cap[: m.start(1)].rstrip(" \t")
         # a code: lettered (1TZ, D15) or set apart by emphasis; not the last number of a sum (`233 + 237`)
-        apart = re.search(r"[*_>][ \t]*$", before) or any(ch.isalpha() for ch in m.group(1))
+        apart = re.search(r"[*_>][ \t]*$", before) or re.search(r"[A-Z]", m.group(1))
         if apart and not re.search(r"[-+×=/][ \t*_]*$", before):
-            code, body = m.group(1), cap[: m.start(1)]
+            code, body, moved_from = m.group(1), cap[: m.start(1)], m.start(1)
+            first = re.match(r"[\[(*_ \t]*([0-9]{1,3}[a-zA-Z]?)\b", cap[lead:])
+            if first and first.group(1) == code:
+                code = ""  # the line's own number printed again at its box: dropped
     body = body.rstrip(" \t*_")
-    hint, cut = "", len(body)
+    hint = ""
     opens = list(_ITALIC_OPEN.finditer(body))
     if opens and opens[-1].start() > lead and _WORDS.search(EMPH.sub(" ", body[lead : opens[-1].start()])):
-        cut = opens[-1].start()
-        hint = _clean(body[cut:])
-    else:
-        d = _DECO.search(body)
-        if d and d.start() > lead and re.search(r"[0-9A-Za-z]", d.group(0)) and _WORDS.search(body[lead : d.start()]):
-            if not (body[d.start() - 1].isalnum() and d.group(0)[:1].isalnum()):
-                cut, hint = d.start(), _clean(d.group(0))
-    if not (code or hint):
+        moved_from = min(moved_from, opens[-1].start())
+        hint = "(" + _clean(body[opens[-1].start() :]) + ")"
+        body = body[: opens[-1].start()]
+    elif (split := _deco(body, lead)) is not None and re.search(r"[(\[]", body[len(split[0]) :]):
+        # a bracketed format hint (`(999) 999-9999`); a bare number ends the caption's own text (`Attach Form 4797`)
+        moved_from = min(moved_from, len(split[0]))
+        body, hint = split
+    if not (code or hint) and moved_from == len(cap):
         return None
-    moved_from = m.start(1) if code and not hint else cut
-    if printed is not None and not printed(at + moved_from, at + len(cap)):
-        return None
-    body = body[:cut].rstrip()
+    body = body.rstrip()
     if body.count("**") % 2:
         body += "**"
-    out = body[:lead] + (code + " " if code else "") + body[lead:].lstrip()
-    return out + (" (" + hint + ")" if hint else "")
+    out = body[:lead] + (code + " " if code else "") + body[lead:].lstrip() + (" " + hint if hint else "")
+    if " ".join(out.split()) == " ".join(cap.split()):
+        return None
+    if printed is not None and not printed(at + moved_from, at + len(cap)):
+        return None
+    return out
 
 
 def _opens_field(text: str) -> bool:
@@ -205,28 +209,38 @@ def hint_text(text: str) -> str | None:
                 return None
             new = head.rstrip() + ": "
         return new + "[___]"
-    m = _DECO.search(text)
-    if not m or not re.search(r"[0-9A-Za-z]", m.group(0)):
+    split = _deco(text)
+    if split is None:
         return None
-    if m.start() > 0 and text[m.start() - 1].isalnum() and m.group(0)[:1].isalnum():
-        return None  # inside a word: IHT401
-    body, deco = text[: m.start()].rstrip(), m.group(0)
-    if not _WORDS.search(body):
+    body, hint = split
+    body = re.sub(r"[ \t]*[:：]$", "", body.rstrip())
+    if body.count("**") % 2:
+        body = body.rstrip(" *") + "**"
+    return body + " " + hint + ": [___]"
+
+
+def _deco(text: str, lead: int = 0) -> tuple[str, str] | None:
+    """(text before, bracketed hint) for text ending in a box's decoration (`5 ,00`, `(4)`, `(col. 7 minus col. 21) 9`)
+    or in a worded hint (`(5 digits)`); None when it ends in neither."""
+    m = _DECO.search(text)
+    if not m or m.start() <= lead or not re.search(r"[0-9A-Za-z]", m.group(0)):
+        return None
+    if m.start() > 0 and text[m.start() - 1].isalnum() and not m.group(0)[0].isspace():
+        return None  # part of a word: IHT401, W-2, assuré(e)
+    body, deco = text[: m.start()], m.group(0)
+    if not _WORDS.search(EMPH.sub(" ", body[lead:])):
         return None
     worded = [g for g in _BRACKET.finditer(deco) if _WORDS.search(g.group(0))]
     if worded:  # the last worded hint keeps its place (the caption may own it); what follows it joins it
         w = worded[-1]
-        body = (body + deco[: w.start()]).rstrip()
+        body = body + deco[: w.start()]
         if not re.search(r"[0-9A-Za-z]", deco[w.end() :]):
-            return body + " " + re.sub(r"[ \t]*[:：][ \t]*", " ", w.group(0)) + ": [___]"
+            return body, re.sub(r"[ \t]*[:：][ \t]*", " ", w.group(0))
         deco = deco[w.start() :]
-    body = re.sub(r"[ \t]*[:：]$", "", body)
-    if body.count("**") % 2:
-        body = body.rstrip(" *") + "**"
     deco = _clean(deco)
     if not re.search(r"\w", deco) or _choice(deco):
         return None
-    return body + " (" + deco + "): [___]"
+    return body, "(" + deco + ")"
 
 
 def colon_text(line: str) -> str | None:

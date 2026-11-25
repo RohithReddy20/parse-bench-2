@@ -52,6 +52,12 @@ def test_blank_line_rules():
     )
     assert blank_line("Telephone Number (999) 999-9999: [___]") == "Telephone Number (999 999-9999): [___]"
     assert blank_line("**Code postal :** [___]") == "**Code postal :** [___]"
+    assert blank_line("**38** Amount from line 37 (adjusted gross income) **38**: [___]") == (
+        "**38** Amount from line 37 (adjusted gross income): [___]"  # the line number printed again at the box
+    )
+    assert blank_line("**7** Wages. Attach Form(s) W-2: [___]") == "**7** Wages. Attach Form(s) W-2: [___]"
+    assert blank_line("**14** Other gains. Attach Form 4797: [___]") == "**14** Other gains. Attach Form 4797: [___]"
+    assert blank_line("**35** Add lines 23 through 34a: [___]") == "**35** Add lines 23 through 34a: [___]"
 
 
 def test_a_cell_ending_in_box_decoration_or_a_worded_hint_gets_a_blank_marker():
