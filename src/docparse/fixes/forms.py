@@ -321,4 +321,16 @@ def repair(
         from docparse.pdf.boxes import check_boxes
 
         edits += box_edits(page, check_boxes(pdf_bytes, page_index))
-    return apply_edits(markdown, edits) if edits else markdown
+    if options.get("outlines"):
+        from docparse.fixes.forms_rows import outline_edits
+
+        edits += outline_edits(page)
+    out = apply_edits(markdown, edits) if edits else markdown
+    if options.get("ids") or options.get("codes"):  # whole tables: after the edits inside them
+        from docparse.fixes.forms_rows import row_edits
+
+        if out != markdown:
+            page = read_form(out, printed, overlay)
+        rows = row_edits(page, options)
+        out = apply_edits(out, rows) if rows else out
+    return out
