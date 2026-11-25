@@ -1,0 +1,19 @@
+src/evalkit/__main__.py
+  s_a13908d8c3ae20::t_7898790d5c2d68 185-218,256-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "434fa04514d6da19b3be0b00dd9daddb071a7f67",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
