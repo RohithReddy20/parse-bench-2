@@ -1,0 +1,32 @@
+src/docparse/fixes/forms.py
+  s_a13908d8c3ae20::t_9a4628cde2d03f 11-12
+  s_a13908d8c3ae20::t_a8e5c9bb3607ef 342-348
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_bd3d9bd11a88f7 41-43
+tests/fixes/test_forms_slots.py
+  s_a13908d8c3ae20::t_746fe3ae44c096 35
+  s_a13908d8c3ae20::t_9d48081f8a60f9 1-15,20,22-34,36-40,43-77
+  s_a13908d8c3ae20::t_64a607c5397503 16-19,21
+  s_a13908d8c3ae20::t_4fe332a6726c41 41-42
+  s_a13908d8c3ae20::t_f07cdba70a2121 78-79
+src/docparse/fixes/forms_slots.py
+  s_a13908d8c3ae20::t_7409b5bcb07d6a 1-91,94-97,101-290
+  s_a13908d8c3ae20::t_44aaaed2ee0e23 92-93
+  s_a13908d8c3ae20::t_da52dbe0145c30 98-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3f246c52b3ca7afcc5bfd7018a2d1a0c936c21d4",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
