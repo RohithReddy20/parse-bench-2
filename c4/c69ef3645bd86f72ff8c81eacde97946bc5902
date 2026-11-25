@@ -1,0 +1,21 @@
+tests/fixes/test_formatting.py
+  s_a13908d8c3ae20::t_6fca4bebc4f84f 67-73
+src/docparse/fixes/formatting.py
+  s_a13908d8c3ae20::t_a2a277d1dd731f 12-13,27,37,44,166-190,203-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4c69ef3645bd86f72ff8c81eacde97946bc5902",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
