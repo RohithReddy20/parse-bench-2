@@ -72,6 +72,24 @@ def test_axes_from_tick_labels_linear_log_and_stray_numbers():
     assert log_axis.log and log_axis.value(503 - 30 * 3) == pytest.approx(1000)
 
 
+def test_two_digit_years_and_a_bent_scale():
+    row = [PtWord(t, 100 + 30 * i, 600, 112 + 30 * i, 606) for i, t in enumerate(("2006", "07", "08", "'09"))]
+    (years,) = find_axes(row)
+    assert years.values == [2006, 2007, 2008, 2009] and years.orient == "h"
+    # labels 200..50 evenly spaced, but the 0 below them is further down: a designed, non-linear scale
+    bent = [PtWord(str(v), 40, 300 + 32 * i, 52, 306 + 32 * i) for i, v in enumerate((200, 150, 100, 50))]
+    assert find_axes([*bent, PtWord("0", 46, 438, 52, 444)]) == []
+
+
+def test_legend_names_colours():
+    from docparse.fixes.charts_geometry import find_legend
+
+    pdf = _chart_pdf()
+    page, words, shapes = _page(TABLE, pdf)
+    marks = find_marks(shapes, page.width, page.height)
+    assert find_legend(marks, words) == {(26, 77, 204): "Sales"}
+
+
 def test_labels_beside_their_gridlines_snap_to_them():
     pdf = _chart_pdf()
     page, words, shapes = _page(TABLE, pdf)

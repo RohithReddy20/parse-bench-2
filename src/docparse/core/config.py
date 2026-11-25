@@ -18,7 +18,21 @@ LAYOUT_OPTIONS = frozenset(
     }
 )  # fmt: skip
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
-CHART_OPTIONS = frozenset({"measure", "agree", "agree_tol", "replace_min", "coverage", "bar_mode"})
+CHART_OPTIONS = frozenset(
+    {
+        "measure",
+        "agree",
+        "agree_tol",
+        "replace_min",
+        "coverage",
+        "bar_mode",
+        "legend",
+        "legend_max",
+        "zero_reach",
+        "years",
+        "bent",
+    }
+)
 
 
 class Config(BaseModel):

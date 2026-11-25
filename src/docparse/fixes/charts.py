@@ -31,7 +31,17 @@ from dataclasses import dataclass
 
 from docparse.core.config import CHART_OPTIONS  # noqa: F401  (the option names, validated in Config.load)
 from docparse.core.ir import Candidate, Page, Provenance
-from docparse.fixes.charts_geometry import Axis, Bar, Line, Marks, find_axes, find_marks, snap_axis, tick_value
+from docparse.fixes.charts_geometry import (
+    Axis,
+    Bar,
+    Line,
+    Marks,
+    find_axes,
+    find_legend,
+    find_marks,
+    snap_axis,
+    tick_value,
+)
 from docparse.fixes.charts_table import Cell, Number, format_number, number_of, parse_cells, replace_spans
 from docparse.pdf.graphics import Shape
 
@@ -150,6 +160,7 @@ class Zone:
     lines: list[Line]
     markers: list[tuple[float, float, tuple[int, int, int]]]
     cat_axis: Axis | None  # a numeric axis across the categories (years under a line chart)
+    reach: float = 1.0  # label steps past the axis end at which a zero line is still taken as the base
 
 
 @dataclass
@@ -187,13 +198,23 @@ def _series_bars(bars: list[Bar], vertical: bool) -> list[Bar]:
     return out
 
 
-def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: float) -> list[Zone]:
+def _zero_in_reach(ax: Axis, reach: float = 1.0) -> bool:
+    """Zero is on the axis or up to `reach` label steps past its end (axes often leave the zero line
+    unlabelled)."""
+    slack = (reach + 0.01) * ax.step if reach else 0.0
+    return not ax.log and min(ax.values) - slack <= 0 <= max(ax.values) + slack
+
+
+def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: float, reach: float = 1.0) -> list[Zone]:
     """For each value axis, the regions on either side of its labels up to the next label column (or row)."""
     bars = [b for b in marks.bars if not _swatch(b, words)]
     out: list[Zone] = []
     for ax in axes:
         lo_c, hi_c = ax.extent
         pad = 0.75 * (hi_c - lo_c) / max(1, len(ax.coords) - 1)
+        zero = ax.coord(0.0) if _zero_in_reach(ax, reach) else None
+        if zero is not None:  # an unlabelled zero line one step past the labels: the bars stand on it
+            lo_c, hi_c = min(lo_c, zero), max(hi_c, zero)
         same = [
             o
             for o in axes
@@ -222,7 +243,7 @@ def zones(axes: list[Axis], marks: Marks, words: list, page_w: float, page_h: fl
                     and min(o.extent[1], box[2]) - max(o.extent[0], box[0]) > 0.5 * (o.extent[1] - o.extent[0])
                 ]
                 cat_axis = min(under, key=lambda o: o.pos) if under else None
-            out.append(Zone(ax, box, zb, zl, zm, cat_axis))
+            out.append(Zone(ax, box, zb, zl, zm, cat_axis, reach))
     return out
 
 
@@ -327,7 +348,7 @@ def measured_series(z: Zone, cats: list[str], bar_mode: str = "auto") -> list[Me
                 )
                 # bars grow from zero when the axis shows it (their length is the value, stacked or not); on an
                 # axis that starts above zero a bar's value is where it ends
-                from_zero = not ax.log and min(ax.values) <= 0 <= max(ax.values)
+                from_zero = _zero_in_reach(z.axis, z.reach)
                 if bar_mode == "both" or from_zero:
                     out.append(Measured(key, ax, lens))
                 if bar_mode == "both" or not from_zero:
@@ -471,6 +492,59 @@ def bind(options: list[tuple[Unit, list[Measured]]], opts: dict) -> list[tuple[U
     return out
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"[^\w]+", " ", s.casefold()).strip()
+
+
+def legend_bind(
+    options: list[tuple[Unit, list[Measured]]],
+    pairs: list[tuple[Unit, Measured]],
+    legend: dict[tuple[int, int, int], str],
+    opts: dict,
+) -> list[tuple[Unit, Measured]]:
+    """Units the values did not bind, tied by name to a legend entry: the measured series of that colour.
+    When several drawn series have the colour (panels, two axes), the one nearest OCRia-1's reading is taken
+    only if it is clearly nearer (half the error of the next); a reading further off than `legend_max` of
+    the range is not taken at all."""
+    by_name: dict[str, tuple[int, int, int] | None] = {}
+    for color, text in legend.items():
+        k = _norm(text)
+        by_name[k] = None if k in by_name else color  # one name, two colours: no entry
+    out = list(pairs)
+    done = {id(u) for u, _ in pairs}
+    used = {m.key for _, m in pairs}
+    rng = data_range([u for u, _ in options]) or math.inf
+    for u, cands in options:
+        color = by_name.get(_norm(u.name.split(" / ")[-1]))
+        if id(u) in done or color is None:
+            continue
+        have = [i for i, v in enumerate(u.values) if v is not None]
+        best: dict[tuple, tuple[float, Measured]] = {}
+        for m in cands:
+            if m.key[1] != color or m.key in used or any(_same(m, o) for _, o in out):
+                continue
+            both = [i for i in have if m.values[i] is not None]
+            if len(have) < 3 or len(both) < max(3, opts.get("coverage", 0.7) * len(have)):
+                continue
+            span = min(m.axis.span, rng) if not m.axis.log else None
+            if not span:
+                continue
+            errs = sorted(abs(u.values[i] - m.values[i]) / span for i in both)
+            err = errs[len(errs) // 2]
+            if m.key not in best or err < best[m.key][0]:
+                best[m.key] = (err, m)
+        ranked = sorted(best.values(), key=lambda t: t[0])
+        if not ranked or ranked[0][0] > opts.get("legend_max", 0.35):
+            continue
+        if len(ranked) > 1 and ranked[0][0] > 0.5 * ranked[1][0]:
+            continue  # two drawn series of that colour fit about as well: no choice
+        m = ranked[0][1]
+        out.append((u, m))
+        used.add(m.key)
+        done.add(id(u))
+    return out
+
+
 def _same(a: Measured, b: Measured) -> bool:
     """Two readings of one drawn series (a line and the markers on its vertices)."""
     if len(a.values) != len(b.values) or a.axis is not b.axis:
@@ -529,16 +603,20 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
     if not tables or not shapes:
         return 0
     marks = find_marks(shapes, page.width, page.height)
-    axes = [snap_axis(a, marks) for a in find_axes(words)]
+    axes = [
+        snap_axis(a, marks)
+        for a in find_axes(words, years=bool(opts.get("years", True)), bent=bool(opts.get("bent", True)))
+    ]
     if not axes:
         return 0
-    zs = zones(axes, marks, words, page.width, page.height)
+    zs = zones(axes, marks, words, page.width, page.height, float(opts.get("zero_reach", 1.0)))
     if not zs:
         return 0
     changed = 0
     used: set[tuple] = set()
     mode = str(opts.get("bar_mode", "auto"))
     printed = printed_numbers(words, axes)
+    legend = find_legend(marks, words) if opts.get("legend") else {}
     for region in tables:
         base = region.chosen()
         best: tuple[int, list[tuple[Unit, Measured]]] | None = None
@@ -548,7 +626,10 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                 key = tuple(u.cats)
                 if key not in by_cats:
                     by_cats[key] = [m for z in zs for m in measured_series(z, u.cats, mode) if m.key not in used]
-            pairs = bind([(u, by_cats[tuple(u.cats)]) for u in units], opts)
+            options = [(u, by_cats[tuple(u.cats)]) for u in units]
+            pairs = bind(options, opts)
+            if legend:
+                pairs = legend_bind(options, pairs, legend, opts)
             n = sum(
                 sum(v is not None and x is not None for v, x in zip(u.values, m.values, strict=True)) for u, m in pairs
             )
