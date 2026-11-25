@@ -55,6 +55,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             cut_short = read.finish_reason == "length" or looped(markdown)
             if cut_short and len(words) >= MIN_TOKENS and reading_recall(markdown, words) < config.fallback_below:
                 markdown = text_dump(words)
+        if config.form_options:
+            from docparse.fixes.forms import repair
+            from docparse.pdf.overlay import overlay_fonts
+
+            markdown = repair(markdown, rp, overlay_fonts(pdf_bytes, index), config.form_options, pdf_bytes, index)
         page = parse_page(markdown, index=index, call_key=call.key())
         page.width, page.height, page.rotation = rp.width_pt, rp.height_pt, rp.rotation
         page.cost = CostRecord(

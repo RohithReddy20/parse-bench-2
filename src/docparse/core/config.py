@@ -17,6 +17,7 @@ LAYOUT_OPTIONS = frozenset(
         "orphans", "orphan_gap", "orphan_min", "orphan_ink",
     }
 )  # fmt: skip
+FORM_OPTIONS = frozenset({"combs", "boxes"})
 
 
 class Config(BaseModel):
@@ -32,6 +33,8 @@ class Config(BaseModel):
     # is replaced by the text layer (0 = off)
     fallback_below: float = 0.0
     layout_options: dict[str, float | bool] = Field(default_factory=dict)
+    # repairs of form pages from the text a fill tool typed on top of the page (fixes/forms.py); empty = none
+    form_options: dict[str, float | bool] = Field(default_factory=dict)
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:
@@ -54,6 +57,8 @@ class Config(BaseModel):
             target[leaf] = yaml.safe_load(value)
         if set(data.get("layout_options") or {}) - LAYOUT_OPTIONS:
             raise ValueError(f"unknown layout option(s): {sorted(set(data['layout_options']) - LAYOUT_OPTIONS)}")
+        if set(data.get("form_options") or {}) - FORM_OPTIONS:
+            raise ValueError(f"unknown form option(s): {sorted(set(data['form_options']) - FORM_OPTIONS)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")
