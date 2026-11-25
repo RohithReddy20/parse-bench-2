@@ -1,0 +1,20 @@
+serve/modal_ocria.py
+  s_a13908d8c3ae20::t_3f51dbc7c87bb2 18
+  s_a13908d8c3ae20::t_ad9130b7dddae7 122-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "235a53c1ba588f6181fac575e484596bb93dc60c",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
