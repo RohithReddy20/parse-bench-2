@@ -1,0 +1,22 @@
+src/docparse/pdf/upright.py
+  s_a13908d8c3ae20::t_7bf6cbfab50489 15-18,21-23,25-29,32-40,42-47
+  s_a13908d8c3ae20::t_1e85421dedf75c 24,41
+configs/own_best.yaml
+  s_a13908d8c3ae20::t_ec622806c8771f 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "614f50e11443da40e6c80a1a7a93e9bdc875c966",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
