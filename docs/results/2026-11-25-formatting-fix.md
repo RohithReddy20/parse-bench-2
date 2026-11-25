@@ -14,9 +14,15 @@ documents). "Dev" is the development part, "check" the check slice. Options live
 | Base (`fm-base`: stand-ins + text-layer fallback for looped reads) | 91.78 | 91.23 | 91.66 |
 | Kept (`fm-marker`: cell_strike + strike + unbold + list_marker) | 93.10 | 92.63 | 92.99 |
 | Kept + text respell (`fm-respell`, the final configuration) | 93.10 | 92.64 | 93.00 |
+| Same, re-run with the final committed code (`fm-final`, `configs/standin_textfmt.yaml`) | 93.10 | 92.64 | 93.00 |
 
-Formatting +1.34 on all pages (+1.32 dev, +1.41 check); that is +0.22 on the overall score. The target was 93:
-reached on the final configuration (93.00), with no margin.
+Formatting +1.34 on all pages (+1.32 dev, +1.41 check, P 1.00 on both); that is +0.22 on the overall score. The
+target was 93: reached on the final configuration (93.00), with no margin.
+
+`fm-final` was run after two code changes that should not move scores: the edit distance moved off `rapidfuzz`,
+and long token sequences are now cut at unique anchors before difflib (difflib took minutes on dense tables full
+of repeated digits; pairs up to 4M token pairs, which is every page that changed here but one, align exactly as
+before). One text page differs from `fm-respell` (three more bold spans removed), with no score change.
 
 ## Variants, one at a time
 
