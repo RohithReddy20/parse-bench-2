@@ -9,6 +9,8 @@
     unbold       a `**...**` span in a paragraph or list loses its asterisks when the PDF sets at least 80% of its
                  aligned words in a regular face, on a page whose fonts do carry bold (some word is in a bold
                  face). Bold inside headings is the heading's and is left alone
+    drop_underline  a `<u>...</u>` span loses its tags when the PDF draws no line under any of its aligned words,
+                 on a page that draws its decorations as lines (some word is underlined or struck)
     list_marker  a list marker the reading wrapped in emphasis at the start of a line (`**1.** text`) becomes list
                  syntax (`1. text`): markdown reads no list there, and the marker is list syntax either way
 
@@ -22,7 +24,7 @@ import re
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align import TOKEN, key, match, tokens
 
-FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "unbold", "list_marker"})
+FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "unbold", "list_marker", "drop_underline"})
 READER = "fix.formatting"
 PROSE = frozenset({"paragraph", "list", "heading"})
 MIN_STRUCK = 0.5  # share of a PDF token's characters a line must cross
@@ -32,13 +34,14 @@ _RUN_BREAK = frozenset("\n<>|~*_[]()`$")  # a struck run never crosses a line, a
 _BOLD_SPAN = re.compile(r"(?<!\*)\*\*(?=[^\s*])(.+?)(?<=[^\s*])\*\*(?!\*)", re.S)
 _MARKER = r"(?:[-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z][.)]|[ivx]{1,4}[.)])"
 _STYLED_MARKER = re.compile(r"(?m)^([ \t]*)(\*\*|__)(" + _MARKER + r")\2[ \t]+(?=\S)")
+_UNDER_SPAN = re.compile(r"<(u|ins)>(.*?)</\1\s*>", re.S | re.I)
 REGULAR_SHARE = 0.8  # of a bold span's aligned words that must be in a regular face
 ALIGNED_SHARE = 0.5  # of a bold span's words that must be aligned to the text layer
 
 
 def needs_decorations(options: dict) -> bool:
     """Does the fix need the strikethrough / underline marks of the text layer?"""
-    return bool(options.get("strike"))
+    return bool(options.get("strike") or options.get("drop_underline"))
 
 
 def needs_styles(options: dict) -> bool:
@@ -160,6 +163,31 @@ def _unbold(page: Page, raws: list[str], words) -> list[str]:
     return out
 
 
+def _drop_underline(page: Page, raws: list[str], words) -> list[str]:
+    if not any("u" in w.marks or "s" in w.marks for w in words):
+        return raws  # the page draws no decoration lines: no evidence either way
+    keys, under = [], []
+    for w in words:
+        for m in TOKEN.finditer(w.text):
+            keys.append(key(m.group()))
+            marks = w.marks[m.start() : m.end()]
+            under.append(bool(marks) and marks.count("u") >= 0.5 * len(marks))
+    per_region = [tokens(raw) for raw in raws]
+    partner = match([t[2] for toks in per_region for t in toks], keys)
+    out, pos = list(raws), 0
+    for r, (raw, toks) in enumerate(zip(raws, per_region, strict=True)):
+        mine = partner[pos : pos + len(toks)]
+        pos += len(toks)
+        new = raw
+        for m in reversed(list(_UNDER_SPAN.finditer(raw))):
+            inside = [i for i, t in enumerate(toks) if m.start(2) <= t[0] < m.end(2)]
+            lines = [under[mine[i]] for i in inside if mine[i] >= 0]
+            if inside and len(lines) >= ALIGNED_SHARE * len(inside) and not any(lines):
+                new = new[: m.start()] + m.group(2) + new[m.end() :]
+        out[r] = new
+    return out
+
+
 def refine_format(page: Page, rendered, options: dict) -> None:
     """Apply the enabled options to the page's regions (a changed region gets a new selected candidate)."""
     raws = [region.chosen().raw for region in page.regions]
@@ -172,6 +200,8 @@ def refine_format(page: Page, rendered, options: dict) -> None:
         new = _strikes(page, new, words)
     if options.get("unbold") and words:
         new = _unbold(page, new, words)
+    if options.get("drop_underline") and words:
+        new = _drop_underline(page, new, words)
     if options.get("list_marker"):
         new = [_STYLED_MARKER.sub(r"\1\3 ", raw) if region.kind in ("paragraph", "list") else raw
                for region, raw in zip(page.regions, new, strict=True)]  # fmt: skip

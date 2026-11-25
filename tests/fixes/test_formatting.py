@@ -64,6 +64,13 @@ def test_nothing_changes_without_marks_or_options():
     assert _fixed(md, {"strike": True}, None) == md
 
 
+def test_underline_the_pdf_draws_no_line_under_is_dropped():
+    rendered = _rendered("0.8 w 72 698 m 99 698 l S")  # a line under "Hello" only
+    md = "<u>Hello</u> <u>world</u>"
+    assert _fixed(md, {"drop_underline": True}, rendered) == "<u>Hello</u> world"
+    assert _fixed(md, {"drop_underline": True}, _rendered(draw="")) == md  # no lines at all: no evidence
+
+
 def test_a_list_marker_wrapped_in_emphasis_becomes_list_syntax():
     md = "**Fact Check**\n**1.** a\n**2.** b\n\n__a)__ first\n\nSee **1.** above"
     assert _fixed(md, {"list_marker": True}) == "**Fact Check**\n1. a\n2. b\n\na) first\n\nSee **1.** above"
