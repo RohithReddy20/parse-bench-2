@@ -1,0 +1,14 @@
+# Stand-in readings with the table corrections that passed on the development part (docs/results, tables fix):
+# rows narrower than their table get empty cells so their cells sit in the columns their PDF words lie in, and
+# rows written with a stray empty cell have their empty cells laid out again.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+layout: from_page_read
+table_options:
+  regrid: true
+  regrid_wide: true

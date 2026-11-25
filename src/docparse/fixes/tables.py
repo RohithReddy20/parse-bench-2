@@ -10,11 +10,14 @@
     merge    two tables the reading wrote one after the other but that stand side by side on the same text lines
              become one table, when the right one has no row labels of its own and does not repeat the left
              one's row-label header (repeated column groups stay separate tables).
+    extend   a header row still narrower than its table whose last cell spans columns and ends the row: that cell
+             spans to the table's last column. This one needs no text layer (it also runs on scans).
     health   share of a table's text cells that must be found word for word on the page before anything in the
              table is changed (default 0.5). A broken font map or a stale OCR layer finds few cells, and the
              model's table stays as it is.
 
-A table the options do not change is written back byte for byte, and a page without a text layer is untouched.
+A table the options do not change is written back byte for byte, and a page without a text layer is untouched by
+every option but `extend`.
 The corrected table is a new candidate of its region (reader "fix.tables.pdf"); OCRia-1's reading stays in the IR.
 """
 
@@ -45,12 +48,10 @@ class _Found:
 
 def fix_tables(page: Page, rendered: RenderedPage, options: dict) -> None:
     """Apply the enabled options to every HTML table region of the page, in reading order."""
-    if not any(options.get(k) for k in ("regrid", "complete", "merge")):
+    if not any(options.get(k) for k in ("regrid", "complete", "merge", "extend")):
         return
     words = page_words(rendered)
-    if not words:
-        return
-    lines = lines_of(words)
+    lines = lines_of(words) if words else []
     health = float(options.get("health", 0.5))
     used: set[int] = set()
     found: list[_Found] = []
@@ -61,15 +62,22 @@ def fix_tables(page: Page, rendered: RenderedPage, options: dict) -> None:
             table = parse_table(base.raw)
             if table is None:
                 continue
-            al = align_table(table, lines, used)
-            for ws in al.words.values():
-                used.update(w.index for w in ws)
-            healthy = bool(al.cells) and al.found >= health
-            found.append(_Found(region, table, al, healthy))
-            if healthy and options.get("regrid") and regrid(table, al, lines, used, bool(options.get("regrid_wide"))):
+            what = []
+            if lines:
+                al = align_table(table, lines, used)
+                for ws in al.words.values():
+                    used.update(w.index for w in ws)
+                healthy = bool(al.cells) and al.found >= health
+                found.append(_Found(region, table, al, healthy))
+                wide = bool(options.get("regrid_wide"))
+                if healthy and options.get("regrid") and regrid(table, al, lines, used, wide):
+                    what.append("regrid")
+            if options.get("extend") and extend_header(table):
+                what.append("extend")
+            if what:
                 table.changed = True
-                new[region.id] = (table.render(), "regrid")
-        elif region.kind == "opaque" and options.get("complete") and base.raw.lower().startswith("<table"):
+                new[region.id] = (table.render(), "+".join(what))
+        elif region.kind == "opaque" and lines and options.get("complete") and base.raw.lower().startswith("<table"):
             raw = complete_truncated(base.raw, lines, used, health)
             if raw is not None:
                 new[region.id] = (raw, "complete")
@@ -135,8 +143,8 @@ def column_of(x0: float, x1: float, colspan: int, bands: Bands, width: int) -> i
 
 
 def _header_spans(row_cells: list[HCell], lines: list[list[TWord]], top: int, used: set[int]) -> dict[int, tuple]:
-    """For a header row no line was matched to: each cell whose every written line occurs exactly once on the
-    lines just above the table body, with the x-span of those words."""
+    """For a header row no line was matched to: each cell with a written line that occurs exactly once on the
+    lines just above the table body, with the x-span of the words of those lines."""
     out = {}
     for cell in row_cells:
         parts = [fold(p) for p in cell.lines]
@@ -186,6 +194,29 @@ def regrid(table: HTable, al: Alignment, lines: list[list[TWord]], used: set[int
             if cells is None:
                 continue
         row.cells, row.edited = cells, True
+        table.place()
+        changed = True
+    return changed
+
+
+_COLSPAN = re.compile(r"colspan\s*=\s*[\"']?\d+[\"']?", re.I)
+
+
+def extend_header(table: HTable) -> bool:
+    """A header row narrower than its table whose last cell is a group header (it spans columns and nothing
+    follows it) gets that cell spanned to the table's last column: the label stands over the columns the reading
+    left without a header. True when any row changed."""
+    width, changed = table.width(), False
+    for r, row in enumerate(table.rows):
+        own = table.row_width(r)
+        if not row.cells or own >= width or not all(c.tag == "th" for c in row.cells):
+            continue
+        last = row.cells[-1]
+        if last.colspan < 2 or not last.text or last.col + last.colspan != own:
+            continue
+        span = last.colspan + width - own
+        last.attrs = _COLSPAN.sub(f'colspan="{span}"', last.attrs)
+        last.colspan, last.raw = span, ""
         table.place()
         changed = True
     return changed

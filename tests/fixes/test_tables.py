@@ -197,6 +197,20 @@ def test_one_table_read_as_two_side_by_side_is_merged():
     assert write_page(_fixed(LEFT + "\n\n" + repeated, rendered, {"merge": True})) == LEFT + "\n\n" + repeated
 
 
+def test_a_group_header_that_ends_a_short_header_row_spans_the_rest_of_the_table():
+    md = (
+        "<table><tr><th></th><th colspan='2'>Percent Change</th></tr>"
+        "<tr><th></th><th>Volume</th><th>Price</th><th>Total</th></tr>"
+        "<tr><td>Europe</td><td>1</td><td>2</td><td>3</td></tr></table>"
+    )
+    bare = _rendered()
+    bare.text_words = bare.words = None  # no text layer needed
+    out = write_page(_fixed(md, bare, {"extend": True}))
+    assert out == md.replace("<th colspan='2'>Percent Change</th>", '<th colspan="3">Percent Change</th>')
+    single = md.replace("<th colspan='2'>Percent Change</th>", "<th>Change</th>")  # not a group header
+    assert write_page(_fixed(single, bare, {"extend": True})) == single
+
+
 def test_tables_that_fit_their_page_are_written_back_unchanged():
     md = TITLE + SHORT_HEADER.replace("<tr><th>Year</th>", "<tr><th></th><th>Year</th>")
     page = _fixed(md, _rendered())

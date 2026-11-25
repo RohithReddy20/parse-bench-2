@@ -17,7 +17,7 @@ LAYOUT_OPTIONS = frozenset(
         "orphans", "orphan_gap", "orphan_min", "orphan_ink",
     }
 )  # fmt: skip
-TABLE_OPTIONS = frozenset({"regrid", "regrid_wide", "complete", "merge", "health"})  # fixes/tables.py
+TABLE_OPTIONS = frozenset({"regrid", "regrid_wide", "complete", "merge", "extend", "health"})  # fixes/tables.py
 
 
 class Config(BaseModel):
