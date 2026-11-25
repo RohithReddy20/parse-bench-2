@@ -52,9 +52,10 @@ def test_blank_line_rules():
     )
     assert blank_line("Telephone Number (999) 999-9999: [___]") == "Telephone Number (999 999-9999): [___]"
     assert blank_line("**Code postal :** [___]") == "**Code postal :** [___]"
-    assert blank_line("**38** Amount from line 37 (adjusted gross income) **38**: [___]") == (
-        "**38** Amount from line 37 (adjusted gross income): [___]"  # the line number printed again at the box
-    )
+    line = "**38** Amount from line 37 (adjusted gross income) **38**: [___]"
+    assert blank_line(line) == line  # the line's own number printed again at its box is read as its id
+    line = "**b** Nontaxable combat pay election **66b**: [___]"
+    assert blank_line(line) == line
     assert blank_line("**7** Wages. Attach Form(s) W-2: [___]") == "**7** Wages. Attach Form(s) W-2: [___]"
     assert blank_line("**14** Other gains. Attach Form 4797: [___]") == "**14** Other gains. Attach Form 4797: [___]"
     assert blank_line("**35** Add lines 23 through 34a: [___]") == "**35** Add lines 23 through 34a: [___]"
@@ -67,7 +68,9 @@ def test_a_cell_ending_in_box_decoration_or_a_worded_hint_gets_a_blank_marker():
     )
     assert hint_text("Branch number (5 digits)") == "Branch number (5 digits): [___]"
     assert hint_text("Geburtsort (falls Ausland: auch Staat)") == "Geburtsort (falls Ausland auch Staat): [___]"
+    assert hint_text("22. Chassis No. (Affix Pencil print)") == "22. Chassis No. (Affix Pencil print): [___]"
     assert hint_text("IHT401") is None  # a code, not a decoration
+    assert hint_text("Déclaration de l'assuré(e)") is None
     assert hint_text("Advertising") is None
     assert hint_text("Yes [ ] 5") is None  # a box
 

@@ -134,11 +134,10 @@ def _before_colon(cap: str, at: int, printed: Printed | None) -> str | None:
         before = cap[: m.start(1)].rstrip(" \t")
         # a code: lettered (1TZ, D15) or set apart by emphasis; not the last number of a sum (`233 + 237`)
         apart = re.search(r"[*_>][ \t]*$", before) or re.search(r"[A-Z]", m.group(1))
-        if apart and not re.search(r"[-+×=/][ \t*_]*$", before):
+        first = re.match(r"[\[(*_ \t]*([0-9]{1,3}[a-zA-Z]?|[a-zA-Z])\b[\])*_.]*[ \t]", cap[lead:])
+        # a line that opens with its own id keeps the code (its id printed again at the box: read as the id)
+        if apart and first is None and not re.search(r"[-+×=/][ \t*_]*$", before):
             code, body, moved_from = m.group(1), cap[: m.start(1)], m.start(1)
-            first = re.match(r"[\[(*_ \t]*([0-9]{1,3}[a-zA-Z]?)\b", cap[lead:])
-            if first and first.group(1) == code:
-                code = ""  # the line's own number printed again at its box: dropped
     body = body.rstrip(" \t*_")
     hint = ""
     opens = list(_ITALIC_OPEN.finditer(body))
@@ -225,7 +224,7 @@ def _deco(text: str, lead: int = 0) -> tuple[str, str] | None:
     m = _DECO.search(text)
     if not m or m.start() <= lead or not re.search(r"[0-9A-Za-z]", m.group(0)):
         return None
-    if m.start() > 0 and text[m.start() - 1].isalnum() and not m.group(0)[0].isspace():
+    if m.start() > 0 and text[m.start() - 1].isalnum() and (m.group(0)[0].isalnum() or m.group(0)[0] in "-–([/"):
         return None  # part of a word: IHT401, W-2, assuré(e)
     body, deco = text[: m.start()], m.group(0)
     if not _WORDS.search(EMPH.sub(" ", body[lead:])):
