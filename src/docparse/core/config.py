@@ -40,6 +40,7 @@ CHART_OPTIONS = frozenset(
         "snap",
         "snap_tol",
         "panels",
+        "anchors",
     }
 )
 

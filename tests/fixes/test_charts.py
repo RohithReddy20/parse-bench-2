@@ -110,6 +110,16 @@ def test_small_multiples_keep_their_own_axis():
     assert all(z.side == "left" for z in own)
 
 
+def test_lost_minus_signs_are_restored_on_request():
+    # "20 10 0 10 20 30" down a column, then a stray 0: the labels below zero lost their minus glyphs
+    col = [
+        PtWord(t, 40, 300 + 13 * i, 50, 306 + 13 * i) for i, t in enumerate(("20", "10", "0", "10", "20", "30", "0"))
+    ]
+    assert find_axes(col, signs=False, upright=True) == []
+    (axis,) = find_axes(col, signs=True, upright=True)
+    assert axis.values == [20, 10, 0, -10, -20, -30] and axis.value(303 + 13 * 4) == pytest.approx(-20)
+
+
 def test_legend_names_colours():
     from docparse.fixes.charts_geometry import find_legend
 

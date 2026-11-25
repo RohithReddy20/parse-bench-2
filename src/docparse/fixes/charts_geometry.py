@@ -151,6 +151,19 @@ def _runs(members: list[tuple[float, float, object]]) -> list[list[tuple[float, 
     return [r for r in out if len(r) >= 3]
 
 
+def _monotone(run: list[tuple[float, float, object]]) -> list[list[tuple[float, float, object]]]:
+    """Maximal strictly monotone pieces (of three labels or more) of an evenly spaced run."""
+    out: list[list[tuple[float, float, object]]] = []
+    cur = run[:1]
+    for m in run[1:]:
+        if len(cur) >= 2 and (m[1] - cur[-1][1]) * (cur[-1][1] - cur[-2][1]) <= 0:
+            out.append(cur)
+            cur = [cur[-1]] if m[1] != cur[-1][1] else []
+        cur.append(m)
+    out.append(cur)
+    return [r for r in out if len(r) >= 3]
+
+
 def _bent(run: list[tuple[float, float, object]], nums: list[tuple[object, float]], orient: str) -> bool:
     """The label just past either end of the run, in line with it, continues its values (the next tick) but
     not its spacing: the scale is not linear (a designed chart), so no value can be read from it."""
@@ -180,18 +193,26 @@ def _bent(run: list[tuple[float, float, object]], nums: list[tuple[object, float
 
 def _restore_signs(row: list[tuple[float, float, object]], orient: str) -> list[tuple[float, float, object]]:
     """Labels that fall to 0 and rise again ("20 10 0 10 20 30" down a column) lost their minus signs (a font
-    without the glyph in its text map): the side below zero (left of it on a horizontal axis) is negative."""
+    without the glyph in its text map): the side below zero (left of it on a horizontal axis) is negative.
+    Each zero with at least one label falling to it and one rising from it is a V; other labels stay."""
     vals = [v for _, v, _ in row]
-    zeros = [i for i, v in enumerate(vals) if v == 0]
-    if len(zeros) != 1 or not 0 < zeros[0] < len(vals) - 1 or min(vals) < 0:
+    if min(vals, default=0) < 0:
         return row
-    z = zeros[0]
-    if not all(p > q for p, q in zip(vals[:z], vals[1 : z + 1], strict=True)):
-        return row
-    if not all(p < q for p, q in zip(vals[z:], vals[z + 1 :], strict=False)):
-        return row
-    flip = (lambda i: i > z) if orient == "v" else (lambda i: i < z)
-    return [(c, -v if flip(i) else v, w) for i, (c, v, w) in enumerate(row)]
+    out = list(vals)
+    for z, v in enumerate(vals):
+        if v != 0:
+            continue
+        a = z
+        while a > 0 and vals[a - 1] > vals[a]:
+            a -= 1
+        b = z
+        while b < len(vals) - 1 and vals[b + 1] > vals[b]:
+            b += 1
+        if a == z or b == z:
+            continue
+        for i in range(z + 1, b + 1) if orient == "v" else range(a, z):
+            out[i] = -vals[i]
+    return [(c, out[i], w) for i, (c, _, w) in enumerate(row)]
 
 
 def _expand_years(row: list[tuple[float, float, object]]) -> list[tuple[float, float, object]]:
@@ -241,7 +262,7 @@ def find_axes(
                     along = _expand_years(along)
                 if signs:
                     along = _restore_signs(along, orient)
-                for run in _runs(along):
+                for run in (m for r in _runs(along) for m in (_monotone(r) if signs else [r])):
                     ids = frozenset(id(m[2]) for m in run)
                     if ids in seen or (bent and _bent(run, nums, orient)):
                         continue

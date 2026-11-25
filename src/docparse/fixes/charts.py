@@ -364,9 +364,14 @@ def _vertices(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
 
 
 def measured_series(
-    z: Zone, cats: list[str], bar_mode: str = "auto", reverse: bool = False, labels: bool = False
+    z: Zone,
+    cats: list[str],
+    bar_mode: str = "auto",
+    reverse: bool = False,
+    labels: bool = False,
+    anchors: bool = False,
 ) -> list[Measured]:
-    out = _measured(z, cats, bar_mode, reverse, labels)
+    out = _measured(z, cats, bar_mode, reverse, labels, anchors)
     for m in out:
         m.side, m.box = z.side, z.box
     return out
@@ -392,7 +397,9 @@ def _by_position(bars: list[Bar], pos: list[float | None], vertical: bool) -> li
     return out
 
 
-def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bool = False) -> list[Measured]:
+def _measured(
+    z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bool = False, anchors: bool = False
+) -> list[Measured]:
     n = len(cats)
     ax = z.axis
     out: list[Measured] = []
@@ -405,6 +412,16 @@ def _measured(z: Zone, cats: list[str], bar_mode: str, reverse: bool, labels: bo
         pos = label_positions(cats, z.words, z.plot, vertical)
         if slots is None and pos is not None:
             slots = _by_position(z.bars, pos, vertical)
+    if slots is None and anchors and z.bars:
+        # a series of markers with one mark per category places the categories for bars with gaps
+        groups: dict[tuple[int, int, int], list[float]] = {}
+        for x, y, c in z.markers:
+            groups.setdefault(c, []).append(x if vertical else y)
+        for coords in groups.values():
+            coords = sorted(coords)
+            if len(coords) == n and all(q - p > 1.0 for p, q in zip(coords, coords[1:], strict=False)):
+                slots = _by_position(z.bars, coords, vertical)
+                break
     if slots is not None:
         colors = {b.color for b in z.bars}
         for color in colors:
@@ -816,7 +833,12 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                         m
                         for z in zs
                         for m in measured_series(
-                            z, u.cats, mode, bool(opts.get("reverse", False)), bool(opts.get("labels", False))
+                            z,
+                            u.cats,
+                            mode,
+                            bool(opts.get("reverse", False)),
+                            bool(opts.get("labels", False)),
+                            bool(opts.get("anchors", False)),
                         )
                         if m.key not in used
                     ]
