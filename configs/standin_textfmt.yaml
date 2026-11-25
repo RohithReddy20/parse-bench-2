@@ -1,0 +1,20 @@
+# Stand-in readings with the text and formatting corrections that passed on the development part
+# (docs/results/2026-11-25-formatting-fix.md, 2026-11-25-text-fix.md): strikes in table cells as <s>, strikes
+# from lines drawn through PDF words, bold the PDF prints in a regular face removed, emphasised list markers as
+# list syntax, and slightly misread words respelled from a trusted text layer.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+fallback_below: 0.5  # looped or truncated reads fall back to the PDF text layer
+layout: from_page_read
+format_options:
+  cell_strike: true
+  strike: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true

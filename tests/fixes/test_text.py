@@ -94,6 +94,8 @@ def test_an_empty_read_of_a_page_full_of_text_falls_back_to_the_text_layer():
     assert dumped.startswith("line 0 of the page holds") and dumped.count("\n") == 7
     partial = "line 0 of the page holds several words of body text"  # a short read is still a read
     assert write_document(parse(pdf, on, Client(partial)).document) == partial
+    other = " ".join(f"word{i}" for i in range(40))  # a full read sharing no word with the layer: a broken layer
+    assert write_document(parse(pdf, on, Client(other)).document) == other
 
 
 def test_text_options_are_validated():

@@ -8,8 +8,9 @@
               number of the same length. Edits where the layer shows its own artefacts are refused: a modifier
               letter, a capital inside a lower-case word, or a change at a ligature (fi, fl, ff, ft) the layer may
               have mis-mapped
-    empty_read  a read holding under 5% of the words of a visible, well-mapped text layer of 50 words or more (the
-              model wrote next to nothing for a page full of text) is replaced by the text layer as plain lines
+    empty_read  a read with fewer words than 5% of a visible, well-mapped text layer of 50 words or more (the model
+              wrote next to nothing for a page full of text) is replaced by the text layer as plain lines. Only the
+              read's length counts: a long read that shares no words with the layer means a broken layer
 
 A region the options do not change keeps its base candidate, so it is written back byte for byte.
 """
@@ -39,7 +40,7 @@ LIGATURES = ("fi", "fl", "ff", "ft")
 _MARKUP = re.compile(r"<[^>\n]*>|\]\([^)\n]*\)")  # tags and link targets are not text
 
 
-EMPTY_READ = 0.05  # share of the layer's words under which a read counts as empty
+EMPTY_READ = 0.05  # a read with fewer words than this share of the layer's counts as empty
 
 
 def needs_layer(options: dict) -> bool:
@@ -48,13 +49,14 @@ def needs_layer(options: dict) -> bool:
 
 def empty_read(markdown: str, rendered) -> str | None:
     """The text layer as plain lines when the read is empty next to a visible, well-mapped layer; else None."""
-    from docparse.fixes.fallback import MIN_TOKENS, reading_recall, text_dump
+    from docparse.fixes.fallback import MIN_TOKENS, text_dump
     from docparse.fixes.layout_refine import words_in_points
 
     if rendered.hidden is None or rendered.hidden > MAX_HIDDEN or (rendered.map_errors or 0) > MAX_MAP_ERRORS:
         return None
     words = words_in_points(rendered)
-    if len(words) < MIN_TOKENS or reading_recall(markdown, words) >= EMPTY_READ:
+    layer = sum(len(TOKEN.findall(w.text)) for w in words)
+    if len(words) < MIN_TOKENS or len(_text_tokens(markdown)) >= EMPTY_READ * layer:
         return None
     return text_dump(words)
 
