@@ -1,0 +1,21 @@
+tests/fixes/test_forms_acro.py
+  s_a13908d8c3ae20::t_37d7929f6c8923 77-83
+src/docparse/fixes/forms_acro.py
+  s_a13908d8c3ae20::t_710cdd88714e64 46-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "390dea729934d0031f73a12b303b10492ab79ebb",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
