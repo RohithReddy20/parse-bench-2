@@ -1,27 +1,28 @@
-# Our own run with every kept correction: 87.41
+# Our own run with every kept correction: 87.54
 
-Date: 2026-11-25. Ledger run `own-best2`, config `configs/own_best.yaml`, pipeline name `docparse_best`. All 13
+Date: 2026-11-25. Ledger run `own-best3`, config `configs/own_best.yaml`, pipeline name `docparse_best`. All 13
 subsets, 4,317 pages, scored by the harness. The page readings are our own OCRia-1 run (vLLM 0.34.0 on Modal);
 nothing here uses OCRia-1's published outputs.
 
 | Dimension | Published OCRia-1 | Our run + corrections | Change | Dev | Check | Target |
 |---|---:|---:|---:|---:|---:|---:|
-| **Overall** | 85.24 | **87.41** | +2.17 | 87.41 | 87.45 | 89 |
-| Text | 87.87 | 88.41 | +0.54 | 88.38 | 88.52 | 89.5 |
-| Formatting | 91.58 | 93.06 | +1.48 | 93.19 | 92.62 | 93 |
-| Tables | 86.28 | 88.22 | +1.93 | 87.39 | 91.49 | 90 |
+| **Overall** | 85.24 | **87.54** | +2.29 | 87.56 | 87.49 | 89 |
+| Text | 87.87 | 88.43 | +0.55 | 88.38 | 88.60 | 89.5 |
+| Formatting | 91.58 | 93.04 | +1.46 | 93.19 | 92.55 | 93 |
+| Tables | 86.28 | 88.97 | +2.68 | 88.32 | 91.58 | 90 |
 | Charts | 77.66 | 80.83 | +3.18 | 80.88 | 80.61 | 81 |
 | Layout | 85.96 | 90.24 | +4.28 | 91.14 | 86.95 | 88.8 |
 | Forms | 82.10 | 83.71 | +1.61 | 83.47 | 84.49 | 87.5 |
 
 - **Against the board:** second place is Claude Opus 5.5 at 87.13 and first is LlamaParse Agentic Plus at
-  90.95. 87.41 is 0.28 above second place. That is a real but thin margin: one OCRia-1 run differs from
+  90.95. 87.54 is 0.41 above second place. That is a real but thin margin: one OCRia-1 run differs from
   another by up to 0.4 on a single dimension (charts), which is under 0.1 on the overall score.
-- **The check slice** (pages no rule was tuned on) scores 87.45, level with the development part (87.41), so
+- **The check slice** (pages no rule was tuned on) scores 87.49, level with the development part (87.56), so
   the result is not fitted to the development pages.
 - **History of this number:** 86.93 with the first round of corrections, 87.14 with KDL nano v2 added as a
-  second layout detector (run `own-best`), 87.41 with the second round on forms, charts and tables.
-- **What is on:** looped-read and empty-read fallbacks; table grid repairs; form comb values, check-box
+  second layout detector (run `own-best`), 87.41 with the second round on forms, charts and tables (run
+  `own-best2`), 87.54 with pages printed sideways or upside down read upright.
+- **What is on:** upright reading of turned pages; looped-read and empty-read fallbacks; table grid repairs; form comb values, check-box
   states and row repairs (line numbers and box codes joined to captions); chart values measured from the
   vector drawing and bound by legend colour; strikeout, bold, list-marker and respelling repairs; layout
   rebuilt from heron regions, PDF words and OCRia-1's attention, tightened to PDF words, with items for
@@ -49,8 +50,8 @@ swap (90.24).
 | Dimension | Now | Target | Gap in overall points |
 |---|---:|---:|---:|
 | Forms | 83.71 | 87.5 | 0.63 |
-| Tables | 88.22 | 90 | 0.30 |
-| Text | 88.41 | 89.5 | 0.18 |
+| Tables | 88.97 | 90 | 0.17 |
+| Text | 88.43 | 89.5 | 0.18 |
 | Charts | 80.83 | 81 | 0.03 |
 
 Formatting and layout are at or above their targets. Also open: the 58 page reads that hit the token limit
@@ -72,3 +73,22 @@ neither passes the keep rule as it stands. The upper bound had looked like 0.5 p
 that finish are no better than the first read cut short, and the looped-read fallback already covers the
 worst pages. The option stays in the code, off. A sharper rule (use the second read only when it holds more
 of the PDF's words than the first) is the obvious next try if this is revisited.
+
+## Upright reading of turned pages: kept
+
+45 pages of the benchmark are printed sideways or upside down (41 in `tables`, 2 in `financial_tables`, 1 in
+`dense_tables`, 1 in `text`). The text layer shows which way the text runs; the pipeline turns such a page
+upright before OCRia-1 reads it and before any correction (`upright_read`, `src/docparse/pdf/upright.py`).
+61 upright page reads were made on Modal (about 10 minutes, $0.35) for the first, looser detector.
+
+| Variant | Tables dev | Tables check | Tables all | Text | Formatting | Charts |
+|---|---:|---:|---:|---:|---:|---:|
+| `own-best2` | 87.39 | 91.49 | 88.22 | 88.41 | 93.06 | 80.83 |
+| Upright, first detector (61 pages) | 88.35 | 91.85 | 89.04 | 88.09 | 92.85 | 80.62 |
+| Upright, guarded detector (45 pages) | 88.32 | 91.58 | 88.97 | 88.43 | 93.04 | 80.83 |
+
+The first detector also turned Farsi, Arabic and Hebrew pages (right-to-left text is stored "backwards" on an
+upright page) and charts with a few rotated labels, which cost text 0.32 and charts 0.21. The guarded
+detector skips right-to-left scripts, needs nearly every line to agree after the turn, and for a quarter turn
+needs nearly all longer words to stand on end. It keeps almost all of the tables gain (+0.75, P 1.00 on the
+development part, +0.09 on the check slice) and leaves the other dimensions where they were.
