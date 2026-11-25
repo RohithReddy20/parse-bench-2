@@ -1,0 +1,72 @@
+tests/fixes/test_forms_tables.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-139
+src/docparse/fixes/forms_tables.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-412
+tests/fixes/test_forms_wave3.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-43
+tests/fixes/test_forms_combs.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-67
+src/docparse/fixes/forms_lines.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-213
+src/docparse/core/config.py
+  s_a13908d8c3ae20::t_71aa4ce4c43745 43-50
+tests/fixes/test_forms_lines.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-62
+tests/fixes/test_forms_wave4.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-68
+src/docparse/fixes/forms_wave3.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-201
+src/docparse/fixes/forms_combs.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-139
+tests/fixes/test_forms_acro.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-76
+src/docparse/fixes/forms_clean.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-281
+src/docparse/fixes/forms_acro.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-298
+src/docparse/fixes/forms_n_slots.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-191
+src/docparse/fixes/forms_wave4.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-288
+tests/fixes/test_forms_n_grids.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-72
+tests/fixes/test_forms_n_slots.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-71
+tests/fixes/test_forms_blank.py
+  s_a13908d8c3ae20::t_26ba6947c3ea57 7,24,35,39-40,42,45
+  s_a13908d8c3ae20::t_767f00c77ff375 46-48
+  s_a13908d8c3ae20::t_f68c41285928cc 1-6,8-23,25-34,36-38,41,43-44
+src/docparse/fixes/forms_n_grids.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-226
+src/docparse/fixes/forms_blank.py
+  s_a13908d8c3ae20::t_26ba6947c3ea57 1
+  s_a13908d8c3ae20::t_f68c41285928cc 2-143
+tests/fixes/test_forms_clean.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-70
+tests/fixes/test_forms_wave2.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-61
+src/docparse/fixes/forms.py
+  s_a13908d8c3ae20::t_53ab21cfc54e9d 382-387
+  s_a13908d8c3ae20::t_458c348777346b 318-328,330-333,342-346,350-354,364,368
+  s_a13908d8c3ae20::t_9927872997878a 392-404,406-417,419
+  s_a13908d8c3ae20::t_a0012b35fe24f2 14-17
+  s_a13908d8c3ae20::t_1a05753d7110d5 388-391,405,418,420-432
+src/docparse/fixes/forms_wave2.py
+  s_a13908d8c3ae20::t_f68c41285928cc 1-232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "332fdaec172ba6ab232c4eb017ff61b571dac03b",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
