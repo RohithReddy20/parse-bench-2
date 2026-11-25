@@ -1,0 +1,21 @@
+configs/standin_layout.yaml
+  s_a13908d8c3ae20::t_b62364db5919e8 11
+docs/results/2026-11-25-forms-findings.md
+  s_a13908d8c3ae20::t_b9c08da9931fe8 82-104,115-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e7bf287445ffd4251a61658ccfb85d997f62432",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
