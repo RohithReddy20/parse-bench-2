@@ -1,0 +1,23 @@
+tests/fixes/test_tables.py
+  s_a13908d8c3ae20::t_a05afdba0c0833 190-194
+src/docparse/fixes/tables.py
+  s_a13908d8c3ae20::t_257f82fe9d8752 207-209
+  s_a13908d8c3ae20::t_8e460a7168398a 214
+  s_a13908d8c3ae20::t_8ae65a3debc524 235-236,240-243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a82bdfd8a3a693174bbee6b3e13ecb05f720920b",
+  "prompts": {},
+  "sessions": {
+    "s_a13908d8c3ae20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b36a78-221b-47c1-83be-12aa9aff1898",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
