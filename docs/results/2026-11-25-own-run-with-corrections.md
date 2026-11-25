@@ -1,27 +1,28 @@
-# Our own run with every kept correction: 87.54
+# Our own run with every kept correction: 87.67
 
-Date: 2026-11-25. Ledger run `own-best3`, config `configs/own_best.yaml`, pipeline name `docparse_best`. All 13
+Date: 2026-11-25. Ledger run `own-best4`, config `configs/own_best.yaml`, pipeline name `docparse_best`. All 13
 subsets, 4,317 pages, scored by the harness. The page readings are our own OCRia-1 run (vLLM 0.34.0 on Modal);
 nothing here uses OCRia-1's published outputs.
 
 | Dimension | Published OCRia-1 | Our run + corrections | Change | Dev | Check | Target |
 |---|---:|---:|---:|---:|---:|---:|
-| **Overall** | 85.24 | **87.54** | +2.29 | 87.56 | 87.46 | 89 |
+| **Overall** | 85.24 | **87.67** | +2.42 | 87.72 | 87.51 | 89 |
 | Text | 87.87 | 88.43 | +0.55 | 88.38 | 88.60 | 89.5 |
 | Formatting | 91.58 | 93.04 | +1.46 | 93.19 | 92.55 | 93 |
 | Tables | 86.28 | 88.97 | +2.68 | 88.32 | 91.58 | 90 |
 | Charts | 77.66 | 80.83 | +3.18 | 80.88 | 80.61 | 81 |
 | Layout | 85.96 | 90.24 | +4.28 | 91.14 | 86.95 | 88.8 |
-| Forms | 82.10 | 83.71 | +1.61 | 83.47 | 84.49 | 87.5 |
+| Forms | 82.10 | 84.49 | +2.39 | 84.39 | 84.81 | 87.5 |
 
 - **Against the board:** second place is Claude Opus 5.5 at 87.13 and first is LlamaParse Agentic Plus at
-  90.95. 87.54 is 0.41 above second place. That is a real but thin margin: one OCRia-1 run differs from
+  90.95. 87.67 is 0.54 above second place. That is a real but thin margin: one OCRia-1 run differs from
   another by up to 0.4 on a single dimension (charts), which is under 0.1 on the overall score.
-- **The check slice** (pages no rule was tuned on) scores 87.46, level with the development part (87.56), so
+- **The check slice** (pages no rule was tuned on) scores 87.51, close to the development part (87.72), so
   the result is not fitted to the development pages.
 - **History of this number:** 86.93 with the first round of corrections, 87.14 with KDL nano v2 added as a
   second layout detector (run `own-best`), 87.41 with the second round on forms, charts and tables (run
-  `own-best2`), 87.54 with pages printed sideways or upside down read upright.
+  `own-best2`), 87.54 with pages printed sideways or upside down read upright (run `own-best3`), 87.67 with
+  the third round on forms (printed hints moved out of blank fields' slots).
 - **What is on:** upright reading of turned pages; looped-read and empty-read fallbacks; table grid repairs; form comb values, check-box
   states and row repairs (line numbers and box codes joined to captions); chart values measured from the
   vector drawing and bound by legend colour; strikeout, bold, list-marker and respelling repairs; layout
@@ -49,7 +50,7 @@ swap (90.24).
 
 | Dimension | Now | Target | Gap in overall points |
 |---|---:|---:|---:|
-| Forms | 83.71 | 87.5 | 0.63 |
+| Forms | 84.49 | 87.5 | 0.50 |
 | Tables | 88.97 | 90 | 0.17 |
 | Text | 88.43 | 89.5 | 0.18 |
 | Charts | 80.83 | 81 | 0.03 |
