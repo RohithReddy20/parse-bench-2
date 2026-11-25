@@ -34,6 +34,8 @@ class Config(BaseModel):
     layout_options: dict[str, float | bool] = Field(default_factory=dict)
     # formatting corrections of the page reading from the PDF (fixes/formatting.py); empty = none
     format_options: dict[str, float | bool] = Field(default_factory=dict)
+    # text corrections of the page reading from the PDF text layer (fixes/text.py); empty = none
+    text_options: dict[str, float | bool] = Field(default_factory=dict)
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:
@@ -60,6 +62,10 @@ class Config(BaseModel):
 
         if set(data.get("format_options") or {}) - FORMAT_OPTIONS:
             raise ValueError(f"unknown format option(s): {sorted(set(data['format_options']) - FORMAT_OPTIONS)}")
+        from docparse.fixes.text import TEXT_OPTIONS
+
+        if set(data.get("text_options") or {}) - TEXT_OPTIONS:
+            raise ValueError(f"unknown text option(s): {sorted(set(data['text_options']) - TEXT_OPTIONS)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")

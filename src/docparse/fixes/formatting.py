@@ -6,6 +6,9 @@
                  prose, `<s>...</s>` in table cells. The reading's tokens are aligned to the text layer's in
                  reading order; a run of struck tokens on one line becomes one span. Text the reading already
                  strikes, and any block holding an unpaired `~~`, is left as it is
+    unbold       a `**...**` span in a paragraph or list loses its asterisks when the PDF sets at least 80% of its
+                 aligned words in a regular face, on a page whose fonts do carry bold (some word is in a bold
+                 face). Bold inside headings is the heading's and is left alone
 
 A region the options do not change keeps its base candidate, so it is written back byte for byte.
 """
@@ -17,18 +20,26 @@ import re
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align import TOKEN, key, match, tokens
 
-FORMAT_OPTIONS = frozenset({"cell_strike", "strike"})
+FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "unbold"})
 READER = "fix.formatting"
 PROSE = frozenset({"paragraph", "list", "heading"})
 MIN_STRUCK = 0.5  # share of a PDF token's characters a line must cross
 _TILDE_STRIKE = re.compile(r"~~(?=[^\s~])(.+?)(?<=[^\s~])~~", re.S)
 _STRIKE_SPAN = re.compile(r"~~(?=[^\s~]).+?(?<=[^\s~])~~|<(s|del|strike)\b[^>]*>.*?</\1\s*>", re.S | re.I)
 _RUN_BREAK = frozenset("\n<>|~*_[]()`$")  # a struck run never crosses a line, a tag, a cell or other markup
+_BOLD_SPAN = re.compile(r"(?<!\*)\*\*(?=[^\s*])(.+?)(?<=[^\s*])\*\*(?!\*)", re.S)
+REGULAR_SHARE = 0.8  # of a bold span's aligned words that must be in a regular face
+ALIGNED_SHARE = 0.5  # of a bold span's words that must be aligned to the text layer
 
 
 def needs_decorations(options: dict) -> bool:
     """Does the fix need the strikethrough / underline marks of the text layer?"""
     return bool(options.get("strike"))
+
+
+def needs_styles(options: dict) -> bool:
+    """Does the fix need to know which text-layer words are set in a bold face?"""
+    return bool(options.get("unbold"))
 
 
 def _select(region: Region, raw: str, detail: str) -> None:
@@ -117,6 +128,34 @@ def _strikes(page: Page, raws: list[str], words) -> list[str]:
     return out
 
 
+def _unbold(page: Page, raws: list[str], words) -> list[str]:
+    if not any(w.bold >= 0.5 for w in words):
+        return raws  # the fonts carry no bold at all: they say nothing either way
+    keys, bold = [], []
+    for w in words:
+        for m in TOKEN.finditer(w.text):
+            keys.append(key(m.group()))
+            bold.append(w.bold >= 0.5)
+    per_region = [tokens(raw) for raw in raws]
+    partner = match([t[2] for toks in per_region for t in toks], keys)
+    out, pos = list(raws), 0
+    for r, (region, raw, toks) in enumerate(zip(page.regions, raws, per_region, strict=True)):
+        mine = partner[pos : pos + len(toks)]
+        pos += len(toks)
+        if region.kind not in ("paragraph", "list"):
+            continue
+        new = raw
+        for m in reversed(list(_BOLD_SPAN.finditer(raw))):
+            inside = [i for i, t in enumerate(toks) if m.start(1) <= t[0] < m.end(1)]
+            faces = [bold[mine[i]] for i in inside if mine[i] >= 0]
+            if not inside or len(faces) < ALIGNED_SHARE * len(inside):
+                continue
+            if faces.count(False) >= REGULAR_SHARE * len(faces):
+                new = new[: m.start()] + m.group(1) + new[m.end() :]
+        out[r] = new
+    return out
+
+
 def refine_format(page: Page, rendered, options: dict) -> None:
     """Apply the enabled options to the page's regions (a changed region gets a new selected candidate)."""
     raws = [region.chosen().raw for region in page.regions]
@@ -127,6 +166,8 @@ def refine_format(page: Page, rendered, options: dict) -> None:
     words = getattr(rendered, "text_words", None) if rendered is not None else None
     if options.get("strike") and words:
         new = _strikes(page, new, words)
+    if options.get("unbold") and words:
+        new = _unbold(page, new, words)
     for region, old, raw in zip(page.regions, raws, new, strict=True):
         if raw != old:
             _select(region, raw, ",".join(sorted(k for k in FORMAT_OPTIONS if options.get(k))))

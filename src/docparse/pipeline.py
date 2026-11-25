@@ -4,7 +4,7 @@ It receives bytes and nothing else: no file name, path, example id or subset (de
 A pure function of (bytes, config, cache): model answers come from the client, which reads the cache.
 
     S0 render -> S2 OCRia-1 page read (one cached call per page) -> S3 answer parsed into the IR
-    -> S4 correctors (none yet; each will sit behind a `config.fixes` flag) -> writers
+    -> S4 correctors, each behind its options (layout_options, text_options, format_options) -> writers
 """
 
 from __future__ import annotations
@@ -31,12 +31,17 @@ class ParseResult:
 
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
-    decorations = False
+    decorations = styles = False
     if config.format_options:
-        from docparse.fixes.formatting import needs_decorations
+        from docparse.fixes.formatting import needs_decorations, needs_styles
 
-        decorations = needs_decorations(config.format_options)
-    rendered = render_pages(pdf_bytes, config.dpi, decorations=decorations)
+        decorations, styles = needs_decorations(config.format_options), needs_styles(config.format_options)
+    layer = False
+    if config.text_options:
+        from docparse.fixes.text import needs_layer
+
+        layer = needs_layer(config.text_options)
+    rendered = render_pages(pdf_bytes, config.dpi, decorations=decorations, styles=styles, layer=layer)
     doc_sha = sha256_hex(pdf_bytes)
     pages, pending = [], []
     for index, rp in enumerate(rendered):
@@ -61,6 +66,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             if cut_short and len(words) >= MIN_TOKENS and reading_recall(markdown, words) < config.fallback_below:
                 markdown = text_dump(words)
         page = parse_page(markdown, index=index, call_key=call.key())
+        if config.text_options:
+            from docparse.fixes.text import refine_text
+
+            refine_text(page, rp, config.text_options)
         if config.format_options:
             from docparse.fixes.formatting import refine_format
 

@@ -31,6 +31,16 @@ def test_a_thick_bar_is_not_a_line():
     assert _words("102 699 29 8 re f") == {"Hello": ".....", "world": "....."}
 
 
+def test_a_line_hidden_behind_the_text_background_marks_nothing():
+    # a box border runs through the heading, but a white panel drawn over it sits behind the text
+    under = "0.8 w 60 703.5 m 140 703.5 l S 1 g 70 696 64 14 re f 0 g"
+    (page,) = render_pages(make_pdf([{"texts": TEXT, "under": under}]), decorations=True)
+    assert {w.text: w.marks for w in page.text_words} == {"Hello": ".....", "world": "....."}
+    visible = "0.8 w 60 703.5 m 140 703.5 l S"
+    (page,) = render_pages(make_pdf([{"texts": TEXT, "under": visible}]), decorations=True)
+    assert {w.text: w.marks for w in page.text_words} == {"Hello": "sssss", "world": "sssss"}
+
+
 def test_marks_are_only_computed_on_request():
     assert _words("0.8 w 102 703.5 m 131 703.5 l S", decorations=False) == {"Hello": "", "world": ""}
 

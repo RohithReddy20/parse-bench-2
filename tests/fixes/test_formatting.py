@@ -64,6 +64,28 @@ def test_nothing_changes_without_marks_or_options():
     assert _fixed(md, {"strike": True}, None) == md
 
 
+def _styled(texts):
+    return render_pages(make_pdf([{"texts": texts}]), styles=True)[0]
+
+
+def test_words_know_their_bold_share():
+    rp = _styled([(72, 700, 12, "plain"), (72, 680, 12, "heavy", "FB")])
+    assert {w.text: w.bold for w in rp.text_words} == {"plain": 0.0, "heavy": 1.0}
+
+
+def test_bold_the_pdf_prints_in_a_regular_face_is_removed():
+    rp = _styled([(72, 700, 12, "Hello world"), (72, 680, 12, "Note", "FB")])
+    assert _fixed("**Hello world**\n\n**Note**", {"unbold": True}, rp) == "Hello world\n\n**Note**"
+    assert _fixed("**Hello** world", {"unbold": True}, rp) == "Hello world"
+
+
+def test_bold_stays_when_the_page_has_no_bold_face_or_in_headings():
+    rp = _styled([(72, 700, 12, "Hello world")])  # no bold face anywhere: the fonts say nothing about bold
+    assert _fixed("**Hello world**", {"unbold": True}, rp) == "**Hello world**"
+    rp = _styled([(72, 700, 12, "Hello world"), (72, 680, 12, "Note", "FB")])
+    assert _fixed("# **Hello world**", {"unbold": True}, rp) == "# **Hello world**"
+
+
 def test_the_pipeline_applies_the_options_after_the_page_read():
     from docparse.models.adapters import ocria
     from docparse.models.calls import ModelResult

@@ -28,6 +28,7 @@ class Word:
     # per character of `text`: "s" struck through, "u" underlined, "." neither (text_words, when decorations
     # were requested; empty otherwise)
     marks: str = ""
+    bold: float = 0.0  # share of the characters set in a bold face (text_words, when styles were requested)
 
 
 @dataclass
@@ -42,6 +43,11 @@ class RenderedPage:
     # (`words` follows OCRia-1's gap rule, which its grounding code needs but which breaks words apart in
     # fonts with loose glyph boxes: "R egul atory".)
     text_words: list[Word] | None = field(default=None)
+    # how far the text layer can be trusted to say what the page shows (when requested with `layer`): the share
+    # of its characters nobody sees (invisible render mode, or under an image drawn over the page: an OCR layer),
+    # and the share whose glyph has no proper unicode mapping
+    hidden: float | None = None
+    map_errors: float | None = None
 
     @property
     def scale(self) -> float:
@@ -93,15 +99,17 @@ def page_words(page, dpi: float = DPI) -> list[Word]:
     return out
 
 
-def page_text_words(page, dpi: float = DPI, decorations: bool = False) -> list[Word]:
+def page_text_words(page, dpi: float = DPI, decorations: bool = False, image=None, styles: bool = False) -> list[Word]:
     """Text-layer words split at whitespace characters (PDFium inserts a space where the page shows one)
     and at line changes. Boxes are pixels of the page render, as in `page_words`. With `decorations`, each word
-    also gets the strikethrough / underline marks of its characters (`pdf.drawings`)."""
+    also gets the strikethrough / underline marks of its characters (`pdf.drawings`), checked against the page
+    render `image` when given; with `styles`, the share of its characters set in a bold face."""
     s, rot, crop = dpi / 72, page.get_rotation() % 360, page.get_cropbox()
     tp = page.get_textpage()
     out: list[Word] = []
     cur: Word | None = None
     geom: list[tuple[Word, int, object]] = []  # per kept character: its word, its length, its geometry
+    faces: list[tuple[Word, bool]] = []  # per kept character: its word, whether its face is bold
     for i in range(tp.count_chars()):
         ch = tp.get_text_range(i, 1)
         if not ch or ch.isspace() or ch in "\r\n\x00\ufffe":
@@ -127,15 +135,75 @@ def page_text_words(page, dpi: float = DPI, decorations: bool = False) -> list[W
             cur = Word(text=ch, box=box, font=_char_font(tp, i))
         if decorations:
             geom.append((cur, len(ch), _char_geom(tp, i, user_box)))
+        if styles:
+            faces.append((cur, _char_bold(tp, i)))
     if cur:
         out.append(cur)
+    if styles:
+        counts: dict[int, list[int]] = {}
+        for word, bold in faces:
+            c = counts.setdefault(id(word), [0, 0])
+            c[0] += bold
+            c[1] += 1
+        for word in out:
+            if id(word) in counts:
+                word.bold = counts[id(word)][0] / counts[id(word)][1]
     if decorations:
         from docparse.pdf.drawings import decoration_marks, horizontal_lines
 
-        marks = decoration_marks([g for _, _, g in geom], horizontal_lines(page))
+        ink = _ink_probe(image, crop, rot, s) if image is not None else None
+        marks = decoration_marks([g for _, _, g in geom], horizontal_lines(page), ink)
         for (word, n, _), mark in zip(geom, marks, strict=True):
             word.marks += mark * n
     return out
+
+
+def _ink_probe(image, crop, rot: int, s: float):
+    """Luminance of the render at a point of PDF user space: the darkest pixel of the 3 x 3 around it."""
+    gray = image.convert("L")
+    px, (width, height) = gray.load(), gray.size
+
+    def ink(x: float, y: float) -> int:
+        ix, iy = (int(v) for v in _to_image(x, y, x, y, crop, rot, s)[:2])
+        near = [(i, j) for i in (ix - 1, ix, ix + 1) for j in (iy - 1, iy, iy + 1)]
+        vals = [px[i, j] for i, j in near if 0 <= i < width and 0 <= j < height]
+        return min(vals) if vals else 255
+
+    return ink
+
+
+def layer_health(page) -> tuple[float, float]:
+    """(hidden, map_errors) shares of the page's text-layer characters. Hidden: drawn in the invisible render mode,
+    or all of them when an image covering most of the page is drawn after the text (a scan over its OCR layer)."""
+    import ctypes
+
+    import pypdfium2.raw as raw
+
+    tp = page.get_textpage()
+    n = tp.count_chars()
+    if not n:
+        return 0.0, 0.0
+    invisible = errors = 0
+    for i in range(n):
+        obj = raw.FPDFText_GetTextObject(tp.raw, i)
+        if obj and raw.FPDFTextObj_GetTextRenderMode(obj) == raw.FPDF_TEXTRENDERMODE_INVISIBLE:
+            invisible += 1
+        if raw.FPDFText_HasUnicodeMapError(tp.raw, i) == 1:
+            errors += 1
+    w, h = page.get_size()
+    seen_text = False
+    box = [ctypes.c_float() for _ in range(4)]
+    for k in range(raw.FPDFPage_CountObjects(page.raw)):
+        obj = raw.FPDFPage_GetObject(page.raw, k)
+        kind = raw.FPDFPageObj_GetType(obj)
+        if kind == raw.FPDF_PAGEOBJ_TEXT:
+            seen_text = True
+        elif kind == raw.FPDF_PAGEOBJ_IMAGE and seen_text:
+            raw.FPDFPageObj_GetBounds(obj, *(ctypes.byref(v) for v in box))
+            left, bottom, right, top = (v.value for v in box)
+            if (right - left) * (top - bottom) >= 0.8 * w * h:
+                invisible = n
+    return invisible / n, errors / n
 
 
 def _char_geom(textpage, index: int, user_box):
@@ -152,6 +220,28 @@ def _char_geom(textpage, index: int, user_box):
     ok = raw.FPDFText_GetLooseCharBox(textpage.raw, index, ctypes.byref(loose))
     height = abs(loose.top - loose.bottom) if ok else 0.0
     return CharGeom(x0=user_box[0], x1=user_box[2], baseline=y.value, height=height)
+
+
+_BOLD_NAMES = ("bold", "black", "heavy", "ultra", "extrab", "semib", "demib", "debold")
+
+
+def _char_bold(textpage, index: int) -> bool:
+    """Is the character set in a bold face? Its font's name says so (PostScript names carry the weight), or its
+    weight is 600 or more, or its font forces bold, or it is filled and stroked (synthetic bold)."""
+    import ctypes
+
+    import pypdfium2.raw as raw
+
+    buf = ctypes.create_string_buffer(256)
+    flags = ctypes.c_int()
+    n = raw.FPDFText_GetFontInfo(textpage.raw, index, buf, 256, ctypes.byref(flags))
+    name = buf.value.decode("utf-8", "replace").lower() if n else ""
+    if any(k in name for k in _BOLD_NAMES) or flags.value & (1 << 18):
+        return True
+    if raw.FPDFText_GetFontWeight(textpage.raw, index) >= 600:
+        return True
+    obj = raw.FPDFText_GetTextObject(textpage.raw, index)
+    return bool(obj) and raw.FPDFTextObj_GetTextRenderMode(obj) == raw.FPDF_TEXTRENDERMODE_FILL_STROKE
 
 
 def _char_font(textpage, index: int) -> str:
@@ -179,9 +269,17 @@ def _render_image(data: bytes, dpi: float) -> list[RenderedPage]:
     return [RenderedPage(image=image, dpi=dpi, width_pt=image.width * 72 / dpi, height_pt=image.height * 72 / dpi)]
 
 
-def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400, decorations: bool = False) -> list[RenderedPage]:
+def render_pages(
+    data: bytes,
+    dpi: float = DPI,
+    max_pages: int = 400,
+    decorations: bool = False,
+    styles: bool = False,
+    layer: bool = False,
+) -> list[RenderedPage]:
     """One RenderedPage per page of a PDF (or one for an image file). Raises ParseError on unreadable bytes.
-    `decorations`: also mark struck-through and underlined characters of the text words."""
+    `decorations`: also mark struck-through and underlined characters of the text words; `styles`: also measure
+    how bold each text word is; `layer`: also measure how far the text layer can be trusted (`layer_health`)."""
     import pypdfium2 as pdfium
 
     if not data:
@@ -206,6 +304,7 @@ def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400, decoration
                 if w * h * scale * scale > MAX_PIXELS:  # large sheets render smaller; words follow the same scale
                     scale = (MAX_PIXELS / (w * h)) ** 0.5
                 image = page.render(scale=scale).to_pil().convert("RGB")
+                hidden, map_errors = layer_health(page) if layer else (None, None)
                 out.append(
                     RenderedPage(
                         image=image,
@@ -214,7 +313,11 @@ def render_pages(data: bytes, dpi: float = DPI, max_pages: int = 400, decoration
                         height_pt=float(h),
                         rotation=page.get_rotation() % 360,
                         words=page_words(page, scale * 72),
-                        text_words=page_text_words(page, scale * 72, decorations),
+                        text_words=page_text_words(
+                            page, scale * 72, decorations, image if decorations else None, styles
+                        ),
+                        hidden=hidden,
+                        map_errors=map_errors,
                     )
                 )
             return out

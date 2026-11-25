@@ -5,18 +5,24 @@ from __future__ import annotations
 
 def _text_ops(texts, font: str = "F1") -> bytes:
     ops = []
-    for x, y, size, text in texts:
+    for x, y, size, text, *face in texts:
         esc = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-        ops.append(f"BT /{font} {size} Tf {x} {y} Td ({esc}) Tj ET")
+        ops.append(f"BT /{face[0] if face else font} {size} Tf {x} {y} Td ({esc}) Tj ET")
     return "\n".join(ops).encode("latin-1")
 
 
 def make_pdf(pages: list[dict]) -> bytes:
     """pages: [{"size": (w, h), "rotate": 0, "crop": (x0, y0, x1, y1) | None, "texts": [(x, y, size, text)],
     "overlay": [(x, y, size, text)], "draw": "raw content-stream operators"}]. Text coordinates are PDF user space
-    (origin bottom-left). "overlay" text is drawn the way a fill tool adds it: the page wrapped in q ... Q, then one
-    more stream in its own font. "draw" is appended to the page content as is (lines, rectangles)."""
-    objects: list[bytes] = [b"", b"", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    (origin bottom-left); a text may name its font as a fifth item ("FB" is Helvetica-Bold). "overlay" text is
+    drawn the way a fill tool adds it: the page wrapped in q ... Q, then one more stream in its own font. "draw" is
+    appended to the page content as is (lines, rectangles), "under" is put before the text."""
+    objects: list[bytes] = [
+        b"",
+        b"",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    ]
     stream = lambda body: b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream"  # noqa: E731
     kids = []
     for page in pages:
@@ -24,6 +30,8 @@ def make_pdf(pages: list[dict]) -> bytes:
         content = _text_ops(page.get("texts", []))
         if page.get("draw"):
             content += b"\n" + page["draw"].encode("latin-1")
+        if page.get("under"):  # drawn before the text
+            content = page["under"].encode("latin-1") + b"\n" + content
         page_no = len(objects) + 1
         kids.append(f"{page_no} 0 R")
         extra = ""
@@ -34,7 +42,7 @@ def make_pdf(pages: list[dict]) -> bytes:
         objects.append(
             (
                 f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w} {h}]{extra} "
-                f"/Resources << /Font << /F1 3 0 R{' /F2 ' + str(page_no + 5) + ' 0 R' if page.get('overlay') else ''} >> >> "
+                f"/Resources << /Font << /F1 3 0 R /FB 4 0 R{' /F2 ' + str(page_no + 5) + ' 0 R' if page.get('overlay') else ''} >> >> "
                 f"/Contents {('[' + ' '.join(f'{page_no + k} 0 R' for k in range(1, 5)) + ']') if page.get('overlay') else f'{page_no + 1} 0 R'} >>"
             ).encode()
         )

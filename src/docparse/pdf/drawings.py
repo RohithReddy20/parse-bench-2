@@ -7,7 +7,8 @@ its baseline (underlined). Everything is in PDF user space (points, origin botto
 ordinary page runs horizontally.
 
 A line that runs far beyond the characters it crosses is a rule (a table border, a heading rule behind its text),
-not a decoration, and marks nothing.
+not a decoration, and marks nothing. With a probe of the rendered page, a line must also show between the
+characters it crosses: a border hidden behind a heading's background panel is not a strike.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import math
 from bisect import bisect_left, bisect_right
+from collections.abc import Callable
 from dataclasses import dataclass
 
 MAX_THICK = 3.0  # points: thicker shapes are bars or boxes, not lines
@@ -23,6 +25,9 @@ UNDER_BAND = (-0.35, -0.02)
 LINE_THICK = 0.2  # a decoration is at most this many character heights thick
 CHAR_COVER = 0.5  # the line covers at least this share of a character's width
 LINE_COVER = 0.6  # the characters a line crosses span at least this share of its length
+DARK = 160  # luminance under which a rendered pixel is ink
+SHOWS = 0.6  # share of the gaps between crossed characters where the line must show as ink ...
+CONTRAST = 0.3  # ... and how much more often than in the same gaps a little higher up
 
 
 @dataclass(frozen=True)
@@ -133,8 +138,31 @@ def horizontal_lines(page) -> list[Line]:
     return out
 
 
-def decoration_marks(chars: list[CharGeom], lines: list[Line]) -> str:
-    """One mark per character: "s" struck through, "u" underlined, "." neither."""
+def _shows(line: Line, cis: list[int], chars: list[CharGeom], mark: str, ink: Callable[[float, float], int]) -> bool:
+    """Is the line drawn where nothing else is, between the characters it crosses? Compared with the same gaps a
+    little higher up, so a dark background or a glyph does not count as the line."""
+    lo, hi = min(chars[c].x0 for c in cis), max(chars[c].x1 for c in cis)
+    boxes = sorted((chars[c].x0, chars[c].x1) for c in cis)
+    step = max(0.2, (hi - lo) / 400)
+    gaps, x, k = [], lo, 0
+    while x <= hi:
+        while k < len(boxes) and boxes[k][1] < x:
+            k += 1
+        if not any(a <= x <= b for a, b in boxes[k : k + 3]):
+            gaps.append(x)
+        x += step
+    if len(gaps) < 4:
+        return True  # nothing between the glyphs to look at
+    height = sorted(chars[c].height for c in cis)[len(cis) // 2]
+    up = line.y + (0.25 if mark == "s" else 0.3) * height
+    on = sum(ink(x, line.y) < DARK for x in gaps) / len(gaps)
+    off = sum(ink(x, up) < DARK for x in gaps) / len(gaps)
+    return on >= SHOWS and on - off >= CONTRAST
+
+
+def decoration_marks(chars: list[CharGeom], lines: list[Line], ink: Callable[[float, float], int] | None = None) -> str:
+    """One mark per character: "s" struck through, "u" underlined, "." neither. `ink(x, y)` is the luminance of
+    the rendered page at a point of user space (darkest of the pixels around it), when a render is at hand."""
     marks = ["."] * len(chars)
     if not lines:
         return "".join(marks)
@@ -160,6 +188,8 @@ def decoration_marks(chars: list[CharGeom], lines: list[Line]) -> str:
         span = max(chars[c].x1 for c in cis) - min(chars[c].x0 for c in cis)
         if span < LINE_COVER * (ln.x1 - ln.x0):
             continue  # a rule across a column or a table
+        if ink is not None and not _shows(ln, cis, chars, mark, ink):
+            continue  # hidden behind something drawn over it
         for c in cis:
             marks[c] = mark
     return "".join(marks)
