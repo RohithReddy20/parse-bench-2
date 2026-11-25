@@ -17,7 +17,8 @@ from docparse.base.ocria_parse import parse_page
 from docparse.core.config import Config
 from docparse.core.hashing import sha256_hex
 from docparse.core.ir import CostRecord, Document, Finding
-from docparse.models.adapters import heron
+from docparse.fixes.layout_kdl import KDL_OPTIONS
+from docparse.models.adapters import heron, kdl
 from docparse.models.adapters.attention import attention_call, read_attention
 from docparse.models.adapters.ocria import build_page_call, read_page_result
 from docparse.models.calls import ModelClient, Pending
@@ -50,10 +51,12 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         call, blobs = build_page_call(rp.image, config.page_model, config.page_runtime, config.prompt_sha)
         meta = {"doc": doc_sha, "page": index, "dpi": rp.dpi}
         result = client.get(call, blobs, meta)
-        detections = None
+        detections = regions2 = None
         if config.layout == "ground":  # the detector reads the same page image, so it shares the blob
             detections = client.get(heron.detect_call(call.inputs[0]), blobs, meta)
-        waiting = [r.key for r in (result, detections) if isinstance(r, Pending)]
+        if config.layout != "none" and any(config.layout_options.get(k) for k in KDL_OPTIONS):  # second detector
+            regions2 = client.get(kdl.layout_call(call.inputs[0]), blobs, meta)
+        waiting = [r.key for r in (result, detections, regions2) if isinstance(r, Pending)]
         if waiting:
             pending += waiting
             continue
@@ -127,6 +130,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
             # OCRia-1's grounding reads the raw answer; published stand-ins only have the scored markdown
             page.layout = ground(read.raw_answer or read.markdown, rp, heron.read_detections(detections), attention)
+        if regions2 is not None and page.layout is not None:
+            from docparse.fixes.layout_kdl import apply_kdl
+
+            page.layout = apply_kdl(page.layout, rp, kdl.read_detections(regions2), config.layout_options, markdown)
         if config.layout_options and page.layout:
             from docparse.fixes.layout_refine import refine
 

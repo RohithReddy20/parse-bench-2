@@ -216,3 +216,26 @@ def test_pages_without_a_text_layer_ask_for_attention_after_the_read(tmp_path):
         cache3.put(ModelResult(key=call.key(), output=out), call)
     again = parse(pdf, always, CacheOnlyClient(cache3, ManifestWriter(tmp_path / "m5")))
     assert len(again.pending) == 1 and [c.prompt_id for c, _ in read_manifest(tmp_path / "m5")] == ["ocria-1/attention"]
+
+
+def test_kdl_options_ask_for_a_kdl_call_on_the_same_image_and_add_its_regions(tmp_path):
+    from docparse.models.adapters import kdl
+
+    text = "Revenue grew by twelve percent compared with the same quarter of the previous year."
+    pdf = make_pdf([{"texts": [(72, 660, 11, text)]}])
+    cfg = CONFIG.model_copy(update={"layout_options": {"kdl_add": True}})
+    cache, manifest = Cache(tmp_path / "c"), ManifestWriter(tmp_path / "m")
+    planned = parse(pdf, cfg, CacheOnlyClient(cache, manifest))
+    assert planned.document is None and len(planned.pending) == 2  # the page read and the KDL layout call
+    page_call, kdl_call = (c for c, _ in read_manifest(tmp_path / "m"))
+    assert kdl_call.model == kdl.KDL and kdl_call.inputs == page_call.inputs
+
+    seg = {"x": 400.0, "y": 20.0, "w": 100.0, "h": 30.0, "label": "text"}  # far from the text line
+    layout_page = {"page_number": 1, "items": [{"type": "Text", "md": "x", "bbox": seg, "layout_segments": [seg]}]}
+    cache.put(ModelResult(key=page_call.key(), output={"markdown": text, "layout_page": layout_page}), page_call)
+    answer = "<|box_start|>090 160 900 190<|box_end|><|ref_start|>text<|ref_end|>"  # around the text line
+    cache.put(ModelResult(key=kdl_call.key(), output={"text": answer, "width": 2550, "height": 3300}), kdl_call)
+    doc = parse(pdf, cfg, ReplayClient(cache)).document
+    assert [it.md for it in doc.pages[0].layout] == ["x", text]
+    plain = parse(pdf, CONFIG, ReplayClient(cache)).document  # options off: no KDL call, same markdown
+    assert write_document(plain) == write_document(doc) and [it.md for it in plain.pages[0].layout] == ["x"]

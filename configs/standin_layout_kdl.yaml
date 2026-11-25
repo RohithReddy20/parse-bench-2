@@ -1,0 +1,23 @@
+# configs/standin_layout.yaml plus the KDL-Frontier-Parser-nano-v2 options that passed on the development part
+# (docs/results/2026-11-25-layout-kdl.md): of two nested layout items, the one no KDL region matches is dropped
+# when KDL matches the other (pictures are never dropped), and KDL regions that overlap no item are added.
+# KDL layout calls are cached for the 535 layout pages only (run locally, $0); on any other page this config
+# needs a KDL call that is not in the cache. Layout items are scored on the layout subset only.
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: published-497e243f68cd
+  dtype: bf16
+page_runtime: published
+prompt_sha: published
+dpi: 300
+fallback_below: 0.5  # looped or truncated reads fall back to the PDF text layer
+layout: from_page_read
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+  kdl_arbiter: true
+  kdl_keep_pictures: true
+  kdl_add: true
