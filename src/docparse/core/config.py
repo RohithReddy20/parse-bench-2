@@ -27,6 +27,9 @@ class Config(BaseModel):
     # where layout items come from: carried by the page read (published stand-ins); built here from detector
     # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all
     layout: Literal["from_page_read", "ground", "none"] = "from_page_read"
+    # with layout "ground": pages without a PDF text layer take word positions from OCRia-1's attention
+    # (one more cached model call per such page); "never" places their words by neighbours only
+    layout_attention: Literal["never", "no_text_layer"] = "never"
     # refinements of the layout items on pages with a text layer (fixes/layout_refine.py); empty = none
     # a page read that looped or hit the token limit, and holds under this share of the PDF text layer's words,
     # is replaced by the text layer (0 = off)

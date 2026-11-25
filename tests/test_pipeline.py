@@ -168,3 +168,42 @@ def test_ground_layout_asks_for_detections_and_builds_items(tmp_path):
     (item,) = doc.pages[0].layout
     assert item.type == "Text" and item.md == text
     assert item.bbox.x0 == pytest.approx(250 * 72 / 300) and item.bbox.y1 == pytest.approx(600 * 72 / 300)
+
+
+def test_pages_without_a_text_layer_ask_for_attention_after_the_read(tmp_path):
+    import io
+
+    from PIL import Image, ImageDraw
+
+    from docparse.fixes.layout import ocria_code_dir, unit_count
+
+    if not (ocria_code_dir() / "ocria_grounding" / "layout.py").exists():
+        pytest.skip("OCRia-1 grounding code not fetched")
+    buf = io.BytesIO()
+    image = Image.new("RGB", (640, 480), "white")
+    ImageDraw.Draw(image).rectangle((100, 38, 400, 58), fill="black")  # the ink the attention points at
+    image.save(buf, format="PNG")
+    text = "Scanned notice of the annual meeting"
+    cfg = CONFIG.model_copy(update={"layout": "ground", "layout_attention": "no_text_layer"})
+    cache, manifest = Cache(tmp_path / "c"), ManifestWriter(tmp_path / "m")
+    assert len(parse(buf.getvalue(), cfg, CacheOnlyClient(cache, manifest)).pending) == 2  # read and detection
+    page_call, det_call = (c for c, _ in read_manifest(tmp_path / "m"))
+    cache.put(ModelResult(key=page_call.key(), output={"markdown": text}), page_call)
+    box = [20.0, 20.0, 600.0, 80.0]
+    cache.put(
+        ModelResult(key=det_call.key(), output={"detections": [{"label": "Text", "score": 0.9, "box": box}]}), det_call
+    )
+    second = ManifestWriter(tmp_path / "m2")
+    planned = parse(buf.getvalue(), cfg, CacheOnlyClient(cache, second))
+    assert planned.document is None and len(planned.pending) == 1  # now the attention pass, with the answer
+    (att_call,) = (c for c, _ in read_manifest(tmp_path / "m2"))
+    assert att_call.prompt_id == "ocria-1/attention" and att_call.inputs[0] == page_call.inputs[0]
+    assert (tmp_path / "m2" / "blobs" / att_call.inputs[1]).read_bytes() == text.encode()
+    n = unit_count(text)
+    out = {"grid": [15, 20], "idx": [[25]] * n, "val": [[1.0]] * n, "has": [True] * n}  # every word at one cell
+    cache.put(ModelResult(key=att_call.key(), output=out), att_call)
+    doc = parse(buf.getvalue(), cfg, ReplayClient(cache)).document
+    assert doc is not None and [i.md for i in doc.pages[0].layout] == [text]
+    # a page with a text layer never asks for attention
+    pdf = make_pdf([{"texts": [(72, 660, 11, "Revenue grew by twelve percent compared with the previous year.")]}])
+    assert len(parse(pdf, cfg, CacheOnlyClient(Cache(tmp_path / "c3"), ManifestWriter(tmp_path / "m3"))).pending) == 2

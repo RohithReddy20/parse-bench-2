@@ -107,3 +107,43 @@ def test_endpoint_client_caches_the_answer(tmp_path):
     assert len(hits) == 1 and first.output == second.output
     assert first.tokens_in == 8200 and first.gpu_type == "A100" and "_tokens_in" not in first.output
     assert ocria.read_page_result(first).markdown == "# Hi"
+
+
+def test_attention_executor_keeps_the_strongest_cells_per_word():
+    import io
+    from types import SimpleNamespace
+
+    import numpy as np
+    from PIL import Image
+    from serve.executors import attention_executor
+
+    from docparse.models.adapters.attention import HEADS, attention_call, read_attention
+    from docparse.models.adapters.ocria import OWN
+    from docparse.models.client import result_from_output
+
+    answer = "two words"
+    units = [(0, 3), (4, 9)]
+
+    class Grounder:
+        def unit_maps(self, image, text, spans):
+            assert text == answer and spans == units and image.size == (64, 32)
+            maps = np.zeros((2, 2, 4), dtype=np.float32)
+            maps[0, 0, 1], maps[1, 1, 3] = 0.9, 0.7
+            return maps, (2, 4), np.array([True, True])
+
+    def sparsify(maps, has, is_image, per_block, k_word, k_image):
+        flat = maps.reshape(len(maps), -1)
+        top = [[int(np.argmax(row))] for row in flat]
+        return {"idx": top, "val": [[float(flat[u][i[0]])] for u, i in enumerate(top)], "has": [bool(h) for h in has]}
+
+    ground_mod = SimpleNamespace(units_for=lambda text, blocks: (units, [[0, 1]]), sparsify=sparsify)
+    blocks_mod = SimpleNamespace(split_blocks=lambda text: [SimpleNamespace(type="text")])
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 32), "white").save(buf, format="PNG")
+    call, blobs = attention_call("page", answer, OWN, "prompt")
+    out = attention_executor(Grounder(), ground_mod, blocks_mod, HEADS, "fake-gpu")(
+        call, {"page": buf.getvalue(), **blobs}
+    )
+    att = read_attention(result_from_output(call, out))
+    assert att.grid == (2, 4) and att.idx == [[1], [7]] and att.has == [True, True]
+    assert att.val[0][0] == pytest.approx(0.9)

@@ -116,3 +116,35 @@ def openai_chat_executor(
         raise ExecutorError("page did not fit the context after 4 attempts")
 
     return execute
+
+
+def attention_executor(grounder: Any, ground_mod: Any, blocks_mod: Any, heads: list, gpu_type: str = "") -> Callable:
+    """One teacher-forced pass of OCRia-1 per call: the attention of every word of the answer over the page image,
+    kept as the strongest cells per word. `grounder` is `ocria_grounding.capture.Grounder` built with `heads`;
+    `ground_mod` and `blocks_mod` are the pinned snapshot's `ocria_grounding.ground` and `.blocks`."""
+    from PIL import Image
+
+    def run(call: ModelCall, blobs: dict[str, bytes]) -> dict[str, Any]:
+        if [list(h) for h in call.params["heads"]] != [list(h) for h in heads]:
+            raise ValueError("the call was built for other attention heads than this session loaded")
+        image = Image.open(io.BytesIO(blobs[call.inputs[0]])).convert("RGB")
+        answer = blobs[call.inputs[1]].decode("utf-8")
+        blocks = blocks_mod.split_blocks(answer)
+        units, per_block = ground_mod.units_for(answer, blocks)
+        if not units:
+            return {"grid": [1, 1], "idx": [], "val": [], "has": []}
+        started = time.monotonic()
+        maps, grid, has = grounder.unit_maps(image, answer, units)
+        sparse = ground_mod.sparsify(
+            maps, has, [b.type == "image" for b in blocks], per_block, call.params["k_word"], call.params["k_image"]
+        )
+        return {
+            "grid": [int(grid[0]), int(grid[1])],
+            "idx": sparse["idx"],
+            "val": sparse["val"],
+            "has": sparse["has"],
+            "_gpu_seconds": round(time.monotonic() - started, 3),
+            "_gpu_type": gpu_type,
+        }
+
+    return run

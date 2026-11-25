@@ -9,6 +9,7 @@ A pure function of (bytes, config, cache): model answers come from the client, w
 
 from __future__ import annotations
 
+from collections import ChainMap
 from dataclasses import dataclass, field
 
 from docparse import __version__
@@ -17,6 +18,7 @@ from docparse.core.config import Config
 from docparse.core.hashing import sha256_hex
 from docparse.core.ir import CostRecord, Document
 from docparse.models.adapters import heron
+from docparse.models.adapters.attention import attention_call, read_attention
 from docparse.models.adapters.ocria import build_page_call, read_page_result
 from docparse.models.calls import ModelClient, Pending
 from docparse.pdf.render import render_pages
@@ -46,6 +48,18 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             pending += waiting
             continue
         read = read_page_result(result)
+        attention = None
+        if config.layout == "ground" and config.layout_attention == "no_text_layer":
+            from docparse.fixes.layout import has_text_layer
+
+            if not has_text_layer(rp):  # asked for only once the read exists: the answer is part of the call
+                answer = read.raw_answer or read.markdown
+                att_call, answer_blob = attention_call(call.inputs[0], answer, config.page_model, config.prompt_sha)
+                attention = client.get(att_call, ChainMap(answer_blob, blobs), meta)
+                if isinstance(attention, Pending):
+                    pending.append(attention.key)
+                    continue
+                attention = read_attention(attention)
         markdown = read.markdown
         if config.fallback_below > 0:
             from docparse.fixes.fallback import MIN_TOKENS, looped, reading_recall, text_dump
@@ -69,7 +83,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.layout import ground
 
             # OCRia-1's grounding reads the raw answer; published stand-ins only have the scored markdown
-            page.layout = ground(read.raw_answer or read.markdown, rp, heron.read_detections(detections))
+            page.layout = ground(read.raw_answer or read.markdown, rp, heron.read_detections(detections), attention)
         if config.layout_options and page.layout:
             from docparse.fixes.layout_refine import refine
 

@@ -19,6 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from docparse.core.ir import Box, LayoutItem
+from docparse.models.adapters.attention import Attention
 from docparse.models.adapters.heron import Detection
 from docparse.pdf.render import RenderedPage
 
@@ -54,8 +55,24 @@ def _grounding():
     return layout, ground, blocks
 
 
-def ground(answer: str, rendered: RenderedPage, detections: list[Detection]) -> list[LayoutItem]:
-    """Layout items in PDF points for one page, in reading order of the answer."""
+MIN_TEXT_LAYER_CHARS = 50  # fewer characters than this is a scan with a stray label, not a text layer
+
+
+def has_text_layer(rendered: RenderedPage) -> bool:
+    return sum(len(w.text) for w in rendered.words or []) >= MIN_TEXT_LAYER_CHARS
+
+
+def unit_count(answer: str) -> int:
+    """How many words ("units") OCRia-1's grounding code sees in an answer; an attention result has one map each."""
+    _layout, ground_mod, blocks_mod = _grounding()
+    return len(ground_mod.units_for(answer, blocks_mod.split_blocks(answer))[0]) if answer.strip() else 0
+
+
+def ground(
+    answer: str, rendered: RenderedPage, detections: list[Detection], attention: Attention | None = None
+) -> list[LayoutItem]:
+    """Layout items in PDF points for one page, in reading order of the answer. `attention` gives positions to
+    words that have no PDF word box; without it such words follow their neighbours."""
     import numpy as np
 
     layout, ground_mod, blocks_mod = _grounding()
@@ -69,6 +86,9 @@ def ground(answer: str, rendered: RenderedPage, detections: list[Detection]) -> 
     grid = (max(1, image.height // ATTENTION_CELL), max(1, image.width // ATTENTION_CELL))
     maps = np.zeros((len(units), *grid), dtype=np.float32)  # no attention: nothing is placed by it
     has = np.zeros(len(units), dtype=bool)
+    if attention is not None and len(attention.idx) == len(units):  # a result for another answer is ignored
+        grid = attention.grid
+        maps, has = attention.dense()
     words = [{"text": w.text, "box": list(w.box)} for w in rendered.words] if rendered.words else None
     info = layout.page_words(image, answer, blocks, units, per_block, maps, grid, has, words)
     regions = [{"label": d.label, "score": d.score, "box": list(d.box)} for d in detections]
