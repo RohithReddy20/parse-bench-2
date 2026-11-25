@@ -187,6 +187,11 @@ def test_one_table_read_as_two_side_by_side_is_merged():
         "<tr><td>2024</td><td>60</td><td>600</td><td>70</td><td>700</td></tr></table>"
     )
     assert write_page(page) == merged + "\n\n"
+    # a title row over the left table only gets a blank cell over the right one
+    titled = LEFT.replace("<table>", '<table><tr><th colspan="3">Trend</th></tr>', 1)
+    out = write_page(_fixed(titled + "\n\n" + RIGHT, rendered, {"merge": True}))
+    assert out.startswith('<table><tr><th colspan="3">Trend</th><th colspan="2"></th></tr>')
+    assert out.endswith(merged[merged.index("<tr><td>2021") :] + "\n\n")
     # a right table repeating the left one's row-label header is a repeated column group: kept apart
     repeated = RIGHT.replace('<tr><th colspan="2">Rolling</th></tr>', '<tr><th colspan="2">Year</th></tr>')
     assert write_page(_fixed(LEFT + "\n\n" + repeated, rendered, {"merge": True})) == LEFT + "\n\n" + repeated

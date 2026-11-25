@@ -204,13 +204,14 @@ def _header_rows(table: HTable) -> int:
 def merge_side_by_side(left: _Found, right: _Found) -> str | None:
     """`left` and `right` as one table, when the reading wrote one table as two: every body row of `right` lies
     on the text line of a body row of `left`, to its right; `right` has no row labels (its first column holds
-    numbers) and does not repeat `left`'s row-label header (a repeated column group is a separate table); both
-    have the same number of header rows. Rows of `left` with nothing beside them get empty cells."""
+    numbers) and does not repeat `left`'s row-label header (a repeated column group is a separate table); `left`
+    has at least as many header rows (its extra top rows, a title, get a blank cell over `right`). Rows of `left`
+    with nothing beside them get empty cells."""
     if not (left.healthy and right.healthy):
         return None
     t1, t2 = left.table, right.table
     h1, h2 = _header_rows(t1), _header_rows(t2)
-    if h1 != h2 or h1 == 0 or len(t2.rows) - h2 < 3:
+    if h2 == 0 or h1 < h2 or len(t2.rows) - h2 < 3:
         return None
     corner = next((fold(c.text) for c in t1.rows[0].cells if c.col == 0 and c.text), "")
     heads = [[fold(c.text) for row in t.rows[:h] for c in row.cells] for t, h in ((t1, h1), (t2, h2))]
@@ -231,12 +232,15 @@ def merge_side_by_side(left: _Found, right: _Found) -> str | None:
         if not ends or not starts or min(starts) <= max(ends):
             return None
         beside[r1] = r
-    blank = "<td></td>" * t2.width()
+    w2 = t2.width()
+    blank, over = "<td></td>" * w2, f'<th colspan="{w2}"></th>' if w2 > 1 else "<th></th>"
     rows = []
     for r, row in enumerate(t1.rows):
         cells = "".join(c.render() for c in row.cells)
-        if r < h1:
-            cells += "".join(c.render() for c in t2.rows[r].cells)
+        if r < h1 - h2:  # a header row of `left` above all of `right`'s (a title row): blank over `right`
+            cells += over
+        elif r < h1:
+            cells += "".join(c.render() for c in t2.rows[r - h1 + h2].cells)
         else:
             cells += "".join(c.render() for c in t2.rows[beside[r]].cells) if r in beside else blank
         rows.append(row.head + cells + row.tail)
