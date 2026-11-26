@@ -1,0 +1,19 @@
+serve/colab_frontier_pilot.py
+  s_a92dd84b33403f::t_fc63b7e474222c 531,590-604,606-607,613,615
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a5eb857817a0ae26b09e7dddad1baac768ddea15",
+  "prompts": {},
+  "sessions": {
+    "s_a92dd84b33403f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21821-bf72-7ac0-b2d8-968a0d090c61",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
