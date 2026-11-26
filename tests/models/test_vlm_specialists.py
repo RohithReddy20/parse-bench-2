@@ -90,11 +90,24 @@ def test_chandra_call_converts_html_keeping_tables() -> None:
     assert "Page 1" not in stripped
     assert "# Report" in stripped
 
-    tbl_math = "<table><tr><th>Mean <math>\\pm</math> SD</th><td><math>6.21 \\pm 0.14</math></td></tr></table>"
+    tbl_math = (
+        "<table><tr><th>Mean <math>\\pm</math> SD</th>"
+        '<td><math>6.21 \\pm 0.14</math> <del>old</del> <input type="checkbox" checked></td></tr></table>'
+    )
     cleaned_tbl = chandra_markdown(tbl_math)
     assert "<math>" not in cleaned_tbl
     assert "Mean ± SD" in cleaned_tbl
     assert "6.21 ± 0.14" in cleaned_tbl
+    assert "~~old~~" in cleaned_tbl
+    assert "[x]" in cleaned_tbl
+
+    fmt_html = "<ul><li>• item</li></ul><p><del>old</del> and <u>important</u> on 1<sup>st</sup> CO<sub>2</sub></p>"
+    fmt_md = chandra_markdown(fmt_html)
+    assert "- item" in fmt_md and "•" not in fmt_md
+    assert "~~old~~" in fmt_md
+    assert "<u>important</u>" in fmt_md
+    assert "1st" in fmt_md
+    assert "CO2" in fmt_md
 
 
 def test_chart_verify_call_and_table_extraction() -> None:

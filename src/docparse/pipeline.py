@@ -192,6 +192,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
             markdown = ch_read.markdown
             used_calls = 1
+            fused = False
             if (
                 config.reader == "chandra_hybrid"
                 and read is not None
@@ -205,8 +206,41 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     drop_furniture=config.strip_furniture,
                 )
                 used_calls = 2 if fused else 1
+            # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
+            if config.form_options:
+                from docparse.fixes.forms import repair
+                from docparse.pdf.overlay import overlay_fonts
+
+                markdown = repair(markdown, rp, overlay_fonts(pdf_bytes, index), config.form_options, pdf_bytes, index)
+            if config.text_options.get("empty_read"):
+                from docparse.fixes.text import empty_read
+
+                markdown = empty_read(markdown, rp) or markdown
             page = parse_page(markdown, index=index, call_key=chandra_call.key())
+            if config.text_options:
+                from docparse.fixes.text import refine_text
+
+                refine_text(page, rp, config.text_options)
+            if config.format_options:
+                from docparse.fixes.formatting import refine_format
+
+                refine_format(page, rp, config.format_options)
             page.width, page.height, page.rotation = stored.width_pt, stored.height_pt, stored.rotation
+            if config.table_options:
+                from docparse.fixes.tables import fix_tables
+
+                fix_tables(page, rp, config.table_options)
+            if config.chart_options.get("measure") and any(r.kind == "table" for r in page.regions):
+                from docparse.fixes.charts import correct_tables
+                from docparse.fixes.layout_refine import words_in_points
+                from docparse.pdf.graphics import load_shapes
+
+                try:
+                    correct_tables(page, words_in_points(rp), load_shapes(pdf_bytes, index), config.chart_options)
+                except Exception as exc:
+                    for region in page.regions:
+                        region.selected = region.candidates[0].id
+                    page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
             assert chandra_res is not None
             page.cost = CostRecord(
                 calls=used_calls,

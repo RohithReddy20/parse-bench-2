@@ -232,15 +232,17 @@ _HTML_TO_MD = [
         (r'<math\b[^>]*display="block"[^>]*>(.*?)</math>', r"\n\n$$\1$$\n\n"),
         (r"<math\b[^>]*>(.*?)</math>", r"$\1$"),
         (r"<h([1-6])\b[^>]*>(.*?)</h\1>", lambda m: "\n\n" + "#" * int(m[1]) + " " + m[2].strip() + "\n\n"),
-        (r"<li\b[^>]*>(.*?)</li>", r"\n- \1"),
+        (r"<li\b[^>]*>\s*[•▪‣◦●]?\s*(.*?)</li>", r"\n- \1"),
         (r"<(b|strong)\b[^>]*>(.*?)</\1>", r"**\2**"),
         (r"<(i|em)\b[^>]*>(.*?)</\1>", r"*\2*"),
+        (r"<(del|s)\b[^>]*>(.*?)</\1>", r"~~\2~~"),
         (r'<img\b[^>]*\balt="([^"]*)"[^>]*>', r"![\1]()"),
         (r"<input\b[^>]*\bchecked\b[^>]*>", "[x]"),
         (r"<input\b[^>]*>", "[ ]"),
         (r"<br\s*/?>", "\n"),
         (r"</?(?:p|div|ul|ol|pre|hr)\b[^>]*>", "\n\n"),
-        (r"<[^>]+>", ""),
+        # Preserve `<u>` for underline fidelity; strip wrapper and sub/sup tags so prose tokens stay contiguous
+        (r"<(?!/?u\b)[^>]+>", ""),
     ]
 ]
 
@@ -316,9 +318,9 @@ def fuse_figure_charts(
         return chandra_markdown(raw_chandra, drop_furniture=drop_furniture), False
 
     ch_fig_tbls = [t for m in fig_matches for t in _TABLE.findall(m.group(1))]
-    if ch_fig_tbls and not ocria_vector_measured:
-        # Preserve Chandra's figure table(s) (including printed inset tables) unless PDF vector measurement improved
-        # the secondary chart table.
+    if ch_fig_tbls and not ocria_vector_measured and all("<th" not in t.lower() for t in ch_fig_tbls):
+        # Preserve headerless inset metric tables inside figures (e.g. ROC summary cards) when no PDF vector
+        # measurement improved the secondary chart table.
         return chandra_markdown(raw_chandra, drop_furniture=drop_furniture), False
 
     replaced = raw_chandra
@@ -388,9 +390,12 @@ _LATEX_SYM_MAP = dict(_LATEX_SYMBOLS)
 
 
 def _clean_table_math(table_html: str) -> str:
-    """Convert Chandra's custom `<math>...</math>` tags inside HTML tables into readable HTML/Unicode."""
-    if "<math" not in table_html.lower():
-        return table_html
+    """Normalize Chandra's `<math>`, `<input>`, and `<del>` tags inside HTML tables into clean HTML/markdown."""
+    out = re.sub(r"<input\b[^>]*\bchecked\b[^>]*>", "[x]", table_html, flags=_FLAGS)
+    out = re.sub(r"<input\b[^>]*>", "[ ]", out, flags=_FLAGS)
+    out = re.sub(r"<(del|s)\b[^>]*>(.*?)</\1>", r"~~\2~~", out, flags=_FLAGS)
+    if "<math" not in out.lower():
+        return out
 
     def _repl(m: re.Match) -> str:
         inner = m.group(1).strip()
@@ -409,7 +414,7 @@ def _clean_table_math(table_html: str) -> str:
             return re.sub(r"\s+", " ", inner).strip()
         return f"${m.group(1).strip()}$"
 
-    return _MATH_TAG.sub(_repl, table_html)
+    return _MATH_TAG.sub(_repl, out)
 
 
 def chandra_markdown(text: str, drop_furniture: bool = False) -> str:
