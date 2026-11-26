@@ -117,6 +117,67 @@ axis measurements verified visually against the zoomed crop.
 4. Keep exact units, signs (negative `-` values), percentages, and decimal precision. Preserve \
 full category/legend names.
 5. Output ONLY the short title line and HTML `<table>...</table>` (no code fences, prose paragraphs, or commentary)."""
+CHART_V3_PROMPT_ID = "qwen/chart-v3"
+SINGLE_CHART_V3_PROMPT_ID = "qwen/chart-single-v3"
+_CHART_V3_RULES = """\
+How to read a chart:
+1. Each chart, and each panel or subplot of a chart, gets its own HTML `<table>`, preceded by one line with its \
+printed title (the title above or beside that chart; a panel's own heading for a panel).
+2. Table shape: one row per category or x-axis value, in axis order, with the label exactly as printed in the first \
+column; one column per data series, named exactly as in the legend (or by the value axis title when there is a \
+single series). Never put two series in one cell, never merge two panels into one table, and never use placeholder \
+names such as "Series 1" when a legend or axis names the series.
+3. Values: copy a printed data label exactly. Where the measurements give a value for a mark, use it. Otherwise read \
+the value off the axis: find the gridlines or tick labels on either side of the mark and estimate where it sits \
+between them (a bar ending 40% of the way from 20 to 30 is 24). Every plotted mark needs a value: an estimate read \
+from the axis is what is asked for, so never leave a cell empty or write "N/A" because a value is not printed. Leave \
+a cell empty only where the series has no mark at that category.
+4. A line or area chart with more points than x-axis labels: one row per labelled x-axis tick, with each series' \
+value at that tick.
+5. Stacked bars: one column per segment with that segment's own size, not the running total. Pie or donut: one row \
+per slice.
+6. Keep signs, decimal precision, units and percent signs as the chart prints them. Do not add totals, averages, \
+rows or series that are not plotted.
+7. Output only the title lines and tables: no commentary, no code fences."""
+CHART_V3_PROMPT = (
+    """\
+Extract the data behind EVERY chart on this document page as HTML tables.
+
+You are given the full page image (and, when present, a zoomed crop of the chart region), measurements read from \
+the PDF's vector drawing (exact wherever they correspond to a plotted bar, line or marker):
+<measurements>
+{hint}
+</measurements>
+and draft table(s) from an OCR model (often incomplete or misread: a starting point, not a source):
+<draft_tables>
+{draft}
+</draft_tables>
+
+"""
+    + _CHART_V3_RULES
+)
+SINGLE_CHART_V3_PROMPT = (
+    """\
+Extract the data behind the ONE chart shown in the second image (a zoomed crop) as HTML tables. The first image is \
+the whole page: use it only for the chart's title, caption, units and legend.
+
+Measurements read from the PDF's vector drawing for this chart region (exact wherever they correspond to a plotted \
+bar, line or marker; empty for a raster chart):
+<measurements>
+{hint}
+</measurements>
+Draft table(s) from an OCR model for the whole page (often incomplete, misread, or mixing charts: a starting point, \
+not a source):
+<draft_tables>
+{draft}
+</draft_tables>
+
+"""
+    + _CHART_V3_RULES
+)
+CHART_V3_THINK_RULE = (
+    "\n8. Before answering, work out the axis scale and then each series in turn; keep the reasoning to the point."
+)
 MAX_IMAGE_SIDE = 2048  # keeps visual token count in Qwen3.5's optimal regime (~3-4k tokens) and 4x smaller manifests
 
 FORM_PROMPT = """\
@@ -194,13 +255,17 @@ def build_chart_call(
     top_k: int | None = 20,
     presence_penalty: float = 1.5,
     max_tokens: int = 10240,
+    prompt: str = "v2",
 ) -> tuple[ModelCall, dict[str, bytes]]:
     """Full page (plus an optional zoomed chart crop) with vector measurements and the draft tables to verify."""
     images = [page_image] if crop_image is None else [page_image, crop_image]
-    template = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT
+    if prompt == "v3":
+        template, prompt_id = CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else ""), CHART_V3_PROMPT_ID
+    else:
+        template, prompt_id = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT, CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
     params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
-    return _call(images, CHART_PROMPT_ID, template, user, model, runtime, params)
+    return _call(images, prompt_id, template, user, model, runtime, params)
 
 
 def build_single_chart_call(
@@ -217,12 +282,18 @@ def build_single_chart_call(
     top_k: int | None = None,
     presence_penalty: float = 1.0,
     max_tokens: int = 10240,
+    prompt: str = "v2",
 ) -> tuple[ModelCall, dict[str, bytes]]:
     """One chart of a page with several: the page for context, the chart's zoomed crop, and its vector hint."""
-    template = SINGLE_CHART_PROMPT + CHART_THINK_RULE if enable_thinking else SINGLE_CHART_PROMPT
+    if prompt == "v3":
+        template = SINGLE_CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else "")
+        prompt_id = SINGLE_CHART_V3_PROMPT_ID
+    else:
+        template = SINGLE_CHART_PROMPT + CHART_THINK_RULE if enable_thinking else SINGLE_CHART_PROMPT
+        prompt_id = SINGLE_CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
     params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
-    return _call([page_image, crop_image], SINGLE_CHART_PROMPT_ID, template, user, model, runtime, params)
+    return _call([page_image, crop_image], prompt_id, template, user, model, runtime, params)
 
 
 def _chart_params(

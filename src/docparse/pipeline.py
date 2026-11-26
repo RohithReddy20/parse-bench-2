@@ -201,6 +201,7 @@ def _chart_sampling(opts: dict) -> dict:
         "top_k": int(opts["top_k"]) if "top_k" in opts else (20 if thinking else None),
         "presence_penalty": float(opts.get("presence_penalty", 1.0)),
         "max_tokens": int(opts.get("max_tokens", 10240)),
+        "prompt": str(opts.get("prompt", "v2")),
     }
 
 

@@ -91,6 +91,7 @@ TIER2_CHART_OPTIONS = frozenset(
     {
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "use_ppdoclayout", "pp_chart_score", "per_chart_crops", "per_chart_min_union", "per_chart_max_boxes",
+        "prompt",
     }
 )  # fmt: skip
 # Tier-2 draft-guided form refinement
