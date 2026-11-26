@@ -1,0 +1,22 @@
+configs/clean_base.yaml
+  h_4802a42b335f3b 1-49
+src/docparse/fixes/fallback.py
+  h_4802a42b335f3b 18-23,30-105
+src/docparse/fixes/tables.py
+  h_4802a42b335f3b 236-242,261-265,269,592-636,638-639,646-671,674
+src/docparse/fixes/text.py
+  h_4802a42b335f3b 38-46
+tests/fixes/test_audit_fixes.py
+  h_4802a42b335f3b 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c7cde9130edee988b0209bb9e73dc67a05a464a",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
