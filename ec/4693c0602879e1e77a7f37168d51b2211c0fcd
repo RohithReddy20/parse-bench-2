@@ -1,0 +1,30 @@
+configs/hybrid_v2.yaml
+  h_4802a42b335f3b 5
+serve/colab_frontier_pilot.py
+  h_4802a42b335f3b 1-578
+src/docparse/core/config.py
+  h_4802a42b335f3b 20,101-102
+src/docparse/fixes/formatting.py
+  h_4802a42b335f3b 27,37-38,43-48,51,71-73,78-137,178,181-184,200-221,230,259,285-286
+src/docparse/fixes/layout_kdl.py
+  h_4802a42b335f3b 158-168,171,185-215,222,250-251
+src/docparse/fixes/verify.py
+  h_4802a42b335f3b 1-110
+src/docparse/models/adapters/vlm_specialists.py
+  h_4802a42b335f3b 274-275,283-354,482,486-489,509
+src/docparse/pipeline.py
+  h_4802a42b335f3b 105,109,142-156,159,167,207-212,347-358,362-370
+tests/fixes/test_audit_fixes.py
+  h_4802a42b335f3b 71-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec4693c0602879e1e77a7f37168d51b2211c0fcd",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
