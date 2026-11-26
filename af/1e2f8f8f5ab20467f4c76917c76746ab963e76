@@ -1,0 +1,20 @@
+serve/colab_hf_chandra.py
+  h_4802a42b335f3b 14,22,100-114
+src/docparse/models/adapters/vlm_specialists.py
+  h_4802a42b335f3b 335-414,416,420
+src/evalkit/full_validate.py
+  h_4802a42b335f3b 285
+tests/models/test_vlm_specialists.py
+  h_4802a42b335f3b 93-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af1e2f8f8f5ab20467f4c76917c76746ab963e76",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
