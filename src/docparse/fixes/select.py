@@ -121,3 +121,26 @@ def agreement(a: str, b: str) -> float:
         return 0.0
     hit = _overlap(ta, tb)
     return 2 * hit / (na + nb)
+
+
+def fit_score(fit: LayerFit) -> float:
+    """One number for a reading's agreement with the text layer: the mean of its word F1 and its number F1 (a
+    reading with no numbers on a page without numbers scores its word F1 twice)."""
+
+    def f1(p: float, r: float) -> float:
+        return 2 * p * r / (p + r) if p + r else 0.0
+
+    return 0.5 * f1(fit.precision, fit.recall) + 0.5 * f1(fit.num_precision, fit.num_recall)
+
+
+def prefer_alternative(primary_md: str, alt_md: str, rendered: RenderedPage, options: dict) -> bool:
+    """On a page with a healthy text layer: does the other reading agree with the layer clearly better (by
+    `layer_margin`, default 0.03) than the primary one? Never on a page without such a layer."""
+    from docparse.fixes.verify import has_healthy_text_layer
+
+    if not alt_md.strip() or rendered.hidden is None or not has_healthy_text_layer(rendered):
+        return False
+    margin = float(options.get("layer_margin", 0.03))
+    a = fit_score(layer_fit(primary_md, rendered, with_tables=False))
+    b = fit_score(layer_fit(alt_md, rendered, with_tables=False))
+    return b > a + margin

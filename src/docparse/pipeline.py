@@ -490,6 +490,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 or verify_needed
                 or (config.reader == "chandra_hybrid" and vlm_specialists.has_chart_figure(ch_read.raw_answer))
                 or config.layout == "ground"
+                or bool(config.select_options)  # the second reading is compared on every page
             )
             result = client.get(call, blobs, meta) if need_ocria else None
         else:
@@ -556,6 +557,21 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             sec_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
             if secondary_improves(ch_read.markdown, sec_md, rp, verify_reason):
                 ch_ok = False
+        if (
+            use_chandra
+            and ch_ok
+            and ch_read is not None
+            and read is not None
+            and config.select_options
+            and read.finish_reason != "length"
+        ):
+            from docparse.fixes.select import prefer_alternative
+            from docparse.models.adapters import vlm_specialists
+
+            if not vlm_specialists.has_chart_figure(ch_read.raw_answer):  # a chart's values are not in the layer
+                alt_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
+                if prefer_alternative(ch_read.markdown, alt_md, rp, config.select_options):
+                    ch_ok = False
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 

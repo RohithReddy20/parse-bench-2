@@ -122,6 +122,9 @@ class Config(BaseModel):
     # model alias and sampling of the general-VLM page read (the `qwen_page` reader and the third reading of
     # `select`); empty = the defaults of `qwen_tier2.build_page_call`
     qwen_page_options: dict[str, Any] = Field(default_factory=dict)
+    # choosing between the page's independent readings (fixes/select.py): `layer_margin` = how much better the
+    # other reading must agree with a healthy PDF text layer to replace the primary one; empty = no selection
+    select_options: dict[str, Any] = Field(default_factory=dict)
     chandra_model: ModelRef | None = None
     # Drop Page-Header and Page-Footer blocks when the reader tags page furniture (e.g. Chandra layout blocks)
     strip_furniture: bool = False
@@ -183,7 +186,7 @@ class Config(BaseModel):
             "tier2_charts", "tier2_chart_options", "tier2_forms", "tier2_form_options",
             "tier2_tables", "tier2_table_options",
         )  # fmt: skip
-        tier2 += ("qwen_page_options",)
+        tier2 += ("qwen_page_options", "select_options")
         unset = {name for name in tier2 if not getattr(self, name)}
         return sha256_hex(canonical_json(self.model_dump(mode="json", exclude=unset)))[:16]
 
