@@ -1,0 +1,20 @@
+docs/results/2026-11-26-general-perception-upgrade.md
+  h_4802a42b335f3b 1-102
+src/docparse/models/adapters/vlm_specialists.py
+  h_4802a42b335f3b 235,238,244-245,321-323,393-398,417
+src/docparse/pipeline.py
+  h_4802a42b335f3b 195,209-218,220-227,229-243
+tests/models/test_vlm_specialists.py
+  h_4802a42b335f3b 93-96,101-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bae202e5eeef69767ab85c697e1cbf3120f18d59",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
