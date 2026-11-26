@@ -383,6 +383,31 @@ def _run_tier2_tables(
     return (merged, done, []) if taken else (markdown, [], [])
 
 
+def _layer_lines(rp: RenderedPage, opts: dict) -> str:
+    """The text layer of a born-digital page as lines, top to bottom (words of a line separated by their gaps:
+    a wide gap becomes ` | `); "" when the layer is unhealthy, absent, or `layer` is off."""
+    if not opts.get("layer", True):
+        return ""
+    from docparse.fixes.layout_refine import lines_of, words_in_points
+    from docparse.fixes.verify import has_healthy_text_layer
+
+    if rp.hidden is None or not has_healthy_text_layer(rp):
+        return ""
+    out = []
+    for line in lines_of(words_in_points(rp)):
+        parts, prev = [], None
+        for w in line:
+            height = max(1.0, w.y1 - w.y0)
+            if prev is not None:
+                parts.append(" | " if w.x0 - prev.x1 > 1.5 * height else " ")
+            parts.append(w.text)
+            prev = w
+        text = "".join(parts).strip()
+        if text:
+            out.append(text)
+    return "\n".join(out)[: int(opts.get("layer_chars", 12000))]
+
+
 def _qwen_page_call(rp: RenderedPage, config: Config) -> tuple[ModelCall, dict[str, bytes]]:
     """The general-VLM transcription of the page (`qwen_page_options`: model alias and sampling)."""
     from docparse.models.adapters import qwen_tier2
@@ -604,7 +629,12 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             ):
                 from docparse.models.adapters import qwen_tier2
 
-                f_call, f_blobs = qwen_tier2.build_form_refine_call(
+                build_form = qwen_tier2.build_form_refine_call
+                if f_opts.get("prompt") == "kv":  # rewrite as `caption: value` lines, with the text layer's lines
+                    from functools import partial
+
+                    build_form = partial(qwen_tier2.build_form_kv_call, layer_lines=_layer_lines(rp, f_opts))
+                f_call, f_blobs = build_form(
                     rp.image,
                     markdown,
                     model=qwen_tier2.resolve_tier2_model(f_opts.get("model")),

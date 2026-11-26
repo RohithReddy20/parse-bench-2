@@ -522,6 +522,72 @@ def read_tier2_result(result: ModelResult) -> Tier2Read:
     return Tier2Read(markdown, reasoning.strip(), finish, usable)
 
 
+FORM_KV_PROMPT_ID = "qwen/form-kv-v1"
+FORM_KV_PROMPT = """\
+Rewrite this form page as clean Markdown that keeps every printed word and pairs each field with what was filled in.
+
+You are given the page image and a draft transcription from an OCR model. Its words are mostly right, but it may \
+detach a value from its field, lay fields out as loose table cells, flip or miss checkboxes, or split \
+character-box values:
+<draft>
+{draft}
+</draft>
+{layer}
+Rules:
+1. One field per line, written `caption: value`. The caption is the field's printed label with its printed box or \
+line number/code in front when it has one (for example `3.99 Plant, machinery and motor vehicles: £27,525`). A \
+printed number or code that only identifies a box belongs to the caption and is never a value.
+2. A field left empty on the page keeps its caption and gets `[___]` as its value. Never put a printed hint, example, \
+instruction, unit label or box number into a value, and never guess a value.
+3. Checkboxes and radio buttons: `[x]` when ticked, crossed or filled and `[ ]` when empty, written directly before \
+the option's label, one option per line under its question, with every printed option listed.
+4. Copy values exactly as the page shows them (digits, signs, separators, spelling). A date, number or code written \
+one character per box is joined into one value.
+5. A real grid (several rows that share the same column captions) stays an HTML `<table>` with the column captions \
+in a header row and each row's caption in its first cell. Do not use a table for anything else.
+6. Keep all other printed text (titles, section headings as `#`/`##`, instructions, notes, page furniture) in \
+reading order, and keep the draft's wording wherever it matches the page.
+7. Output only the Markdown: no code fences, no commentary."""
+FORM_KV_LAYER = """
+The PDF's own text layer, line by line from top to bottom (exact characters of the typed text; trust it for \
+spelling and digits, and use the image to decide which value belongs to which field):
+<text_layer>
+{lines}
+</text_layer>
+"""
+
+
+def build_form_kv_call(
+    page_image: Image.Image,
+    draft_markdown: str,
+    layer_lines: str = "",
+    *,
+    model: ModelRef = QWEN38_27B_FP8,
+    runtime: str = RUNTIME,
+    enable_thinking: bool = False,
+    temperature: float = 0.1,
+    top_p: float = 0.95,
+    top_k: int | None = None,
+    presence_penalty: float = 1.0,
+    max_tokens: int = 8192,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """Rewrite a form page as `caption: value` lines from the page image, the draft and (when the page has one)
+    the PDF text layer."""
+    layer = FORM_KV_LAYER.format(lines=layer_lines.strip()) if layer_lines.strip() else ""
+    user = FORM_KV_PROMPT.format(draft=draft_markdown.strip() or "(none)", layer=layer)
+    params: dict[str, Any] = {
+        "enable_thinking": enable_thinking,
+        "temperature": temperature,
+        "top_p": top_p,
+        "presence_penalty": presence_penalty,
+        "max_tokens": max_tokens,
+    }
+    if top_k is not None:
+        params["top_k"] = top_k
+    template = FORM_KV_PROMPT + FORM_KV_LAYER
+    return _call([page_image], FORM_KV_PROMPT_ID, template, user, model, runtime, params)
+
+
 PAGE_PROMPT_ID = "qwen/page-v1"
 PAGE_SYSTEM = "You are a meticulous document transcriber. You copy pages exactly as printed and never add commentary."
 PAGE_PROMPT = """\
