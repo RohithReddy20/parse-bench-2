@@ -1,0 +1,65 @@
+src/docparse/models/adapters/qwen_tier2.py
+  s_af936af91b1758::t_887dbe6430c326 44-45
+  s_af936af91b1758::t_10a112aab014fa 473-478
+  s_af936af91b1758::t_b93425bf91909b 1-2,6-7,15,17,32-43,46-48,51
+  s_af936af91b1758::t_d99dfd86b73ef4 197-223,230,241
+  s_af936af91b1758::t_52bebf7bb0c73a 224-229
+  s_af936af91b1758::t_ef319df8cf411d 89-114
+  s_af936af91b1758::t_1031eae19d1c43 347-363
+configs/frontier_v3.yaml
+  s_af936af91b1758::t_ca4e8f2ec28550 71,79-81,84,91-101
+  s_af936af91b1758::t_a71c3c1be7a168 2-4,6-10
+src/docparse/core/config.py
+  s_af936af91b1758::t_deaf6be00d1b5a 134,139-145
+  s_af936af91b1758::t_7d9115789c7dd9 88-89,92-93,96,99,103-107
+  s_af936af91b1758::t_cc58749a993af7 178-181
+  s_af936af91b1758::t_69f17f9ff9eca6 222-224
+  s_af936af91b1758::t_92cff7e46ecb8c 127-129
+  s_af936af91b1758::t_ec8756b9dcf39e 108-109
+tests/test_tier2_charts.py
+  s_af936af91b1758::t_39c66657dd7b8c 1-2,5,14-15,18,24-25,27,29-33
+  s_af936af91b1758::t_5d591704a15a59 70-80,83-86,88-89,94,98-99,101-103,106,111,119-122
+  s_af936af91b1758::t_562ba200e4e33e 144-145
+  s_af936af91b1758::t_903820c05be7af 285-304,307-389
+  s_af936af91b1758::t_eb6448e4f5ce07 305-306
+tests/models/test_qwen_tier2.py
+  s_af936af91b1758::t_9d8cee957a175e 311-312,319,322-326
+  s_af936af91b1758::t_3f1621342a43a2 313-318,320-321
+  s_af936af91b1758::t_6cd08e1ae5e5a6 216-231
+  s_af936af91b1758::t_e285b40496b9e7 73-101,104
+  s_af936af91b1758::t_05d0148f900267 1,20-22,27,29-30,33
+  s_af936af91b1758::t_0884d5c61b026b 102-103
+src/docparse/pipeline.py
+  s_af936af91b1758::t_38ca61ef7d1a98 47-48
+  s_af936af91b1758::t_c9f9335b4ca9c6 586
+  s_af936af91b1758::t_8c4631470af17c 163-184,188,192-206,216,232-259
+  s_af936af91b1758::t_0671887278a180 610
+  s_af936af91b1758::t_6759a9dfd4a890 31
+  s_af936af91b1758::t_b5c9247f9a6a06 393
+  s_af936af91b1758::t_f220eea2139ace 609,611-617
+  s_af936af91b1758::t_3e1677bd670fe6 528,536-538,540-544,546-560,562-564,566-567,569,573
+  s_af936af91b1758::t_87780c9d84cb16 667-672
+  s_af936af91b1758::t_d47f7559e8d899 727,729-732
+  s_af936af91b1758::t_663510db683b1f 332-385
+  s_af936af91b1758::t_fa0a81fef366f5 9-12
+  s_af936af91b1758::t_175476f3154f76 185-187
+  s_af936af91b1758::t_a50ac6db27c31b 189-191
+  s_af936af91b1758::t_72f57f144ebc7e 666
+  s_af936af91b1758::t_1bc3aff1ba9ce7 673
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b09ac754af73ab682953beebf64ffca42f4f569",
+  "prompts": {},
+  "sessions": {
+    "s_af936af91b1758": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f98b2720-343e-4fe1-a38e-95f089300817",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
