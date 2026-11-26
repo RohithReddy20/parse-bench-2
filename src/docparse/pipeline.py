@@ -163,13 +163,16 @@ def _zoom_crop(crop, opts: dict):
     )
 
 
-def _chart_hint(pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[float, ...] | None) -> str:
-    """The PDF's vector measurements of the chart in `box_pt` (the whole page when None); "" without any."""
+def _chart_hint(
+    pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[float, ...] | None, max_chars: int = 2500
+) -> str:
+    """The PDF's vector measurements of the chart in `box_pt` (the whole page when None), at most `max_chars` long
+    (a dense chart's measured series are cut off at that length); "" without any."""
     from docparse.fixes.chart_hints import extract_chart_hint, format_chart_hint
     from docparse.pdf.graphics import load_shapes
 
     try:
-        return format_chart_hint(extract_chart_hint(rp, load_shapes(pdf_bytes, index), box_pt))
+        return format_chart_hint(extract_chart_hint(rp, load_shapes(pdf_bytes, index), box_pt), max_chars)
     except Exception:  # the hint is optional evidence: image uploads and odd geometry read the chart from pixels
         return ""
 
@@ -238,7 +241,9 @@ def _tier2_chart_call(
     figures = [b for _, _, alt, b in _chandra_figures(raw_chandra) if b and _CHART_ALT.search(alt)]
     boxes = pp_boxes or [(b[0] * w / 1000, b[1] * h / 1000, b[2] * w / 1000, b[3] * h / 1000) for b in figures]
     crop, box_pt = _chart_crop(rp, boxes)
-    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)  # vector paths follow the page as stored
+    hint = (
+        "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt, int(opts.get("hint_chars", 2500)))
+    )  # vector paths follow the page as stored
     return qwen_tier2.build_chart_call(
         rp.image,
         crop_image=_zoom_crop(crop, opts),
@@ -269,7 +274,7 @@ def _tier2_single_chart_call(
         x0, y0, x1, y1 = max(0.0, box[0]), max(0.0, box[1]), min(w, box[2]), min(h, box[3])
         crop = rp.image.crop((round(x0), round(y0), round(x1), round(y1)))
         box_pt = (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
-    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)
+    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt, int(opts.get("hint_chars", 2500)))
     return qwen_tier2.build_single_chart_call(
         rp.image, _zoom_crop(crop, opts), vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
     )
