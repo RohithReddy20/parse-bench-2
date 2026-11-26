@@ -178,12 +178,19 @@ def run(
 
     vol_dir = Path("/manifests") / manifest
     mdir = vol_dir
-    if not (mdir / "manifest.jsonl").exists() and (vol_dir / "manifest.tar").exists():
+    parts = sorted(vol_dir.glob("part_*"))
+    if not (mdir / "manifest.jsonl").exists() and ((vol_dir / "manifest.tar").exists() or parts):
         mdir = Path("/tmp") / f"manifest_{manifest}"
         if mdir.exists():
             shutil.rmtree(mdir)
         mdir.mkdir(parents=True)
-        with tarfile.open(vol_dir / "manifest.tar", "r") as tf:
+        tar_src = vol_dir / "manifest.tar"
+        if not tar_src.exists():
+            tar_src = Path("/tmp") / f"manifest_{manifest}.tar"
+            with tar_src.open("wb") as out_fh:
+                for p in parts:
+                    out_fh.write(p.read_bytes())
+        with tarfile.open(tar_src, "r") as tf:
             tf.extractall(mdir)
     calls = [call for call, _meta in read_manifest(mdir)]
     if not calls:
