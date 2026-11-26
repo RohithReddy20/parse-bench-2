@@ -9,6 +9,12 @@ ordinary page runs horizontally.
 A line that runs far beyond the characters it crosses is a rule (a table border, a heading rule behind its text),
 not a decoration, and marks nothing. With a probe of the rendered page, a line must also show between the
 characters it crosses: a border hidden behind a heading's background panel is not a strike.
+
+An underline also starts and ends with its text and follows a run of it: a line that runs on well past the
+characters above it, or under three or more groups of characters a column apart, is a rule too (a cell border,
+the rule under a row of figures). One wide gap is allowed: an underline does cross a tab. A dashed stroke is
+never a decoration (the leaders a word processor draws from a tracked change, under the line of text, to its
+balloon in the margin).
 """
 
 from __future__ import annotations
@@ -26,6 +32,8 @@ LINE_THICK = 0.2  # a decoration is at most this many character heights thick
 CHAR_COVER = 0.5  # the line covers at least this share of a character's width
 LINE_COVER = 0.6  # the characters a line crosses span at least this share of its length
 DARK = 160  # luminance under which a rendered pixel is ink
+OVERHANG = 2.0  # an underline runs at most this many character heights past its text, on either side
+COLUMN_GAP = 3.0  # characters further apart than this many character heights stand in different columns
 SHOWS = 0.6  # share of the gaps between crossed characters where the line must show as ink ...
 CONTRAST = 0.3  # ... and how much more often than in the same gaps a little higher up
 
@@ -74,6 +82,7 @@ def _path_lines(raw, obj, ctm: tuple, out: list[Line]) -> None:
     width = ctypes.c_float()
     raw.FPDFPageObj_GetStrokeWidth(obj, ctypes.byref(width))
     stroke_w = width.value * math.sqrt(abs(m[0] * m[3] - m[1] * m[2])) if stroke.value else 0.0
+    dashed = bool(stroke.value) and raw.FPDFPageObj_GetDashCount(obj) > 0
     x, y = ctypes.c_float(), ctypes.c_float()
     subpaths: list[list[tuple[float, float]]] = []
     curved: list[bool] = []
@@ -98,7 +107,7 @@ def _path_lines(raw, obj, ctm: tuple, out: list[Line]) -> None:
             continue
         if fill.value and len(points) >= 4 and height <= MAX_THICK and length > 2 * height:
             out.append(Line(min(xs), max(xs), (max(ys) + min(ys)) / 2, max(height, stroke_w)))
-        elif stroke.value and stroke_w <= MAX_THICK:
+        elif stroke.value and stroke_w <= MAX_THICK and not dashed:
             for (ax, ay), (bx, by) in zip(points, points[1:], strict=False):
                 if abs(ay - by) <= 0.1 * abs(ax - bx) and abs(ax - bx) > 0:
                     out.append(Line(min(ax, bx), max(ax, bx), (ay + by) / 2, stroke_w))
@@ -160,6 +169,19 @@ def _shows(line: Line, cis: list[int], chars: list[CharGeom], mark: str, ink: Ca
     return on >= SHOWS and on - off >= CONTRAST
 
 
+def _is_rule(line: Line, over: list[CharGeom]) -> bool:
+    """Does the line under these characters run on past them, or under three or more columns of them?"""
+    height = sorted(c.height for c in over)[len(over) // 2]
+    boxes = sorted((c.x0, c.x1) for c in over)
+    if max(boxes[0][0] - line.x0, line.x1 - max(b for _, b in boxes)) > OVERHANG * height:
+        return True
+    reach, columns = boxes[0][1], 1
+    for a, b in boxes[1:]:
+        columns += a - reach > COLUMN_GAP * height
+        reach = max(reach, b)
+    return columns >= 3
+
+
 def decoration_marks(chars: list[CharGeom], lines: list[Line], ink: Callable[[float, float], int] | None = None) -> str:
     """One mark per character: "s" struck through, "u" underlined, "." neither. `ink(x, y)` is the luminance of
     the rendered page at a point of user space (darkest of the pixels around it), when a render is at hand."""
@@ -188,6 +210,8 @@ def decoration_marks(chars: list[CharGeom], lines: list[Line], ink: Callable[[fl
         span = max(chars[c].x1 for c in cis) - min(chars[c].x0 for c in cis)
         if span < LINE_COVER * (ln.x1 - ln.x0):
             continue  # a rule across a column or a table
+        if mark == "u" and _is_rule(ln, [chars[c] for c in cis]):
+            continue  # a cell border or the rule under a row, not an underline
         if ink is not None and not _shows(ln, cis, chars, mark, ink):
             continue  # hidden behind something drawn over it
         for c in cis:
