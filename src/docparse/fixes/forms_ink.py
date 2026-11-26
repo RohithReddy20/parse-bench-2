@@ -1,18 +1,22 @@
 """Check-box states read from the page render, for check boxes drawn as vector squares (not yet wired in).
 
-Where the markdown already carries a `[ ]`/`[x]` mark right before the printed label of a vector check box (the
-box immediately left of the label on its line, as `forms_acro._box_left_of` finds it), the mark is set to what the
-render shows, only when the ink is unambiguous (`classify_box_ink`): ink <= empty_max is unchecked, checked_min <=
-ink <= bullet_max is checked (an X, a tick, a dot); anything else (a faint speck, a solid `■` bullet) keeps the read.
-Ink is the share of the box interior, inset past its border, darker than the box's own surround (a ring just outside
-its border) by `dark_delta` grey levels, so shaded form bands and yellowed scans calibrate themselves. Comb fields
-(>= 3 touching character boxes in a row) and grids of evenly spaced cells are not check boxes.
+Where the markdown already carries a `[ ]`/`[x]` mark beside the printed label of a vector check box, the mark
+is set to what the render shows: the mark right before a label whose box sits immediately left of it on its
+line (`[ ] Yes`, as `forms_acro._box_left_of` finds it), else the mark right after a label whose box sits
+immediately right of it (`ja [ ] nein [x]`). Only unambiguous ink counts (`classify_box_ink`): ink <= empty_max
+is unchecked; checked_min <= ink <= bullet_max over a contrasted interior (grey-level std >= min_std: dark
+strokes on a light ground) is checked (an X, a tick); anything else (a faint speck, a solid `■` bullet, a shaded
+or coloured section box) keeps the read. Ink is the share of the box interior, inset past its border, darker
+than the box's own surround (a ring just outside its border) by `dark_delta` grey levels, so shaded form bands
+and yellowed scans calibrate themselves. Comb fields (>= 3 touching character boxes in a row), grids of evenly
+spaced cells and squares around a printed character (a section or field number: `6`, `01`) are not check boxes.
 """
 
 from __future__ import annotations
 
 import bisect
 import math
+import re
 from collections import Counter
 from collections.abc import Sequence
 from itertools import combinations
@@ -23,7 +27,16 @@ from PIL import Image
 
 from docparse.fixes.align import align
 from docparse.fixes.forms import apply_edits
-from docparse.fixes.forms_acro import _BOX_MARK, _MARK_GAP, _MARK_WINDOW, _UNIT_END, _box_left_of, _pt_words
+from docparse.fixes.forms_acro import (
+    _BOX_MARK,
+    _MARK_GAP,
+    _MARK_WINDOW,
+    _UNIT_END,
+    CheckWidget,
+    _box_left_of,
+    _pt_words,
+)
+from docparse.fixes.layout_refine import PtWord
 from docparse.pdf.graphics import load_shapes
 from docparse.pdf.render import RenderedPage
 
@@ -40,7 +53,11 @@ INSET = 0.22  # of the box's smaller side, cut off each side so its border is ne
 RING_GAP, RING_WIDTH = 3, 4  # px: the background ring starts this far outside the box and is this wide
 BG_PERCENTILE, MIN_BG = 85, 110  # surround luminance; a darker surround (a reversed-out box) is not measured
 DARK_DELTA = 45  # grey levels below the surround that count as ink
-EMPTY_MAX, CHECKED_MIN, BULLET_MAX = 0.025, 0.12, 0.82
+EMPTY_MAX, CHECKED_MIN, BULLET_MAX = 0.025, 0.12, 0.58
+MIN_STD = 28.0  # grey levels across a ticked interior (strokes on a light ground); a shaded box is flatter
+# text a check box may hold (a check glyph); any other word centred in a box is a printed field number
+_CHECK_GLYPHS = frozenset({"", "x", "X", "×", "✓", "✔", "✗", "✘", "√", "☑", "☒", "☐", "■", "□", "•", "v", "V"})
+_MARK_GAP_AFTER = re.compile(r"(?:[ \t*_:]|</?(?:strong|b|em|i|u)>)*")  # what may sit between a word and its mark
 
 
 def _size(r: Rect) -> tuple[float, float]:
@@ -125,10 +142,24 @@ def _grid_members(boxes: list[Rect]) -> set[int]:
     return out
 
 
+def _holds_print(b: Rect, words: Sequence[PtWord]) -> bool:
+    """A printed word other than a check glyph is centred in box b: a section or field number, not a check box."""
+    return any(
+        b[0] - 1 < w.cx < b[2] + 1 and b[1] - 1 < w.cy < b[3] + 1 and w.text.strip() not in _CHECK_GLYPHS
+        for w in words
+    )
+
+
 def box_ink_ratio(image: Image.Image, box_px: Rect, *, dark_delta: int = DARK_DELTA) -> float | None:
     """Share of a box's interior (inset by INSET of its smaller side, at least 2 px) darker than its surround by
     `dark_delta` grey levels. The surround is the BG_PERCENTILE luminance of a RING_WIDTH-pixel ring just outside
     the border. None when the box is off the image, too small to inset, or on a dark surround."""
+    stats = _box_ink_stats(image, box_px, dark_delta=dark_delta)
+    return None if stats is None else stats[0]
+
+
+def _box_ink_stats(image: Image.Image, box_px: Rect, *, dark_delta: int = DARK_DELTA) -> tuple[float, float] | None:
+    """(`box_ink_ratio`, grey-level standard deviation of the same inset interior)."""
     x0, y0, x1, y1 = (round(v) for v in box_px)
     side = min(x1 - x0, y1 - y0)
     inset = max(2, round(INSET * side))
@@ -146,16 +177,50 @@ def box_ink_ratio(image: Image.Image, box_px: Rect, *, dark_delta: int = DARK_DE
     if bg < MIN_BG:
         return None
     inner = gray[y0 + inset - oy0 : y1 - inset - oy0, x0 + inset - ox0 : x1 - inset - ox0]
-    return float(np.count_nonzero(inner < bg - dark_delta)) / inner.size
+    return float(np.count_nonzero(inner < bg - dark_delta)) / inner.size, float(inner.std())
 
 
 def classify_box_ink(
-    ink_ratio: float, *, empty_max: float = EMPTY_MAX, checked_min: float = CHECKED_MIN, bullet_max: float = BULLET_MAX
+    ink_ratio: float,
+    inner_std: float | None = None,
+    *,
+    empty_max: float = EMPTY_MAX,
+    checked_min: float = CHECKED_MIN,
+    bullet_max: float = BULLET_MAX,
+    min_std: float = MIN_STD,
 ) -> bool | None:
-    """True (ticked), False (empty) or None (ambiguous: a faint speck, or a solid `■` bullet)."""
+    """True (ticked), False (empty) or None (ambiguous: a faint speck, a solid `■` bullet or shaded box, or, given
+    the interior's grey-level `inner_std`, a flat shade under min_std)."""
     if ink_ratio <= empty_max:
         return False
-    return True if checked_min <= ink_ratio <= bullet_max else None
+    flat = inner_std is not None and inner_std < min_std
+    return True if checked_min <= ink_ratio <= bullet_max and not flat else None
+
+
+def _box_right_of(w0: PtWord, cboxes: list[CheckWidget], words: list[PtWord], skip: set[int]) -> int | None:
+    """`_box_left_of` mirrored: the first unused box immediately right of printed word w0 on its line, with no
+    printed word between them (`ja [ ] nein [x]`)."""
+    h = max(6.0, w0.y1 - w0.y0)
+    for bi, (bx0, by0, _bx1, by1, _chk) in enumerate(cboxes):
+        if bi in skip:
+            continue
+        bcy = (by0 + by1) / 2
+        if w0.y0 - 0.6 * h <= bcy <= w0.y1 + 0.6 * h and 0 <= bx0 - w0.x1 <= 2.5 * h:
+            if not any(w0.x1 < p.cx < bx0 and abs(p.cy - w0.cy) < 0.5 * h for p in words):
+                return bi
+    return None
+
+
+def _mark_before(md: str, lo: int, start: int) -> re.Match[str] | None:
+    """The last `[ ]`/`[x]` mark in md[lo:start] with only spaces or emphasis between it and `start`."""
+    marks = list(_BOX_MARK.finditer(md, lo, start))
+    return marks[-1] if marks and _MARK_GAP.fullmatch(md, marks[-1].end(), start) else None
+
+
+def _mark_after(md: str, end: int, hi: int) -> re.Match[str] | None:
+    """The first `[ ]`/`[x]` mark in md[end:hi] with only spaces, emphasis or a colon between `end` and it."""
+    m = _BOX_MARK.search(md, end, hi)
+    return m if m and _MARK_GAP_AFTER.fullmatch(md, end, m.start()) else None
 
 
 def ink_checkbox_edits(
@@ -169,44 +234,51 @@ def ink_checkbox_edits(
     empty_max: float = EMPTY_MAX,
     checked_min: float = CHECKED_MIN,
 ) -> list[tuple[int, int, str]]:
-    """Set the `[ ]`/`[x]` mark right before each aligned printed label (within `_MARK_WINDOW` characters in its
-    unit, only spaces or emphasis between) to the ink state of the check box (`boxes` in top-down points, default
-    `vector_checkbox_rects`) immediately left of it. Boxes overlapping `skip_boxes` (AcroForm widgets already set)
-    and ambiguous boxes keep their marks; pages with < MIN_BOXES boxes or without a text layer are left alone."""
+    """Set the `[ ]`/`[x]` mark beside each aligned printed label to the ink state of its check box (`boxes` in
+    top-down points, default `vector_checkbox_rects`): the mark right before the label (within `_MARK_WINDOW`
+    characters in its unit, only spaces or emphasis between) for a box immediately left of it, else the mark
+    right after it (only spaces, emphasis or a colon between) for a box immediately right of it. Each box and
+    each mark is used once. Squares around a printed character are not boxes; boxes overlapping `skip_boxes`
+    (AcroForm widgets already set) and ambiguous boxes keep their marks; pages with < MIN_BOXES boxes or no
+    text layer are left alone."""
     if not markdown or not rendered.text_words or rendered.image is None:
         return []
+    words = _pt_words(rendered)
     boxes = vector_checkbox_rects(pdf_bytes, page_index) if boxes is None else boxes
+    boxes = [b for b in boxes if not _holds_print(b, words)]
     if len(boxes) < MIN_BOXES:
         return []
     s = rendered.scale
     states: list[bool | None] = []
     for b in boxes:
         skipped = any(b[0] < k[2] and k[0] < b[2] and b[1] < k[3] and k[1] < b[3] for k in skip_boxes or ())
-        ink = None if skipped else box_ink_ratio(rendered.image, (b[0] / s, b[1] / s, b[2] / s, b[3] / s))
-        states.append(None if ink is None else classify_box_ink(ink, empty_max=empty_max, checked_min=checked_min))
+        ink = None if skipped else _box_ink_stats(rendered.image, (b[0] / s, b[1] / s, b[2] / s, b[3] / s))
+        states.append(None if ink is None else classify_box_ink(*ink, empty_max=empty_max, checked_min=checked_min))
     if all(st is None for st in states):
         return []
-    words = _pt_words(rendered)
     al = align(markdown, words, reorder=True)
-    # token -> PDF word of its first matched character (reversed, so the first character's word wins)
-    first = {al.a_tok[k]: al.p_word[p] for k, p in reversed(list(enumerate(al.amatch))) if p is not None}
-    units = [0] + [m.end() for m in _UNIT_END.finditer(markdown)]
-    widgets = [(*b, False) for b in boxes]  # the shared geometry check reads only the rect
+    # token -> PDF word of its first (left-of check) and last (right-of check) matched character
+    matched = [(al.a_tok[k], al.p_word[p]) for k, p in enumerate(al.amatch) if p is not None]
+    first, last = dict(reversed(matched)), dict(matched)
+    units = [0] + [m.end() for m in _UNIT_END.finditer(markdown)] + [len(markdown)]
+    widgets = [(*b, False) for b in boxes]  # the shared geometry checks read only the rect
     used: set[int] = set()
+    taken: set[tuple[int, int]] = set()  # spans of marks already set from a box
     edits: list[tuple[int, int, str]] = []
     for t, w in sorted(first.items()):
-        bi = _box_left_of(words[w], widgets, words, used)
-        if bi is None:
-            continue
-        start = al.tokens[t].start
-        u0 = units[bisect.bisect_right(units, start) - 1]
-        marks = list(_BOX_MARK.finditer(markdown, max(u0, start - _MARK_WINDOW), start))
-        if not marks or not _MARK_GAP.fullmatch(markdown, marks[-1].end(), start):
-            continue
-        used.add(bi)
-        mark, state = marks[-1], states[bi]
-        if state is not None and bool(mark.group(1)) != state:
-            edits.append((mark.start(), mark.end(), "[x]" if state else "[ ]"))
+        tok = al.tokens[t]
+        i = bisect.bisect_right(units, tok.start) - 1
+        before = _mark_before(markdown, max(units[i], tok.start - _MARK_WINDOW), tok.start)
+        after = _mark_after(markdown, tok.end, min(units[i + 1], tok.end + _MARK_WINDOW))
+        for mark, near, word in ((before, _box_left_of, words[w]), (after, _box_right_of, words[last[t]])):
+            if mark is None or mark.span() in taken or (bi := near(word, widgets, words, used)) is None:
+                continue
+            used.add(bi)
+            taken.add(mark.span())
+            state = states[bi]
+            if state is not None and bool(mark.group(1)) != state:
+                edits.append((mark.start(), mark.end(), "[x]" if state else "[ ]"))
+            break
     return edits
 
 
