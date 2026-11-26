@@ -1,0 +1,29 @@
+src/docparse/fixes/forms_ink.py
+  s_d93f7006082a1b::t_0d84620de71a02 286-289
+  s_d93f7006082a1b::t_0d398b1805713c 261-264
+  s_d93f7006082a1b::t_14a340fb759f26 298-300
+  s_d93f7006082a1b::t_d766fc2a75e0d7 6-8
+  s_d93f7006082a1b::t_4b5e93164c22f0 60
+  s_d93f7006082a1b::t_8e23219e8d5435 217-234
+tests/fixes/test_forms_ink.py
+  s_d93f7006082a1b::t_5ddd27a0e3ca97 17
+  s_d93f7006082a1b::t_78fcd82e396fee 9
+  s_d93f7006082a1b::t_a31498b24f41b3 201-261
+  s_d93f7006082a1b::t_5c9f88c9d7a15a 29-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1f1430649b34c532e430b3bb0cc77e54151e35d0",
+  "prompts": {},
+  "sessions": {
+    "s_d93f7006082a1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c15263e-4084-4754-8565-9f8eb9413fa5",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
