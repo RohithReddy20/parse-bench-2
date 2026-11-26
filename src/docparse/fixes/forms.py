@@ -326,57 +326,64 @@ def repair(
             do_id_boxes=bool(options.get("acroform")),
             do_clean=bool(options.get("acro_clean")),
         )
+    out = markdown
     if not fonts:
         if options.get("n_blank_forms"):
             from docparse.fixes.forms_blank import repair_blank_form
 
-            markdown = repair_blank_form(markdown)
-        return _blank_form(markdown, rendered, options)
-    printed, overlay = page_words(rendered, fonts)
-    if not overlay:
-        return markdown
-    page = read_form(markdown, printed, overlay)
-    edits: list[tuple[int, int, str]] = []
-    if options.get("combs"):
-        edits += comb_edits(page)
-    drawn = None
-    if options.get("boxes") or options.get("bare_ticks") or options.get("table_clean"):
-        from docparse.pdf.boxes import check_boxes
-
-        drawn = check_boxes(pdf_bytes, page_index)
-    if options.get("boxes"):
-        from docparse.fixes.forms_boxes import box_edits
-
-        edits += box_edits(page, drawn)
-    if options.get("bare_ticks"):
-        from docparse.fixes.forms_n_grids import bare_tick_edits
-
-        edits += bare_tick_edits(page, drawn)
-    if options.get("outlines"):
-        from docparse.fixes.forms_rows import outline_edits
-
-        edits += outline_edits(page)
-    if options.get("trailing"):
-        from docparse.fixes.forms_rows import trailing_edits
-
-        edits += trailing_edits(page)
-    out = apply_edits(markdown, edits) if edits else markdown
-    # the other line's steps before `ids`/`codes`: the reverse order measured dev +0.10, check -0.06 (ni-general-o2)
-    out, page = _neon_steps(out, page, printed, overlay, options, drawn)
-    if options.get("ids") or options.get("codes") or options.get("grids"):  # whole tables: after the edits inside them
-        from docparse.fixes.forms_rows import row_edits
-
-        if out != page.markdown:
+            out = repair_blank_form(out)
+        out = _blank_form(out, rendered, options)
+    else:
+        printed, overlay = page_words(rendered, fonts)
+        if overlay:
             page = read_form(out, printed, overlay)
-        rows = row_edits(page, options)
-        out = apply_edits(out, rows) if rows else out
-    if options.get("blanks") or options.get("cells") or options.get("hints"):  # printed text out of blank slots: last
-        from docparse.fixes.forms_slots import slot_edits
+            edits: list[tuple[int, int, str]] = []
+            if options.get("combs"):
+                edits += comb_edits(page)
+            drawn = None
+            if options.get("boxes") or options.get("bare_ticks") or options.get("table_clean"):
+                from docparse.pdf.boxes import check_boxes
 
-        if out != page.markdown:
-            page = read_form(out, printed, overlay)
-        slots = slot_edits(page, options)
-        out = apply_edits(out, slots) if slots else out
+                drawn = check_boxes(pdf_bytes, page_index)
+            if options.get("boxes"):
+                from docparse.fixes.forms_boxes import box_edits
+
+                edits += box_edits(page, drawn)
+            if options.get("bare_ticks"):
+                from docparse.fixes.forms_n_grids import bare_tick_edits
+
+                edits += bare_tick_edits(page, drawn)
+            if options.get("outlines"):
+                from docparse.fixes.forms_rows import outline_edits
+
+                edits += outline_edits(page)
+            if options.get("trailing"):
+                from docparse.fixes.forms_rows import trailing_edits
+
+                edits += trailing_edits(page)
+            out = apply_edits(out, edits) if edits else out
+            # other line's steps before `ids`/`codes`: reverse order measured dev +0.10, check -0.06 (ni-general-o2)
+            out, page = _neon_steps(out, page, printed, overlay, options, drawn)
+            if options.get("ids") or options.get("codes") or options.get("grids"):  # whole tables: after edits inside
+                from docparse.fixes.forms_rows import row_edits
+
+                if out != page.markdown:
+                    page = read_form(out, printed, overlay)
+                rows = row_edits(page, options)
+                out = apply_edits(out, rows) if rows else out
+            if options.get("blanks") or options.get("cells") or options.get("hints"):  # printed text out of slots: last
+                from docparse.fixes.forms_slots import slot_edits
+
+                if out != page.markdown:
+                    page = read_form(out, printed, overlay)
+                slots = slot_edits(page, options)
+                out = apply_edits(out, slots) if slots else out
+    if options.get("checkbox_ink") and pdf_bytes:
+        from docparse.fixes.forms_acro import acroform_widgets
+        from docparse.fixes.forms_ink import repair_checkbox_ink
+
+        _n, cboxes = acroform_widgets(pdf_bytes, page_index)
+        out = repair_checkbox_ink(out, rendered, pdf_bytes, page_index, skip_boxes=[b[:4] for b in cboxes])
     return out
 
 

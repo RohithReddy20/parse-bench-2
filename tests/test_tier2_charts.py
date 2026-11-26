@@ -110,7 +110,13 @@ def test_off_by_default_never_asks_for_tier2_and_keeps_the_config_hash():
     assert not hybrid.tier2_charts and hybrid.config_hash() == sha256_hex(canonical_json(dump))[:16]
     frontier = Config.load("configs/frontier_v3.yaml")
     assert frontier.tier2_charts and frontier.config_hash() != hybrid.config_hash()
-    off = {"tier2_charts": False, "tier2_chart_options": {}, "tier2_forms": False, "tier2_form_options": {}}
+    off = {
+        "tier2_charts": False,
+        "tier2_chart_options": {},
+        "tier2_forms": False,
+        "tier2_form_options": {},
+        "form_options": {k: v for k, v in frontier.form_options.items() if k != "checkbox_ink"},
+    }
     assert frontier.model_copy(update=off) == hybrid
 
 

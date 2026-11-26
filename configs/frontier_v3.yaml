@@ -43,6 +43,7 @@ table_options:
   complete_extent: true
 form_options:
   acroform: true
+  checkbox_ink: true
 chart_options:
   measure: true
   labels: true

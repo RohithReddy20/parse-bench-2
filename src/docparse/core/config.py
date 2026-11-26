@@ -47,7 +47,7 @@ FORM_OPTIONS = frozenset(
     | {
         "mini_tables", "table_rows", "box_grids", "bare_ticks", "field_lines", "table_clean", "acroform",
         "comb_noise", "field_notes", "field_slots", "table_grids", "field_clean", "acro_clean", "blank_hints",
-        "n_blank_forms",
+        "n_blank_forms", "checkbox_ink",
     }
 )  # fmt: skip
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
