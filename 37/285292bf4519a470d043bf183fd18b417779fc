@@ -1,0 +1,39 @@
+src/docparse/pipeline.py
+  s_b543043d60f9ec::t_6c3322936a9056 340,342-345,353-358,360-379
+  s_b543043d60f9ec::t_74a3d138b800ad 293-299
+  s_b543043d60f9ec::t_5f3e46c1e3986a 292
+  s_b543043d60f9ec::t_0cd06e726c584f 111-142,144-203,206-212
+  s_b543043d60f9ec::t_5d92a72028c210 204-205
+  s_b543043d60f9ec::t_3b34051d6befb2 8-9,14
+  s_b543043d60f9ec::t_fb881ccc53ede8 416-419
+  s_b543043d60f9ec::t_833e5df9987202 143
+  s_b543043d60f9ec::t_0716aade826d0e 27-28,31-39
+  s_b543043d60f9ec::t_f1751a1118599d 359
+  s_b543043d60f9ec::t_f2494f4a0f5de4 40
+tests/test_tier2_charts.py
+  s_b543043d60f9ec::t_db02319e510005 1-161
+configs/frontier_v3.yaml
+  s_b543043d60f9ec::t_b2040e7a8059d5 1-69
+src/docparse/core/config.py
+  s_b543043d60f9ec::t_d615a497d132fa 182-184
+  s_b543043d60f9ec::t_1676f597f0c3f3 88-94
+  s_b543043d60f9ec::t_06d173bdff34ba 6
+  s_b543043d60f9ec::t_ae409609711488 147-149
+  s_b543043d60f9ec::t_a0b4466f5cca70 111-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37285292bf4519a470d043bf183fd18b417779fc",
+  "prompts": {},
+  "sessions": {
+    "s_b543043d60f9ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "85525293-3b52-4e71-8cf7-854c5d06913d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
