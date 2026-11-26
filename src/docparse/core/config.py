@@ -17,6 +17,7 @@ LAYOUT_OPTIONS = frozenset(
         "orphans", "orphan_gap", "orphan_min", "orphan_ink",
         "kdl_replace", "kdl_words", "kdl_add", "kdl_split", "kdl_children", "kdl_pictures", "kdl_picbox",
         "kdl_arbiter", "kdl_keep_pictures", "kdl_keep_tables",
+        "chandra_arbiter", "chandra_add", "chandra_fallback",
     }
 )  # fmt: skip
 TABLE_OPTIONS = frozenset(
@@ -97,6 +98,8 @@ class Config(BaseModel):
     chandra_model: ModelRef | None = None
     # Drop Page-Header and Page-Footer blocks when the reader tags page furniture (e.g. Chandra layout blocks)
     strip_furniture: bool = False
+    # Verify Chandra reads against a healthy PDF text layer (low word recall or flattened table -> secondary check)
+    verify_pdf: bool = False
     dpi: int = 300
     # where layout items come from: carried by the page read (published stand-ins); built here from detector
     # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all

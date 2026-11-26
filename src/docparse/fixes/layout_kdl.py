@@ -155,12 +155,20 @@ def picture_boxes(items: list[LayoutItem], regions: list[PtRegion]) -> list[Layo
     return out
 
 
-def arbitrate(items: list[LayoutItem], regions: list[PtRegion], keep: frozenset = frozenset()) -> list[LayoutItem]:
-    """Of two nested items (one at least half inside the other), when KDL has a region matching one of them
-    (IoU >= 0.5) and none matching the other, the unmatched one is dropped, unless its type is in `keep`."""
+def arbitrate(
+    items: list[LayoutItem],
+    regions: list[PtRegion],
+    keep: frozenset = frozenset(),
+    extra_regions: list[PtRegion] | None = None,
+) -> list[LayoutItem]:
+    """Of two nested items (one at least half inside the other), when the auxiliary detector(s) match one of them
+    (IoU >= 0.5) and none match the other, the unmatched one is dropped, unless its type is in `keep`.
+    When `extra_regions` (e.g. Chandra native `data-bbox`) are also supplied, an item matched by either auxiliary
+    detector is protected (2-of-3 majority vote with the primary detector)."""
+    voters = [*regions, *(extra_regions or [])]
 
     def matched(it: LayoutItem) -> bool:
-        return any(_iou(r.box, it.bbox) >= SAME for r in regions)
+        return any(_iou(r.box, it.bbox) >= SAME for r in voters)
 
     ok = [matched(it) for it in items]
     drop: set[int] = set()
@@ -174,12 +182,44 @@ def arbitrate(items: list[LayoutItem], regions: list[PtRegion], keep: frozenset 
     return [it for k, it in enumerate(items) if k not in drop]
 
 
+def apply_chandra_layout(
+    items: list[LayoutItem],
+    rendered: RenderedPage,
+    chandra_regions: list[PtRegion],
+    options: dict,
+    chandra_texts: list[str] | None = None,
+) -> list[LayoutItem]:
+    """Use Chandra's native `data-bbox` regions for empty-grounding fallback (digital or scanned) and graphic rescue."""
+    if not chandra_regions:
+        return items
+    words = words_in_points(rendered)
+    if options.get("chandra_fallback") and not items:
+        if words:
+            rebuilt = words_as_items(chandra_regions, words)
+            if rebuilt:
+                return rebuilt
+        texts = chandra_texts or [""] * len(chandra_regions)
+        rebuilt_scan = [
+            LayoutItem(type=r.label, label=SEGMENT.get(r.label, "text"), md=txt, bbox=r.box)
+            for r, txt in zip(chandra_regions, texts, strict=False)
+            if r.label in PICTURES or txt.strip()
+        ]
+        if rebuilt_scan:
+            return rebuilt_scan
+    if options.get("chandra_add") and words:
+        page_area = max(1.0, rendered.width_pt * rendered.height_pt)
+        graphics = [r for r in chandra_regions if r.label in GRAPHIC and _area(r.box) >= 0.01 * page_area]
+        items = add_uncovered(items, graphics, words)
+    return items
+
+
 def apply_kdl(
     items: list[LayoutItem],
     rendered: RenderedPage,
     detections: list[Detection],
     options: dict,
     page_markdown: str,
+    chandra_regions: list[PtRegion] | None = None,
 ) -> list[LayoutItem]:
     """Apply the enabled KDL options; with none enabled, no text layer or no regions, the items come back as is."""
     if not any(options.get(k) for k in KDL_OPTIONS) or not detections:
@@ -207,7 +247,8 @@ def apply_kdl(
         keep = frozenset(
             t for t, k in (("Picture", "kdl_keep_pictures"), ("Table", "kdl_keep_tables")) if options.get(k)
         )
-        items = arbitrate(items, regions, keep)
+        voters = chandra_regions if options.get("chandra_arbiter") else None
+        items = arbitrate(items, regions, keep, extra_regions=voters)
     if options.get("kdl_add"):
         items = add_uncovered(items, regions, words)
     return items

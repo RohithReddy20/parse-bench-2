@@ -2,6 +2,7 @@
 # Validated across olmOCR-bench, RealDocBench, and ParseBench 2 (zero benchmark-specific form hacks).
 reader: chandra_hybrid
 strip_furniture: false
+verify_pdf: true
 chandra_model:
   repo: datalab-to/chandra-ocr-2
   revision: af93b47dba1b47b6640c86ccf487ed2260ab9a09

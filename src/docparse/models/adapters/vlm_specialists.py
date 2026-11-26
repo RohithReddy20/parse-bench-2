@@ -271,11 +271,85 @@ _FURNITURE_DIV = re.compile(
     r'<div\b[^>]*data-label="(?:Page-Header|Page-Footer)"[^>]*>.*?</div>',
     _FLAGS,
 )
+_IMAGE_DIV = re.compile(r'<div\b[^>]*data-label="Image"[^>]*>(.*?)</div>', _FLAGS)
+_IMG_TAG = re.compile(r"<img\b[^>]*>", _FLAGS)
 _FIGURE_DIV = re.compile(r'<div\b[^>]*data-label="Figure"[^>]*>(.*?)</div>', _FLAGS)
 _CHART_ALT = re.compile(
     r'<img\b[^>]*alt="[^"]*\b(?:chart|graph|plot|bar|line|pie|histogram|scatter|series|axis|axes)\b',
     _FLAGS,
 )
+
+
+def _trim_image_div_essays(raw_html: str) -> str:
+    """Inside `<div data-label="Image">` blocks that contain `<img>` and no `<table>`, keep the `<img>` tags
+    (preserving `![alt]()`) and drop Chandra's verbose visual description essays of logos/photos/QR codes."""
+
+    def _repl(m: re.Match) -> str:
+        inner = m.group(1)
+        if "<table" in inner.lower():
+            return m.group(0)
+        imgs = _IMG_TAG.findall(inner)
+        if not imgs:
+            return m.group(0)
+        return '<div data-label="Image">' + "\n".join(imgs) + "</div>"
+
+    return _IMAGE_DIV.sub(_repl, raw_html)
+
+
+_CHANDRA_DIV_BLOCK = re.compile(r"<div\b([^>]*)>(.*?)</div>", _FLAGS)
+_BBOX_ATTR = re.compile(r'\bdata-bbox="(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"', _FLAGS)
+_LABEL_ATTR = re.compile(r'\bdata-label="([^"]+)"', _FLAGS)
+_CHANDRA_TO_DOCLING = {
+    "Table": "Table",
+    "Figure": "Picture",
+    "Image": "Picture",
+    "Diagram": "Picture",
+    "Section-Header": "Section-header",
+    "Page-Header": "Page-header",
+    "Page-Footer": "Page-footer",
+    "Caption": "Caption",
+    "Footnote": "Footnote",
+    "List-Group": "List-item",
+    "Code-Block": "Code",
+}
+
+
+def chandra_layout_boxes(
+    raw_chandra: str, width_pt: float, height_pt: float
+) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Extract `(docling_label, (x0, y0, x1, y1))` in PDF points from Chandra's normalized 0-1000 `data-bbox` divs."""
+    return [(lbl, box) for lbl, box, _ in chandra_layout_blocks(raw_chandra, width_pt, height_pt)]
+
+
+def chandra_layout_blocks(
+    raw_chandra: str, width_pt: float, height_pt: float
+) -> list[tuple[str, tuple[float, float, float, float], str]]:
+    """Extract `(docling_label, (x0, y0, x1, y1), markdown)` in PDF points from Chandra's `data-bbox` divs."""
+    out: list[tuple[str, tuple[float, float, float, float], str]] = []
+    if not raw_chandra or width_pt <= 0 or height_pt <= 0:
+        return out
+    for m in _CHANDRA_DIV_BLOCK.finditer(raw_chandra):
+        attrs = m.group(1)
+        mb = _BBOX_ATTR.search(attrs)
+        ml = _LABEL_ATTR.search(attrs)
+        if not mb or not ml:
+            continue
+        raw_label = ml.group(1).strip()
+        if raw_label == "Blank-Page":
+            continue
+        x0, y0, x1, y1 = (int(mb.group(i)) for i in range(1, 5))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        box = (
+            x0 * width_pt / 1000.0,
+            y0 * height_pt / 1000.0,
+            x1 * width_pt / 1000.0,
+            y1 * height_pt / 1000.0,
+        )
+        lbl = _CHANDRA_TO_DOCLING.get(raw_label, "Text")
+        md = "" if lbl == "Picture" else chandra_markdown(m.group(0))
+        out.append((lbl, box, md))
+    return out
 
 
 def has_chart_figure(raw_chandra: str) -> bool:
@@ -405,10 +479,14 @@ def _clean_table_math(table_html: str) -> str:
                 break
             inner = nxt
         inner = _LATEX_SYM_RE.sub(lambda sm: _LATEX_SYM_MAP[sm.group(0)], inner)
-        # Clean trivial spacing commands (`\,`, `\;`, `\ `) and simple `^{x}` / `_{x}` inside tables
+        # Clean trivial spacing commands (`\,`, `\;`, `\ `) and simple `^{x}` / `_{x}` / `_x` / `^x` inside tables
         inner = re.sub(r"\\[,;:! ]", " ", inner)
         inner = re.sub(r"\^\{([^{}]+)\}", r"<sup>\1</sup>", inner)
         inner = re.sub(r"_\{([^{}]+)\}", r"<sub>\1</sub>", inner)
+        inner = re.sub(r"(?<=[A-Za-z0-9)])\^([A-Za-z0-9+\-])(?![A-Za-z0-9])", r"<sup>\1</sup>", inner)
+        inner = re.sub(r"(?<=[A-Za-z0-9)])_([A-Za-z0-9])(?![A-Za-z0-9])", r"<sub>\1</sub>", inner)
+        # Close TeX command-terminator space in SI micro-units (e.g. `\mu M` -> `μ M` -> `μM`)
+        inner = re.sub(r"μ\s+(mol|[mMgLlLsAVWFHSΩ])\b", r"μ\1", inner)
         # If no complex LaTeX commands remain, return clean inline HTML; otherwise wrap as $...$
         if "\\" not in inner and "{" not in inner and "}" not in inner:
             return re.sub(r"\s+", " ", inner).strip()
@@ -428,6 +506,7 @@ def chandra_markdown(text: str, drop_furniture: bool = False) -> str:
     s = re.sub(r"^\s*```\w*\n|\n```\s*$", "", text)
     if drop_furniture:
         s = _FURNITURE_DIV.sub("", s)
+    s = _trim_image_div_essays(s)
     s = _TABLE.sub(stash, s)
     for pattern, repl in _HTML_TO_MD:
         s = pattern.sub(repl, s)

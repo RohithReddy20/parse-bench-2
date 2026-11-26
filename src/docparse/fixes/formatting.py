@@ -24,7 +24,7 @@ import re
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align_text import TOKEN, key, match, tokens
 
-FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "unbold", "list_marker", "drop_underline"})
+FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "underline", "unbold", "list_marker", "drop_underline"})
 READER = "fix.formatting"
 PROSE = frozenset({"paragraph", "list", "heading"})
 MIN_STRUCK = 0.5  # share of a PDF token's characters a line must cross
@@ -34,14 +34,21 @@ _RUN_BREAK = frozenset("\n<>|~*_[]()`$")  # a struck run never crosses a line, a
 _BOLD_SPAN = re.compile(r"(?<!\*)\*\*(?=[^\s*])(.+?)(?<=[^\s*])\*\*(?!\*)", re.S)
 _MARKER = r"(?:[-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z][.)]|[ivx]{1,4}[.)])"
 _STYLED_MARKER = re.compile(r"(?m)^([ \t]*)(\*\*|__)(" + _MARKER + r")\2[ \t]+(?=\S)")
-_UNDER_SPAN = re.compile(r"<(u|ins)>(.*?)</\1\s*>", re.S | re.I)
+_UNDER_SPAN = re.compile(r"<(u|ins)\b[^>]*>(.*?)</\1\s*>", re.S | re.I)
+_VISIBLE_MASK = re.compile(r"<[^>\n]*>|!\[[^\]\n]*\]\([^)\n]*\)|\]\([^)\n]*\)")
 REGULAR_SHARE = 0.8  # of a bold span's aligned words that must be in a regular face
 ALIGNED_SHARE = 0.5  # of a bold span's words that must be aligned to the text layer
 
 
+def _visible_tokens(raw: str) -> list[tuple[int, int, str]]:
+    """Tokenize visible text while masking HTML tags/attributes and markdown image/link markup to preserve offsets."""
+    masked = _VISIBLE_MASK.sub(lambda m: " " * len(m.group()), raw)
+    return tokens(masked)
+
+
 def needs_decorations(options: dict) -> bool:
     """Does the fix need the strikethrough / underline marks of the text layer?"""
-    return bool(options.get("strike") or options.get("drop_underline"))
+    return bool(options.get("strike") or options.get("underline") or options.get("drop_underline"))
 
 
 def needs_styles(options: dict) -> bool:
@@ -61,15 +68,73 @@ def _select(region: Region, raw: str, detail: str) -> None:
     region.selected = cand.id
 
 
-def _pdf_tokens(words) -> tuple[list[str], list[bool]]:
-    """Text-layer tokens in reading order, and whether a line strikes most of each one's characters."""
-    keys, struck = [], []
+def _pdf_tokens(words, mark: str = "s") -> tuple[list[str], list[bool]]:
+    """Text-layer tokens in stream order, and whether a decoration line marks most of each token's characters."""
+    keys, marked = [], []
     for w in words:
         for m in TOKEN.finditer(w.text):
             keys.append(key(m.group()))
             marks = w.marks[m.start() : m.end()]
-            struck.append(bool(marks) and marks.count("s") >= MIN_STRUCK * len(marks))
-    return keys, struck
+            marked.append(bool(marks) and marks.count(mark) >= MIN_STRUCK * len(marks))
+    return keys, marked
+
+
+def _align_with_reordered_recovery(
+    per_region: list[list[tuple[int, int, str]]],
+    pdf_keys: list[str],
+    pdf_marked: list[bool],
+) -> list[list[int]]:
+    """Align region tokens to PDF tokens, recovering blocks whose PDF stream order differs from visual order."""
+    flat = [t[2] for toks in per_region for t in toks]
+    partner = match(flat, pdf_keys)
+    by_region: list[list[int]] = []
+    pos = 0
+    for toks in per_region:
+        by_region.append(partner[pos : pos + len(toks)])
+        pos += len(toks)
+    used_pdf = {j for j in partner if j >= 0}
+    unmatched_marked = [j for j, flag in enumerate(pdf_marked) if flag and j not in used_pdf]
+    if not unmatched_marked:
+        return by_region
+    # Build contiguous unmatched PDF spans that contain at least one unmatched decorated token
+    free_idx = [j for j in range(len(pdf_keys)) if j not in used_pdf]
+    free_spans: list[list[int]] = []
+    for j in free_idx:
+        if not free_spans or j != free_spans[-1][-1] + 1:
+            free_spans.append([j])
+        else:
+            free_spans[-1].append(j)
+    marked_spans = [sp for sp in free_spans if any(pdf_marked[j] for j in sp)]
+    if not marked_spans:
+        return by_region
+    taken_spans: set[int] = set()
+    for r, (toks, mine) in enumerate(zip(per_region, by_region, strict=True)):
+        if not toks or all(j >= 0 for j in mine):
+            continue
+        unmatched_pos = [i for i, j in enumerate(mine) if j < 0]
+        if not unmatched_pos:
+            continue
+        r_keys = [toks[i][2] for i in unmatched_pos]
+        best_s, best_hits, best_loc = -1, 0, []
+        for s_idx, sp in enumerate(marked_spans):
+            if s_idx in taken_spans:
+                continue
+            sp_keys = [pdf_keys[j] for j in sp]
+            loc = match(r_keys, sp_keys)
+            hits = sum(1 for x in loc if x >= 0)
+            has_mark = any(x >= 0 and pdf_marked[sp[x]] for x in loc)
+            # Require either >=2 aligned tokens or full alignment on a 1-token region with unique key match
+            if has_mark and (hits >= 2 or (len(r_keys) == 1 and hits == 1 and len(sp) <= 3)) and hits > best_hits:
+                best_s, best_hits, best_loc = s_idx, hits, loc
+        if best_s >= 0:
+            sp = marked_spans[best_s]
+            updated = list(mine)
+            for i_local, x in enumerate(best_loc):
+                if x >= 0:
+                    updated[unmatched_pos[i_local]] = sp[x]
+            by_region[r] = updated
+            taken_spans.add(best_s)
+    return by_region
 
 
 def _blocked_spans(raw: str, kind: str) -> list[tuple[int, int]]:
@@ -110,16 +175,13 @@ def _struck_runs(raw: str, toks: list[tuple[int, int, str]], struck: list[bool |
 
 
 def _strikes(page: Page, raws: list[str], words) -> list[str]:
-    pdf_keys, pdf_struck = _pdf_tokens(words)
+    pdf_keys, pdf_struck = _pdf_tokens(words, "s")
     if not any(pdf_struck):
         return raws
-    per_region = [tokens(raw) for raw in raws]
-    flat = [t[2] for toks in per_region for t in toks]
-    partner = match(flat, pdf_keys)
-    out, pos = list(raws), 0
-    for r, (region, raw, toks) in enumerate(zip(page.regions, raws, per_region, strict=True)):
-        mine = partner[pos : pos + len(toks)]
-        pos += len(toks)
+    per_region = [_visible_tokens(raw) for raw in raws]
+    by_region = _align_with_reordered_recovery(per_region, pdf_keys, pdf_struck)
+    out = list(raws)
+    for r, (region, raw, toks, mine) in enumerate(zip(page.regions, raws, per_region, by_region, strict=True)):
         if region.kind not in PROSE and region.kind != "table":
             continue
         struck = [None if j < 0 else pdf_struck[j] for j in mine]
@@ -135,6 +197,28 @@ def _strikes(page: Page, raws: list[str], words) -> list[str]:
     return out
 
 
+def _underlines(page: Page, raws: list[str], words) -> list[str]:
+    pdf_keys, pdf_under = _pdf_tokens(words, "u")
+    if not any(pdf_under):
+        return raws
+    per_region = [_visible_tokens(raw) for raw in raws]
+    by_region = _align_with_reordered_recovery(per_region, pdf_keys, pdf_under)
+    out = list(raws)
+    for r, (region, raw, toks, mine) in enumerate(zip(page.regions, raws, per_region, by_region, strict=True)):
+        if region.kind not in PROSE and region.kind != "table":
+            continue
+        under = [None if j < 0 else pdf_under[j] for j in mine]
+        if not any(under):
+            continue
+        spans = [(m.start(), m.end()) for m in _UNDER_SPAN.finditer(raw)]
+        blocked = [any(a <= s < b for a, b in spans) for s, _, _ in toks]
+        new = raw
+        for s, e in sorted(_struck_runs(raw, toks, under, blocked), reverse=True):
+            new = new[:s] + "<u>" + new[s:e] + "</u>" + new[e:]
+        out[r] = new
+    return out
+
+
 def _unbold(page: Page, raws: list[str], words) -> list[str]:
     if not any(w.bold >= 0.5 for w in words):
         return raws  # the fonts carry no bold at all: they say nothing either way
@@ -143,7 +227,7 @@ def _unbold(page: Page, raws: list[str], words) -> list[str]:
         for m in TOKEN.finditer(w.text):
             keys.append(key(m.group()))
             bold.append(w.bold >= 0.5)
-    per_region = [tokens(raw) for raw in raws]
+    per_region = [_visible_tokens(raw) for raw in raws]
     partner = match([t[2] for toks in per_region for t in toks], keys)
     out, pos = list(raws), 0
     for r, (region, raw, toks) in enumerate(zip(page.regions, raws, per_region, strict=True)):
@@ -172,7 +256,7 @@ def _drop_underline(page: Page, raws: list[str], words) -> list[str]:
             keys.append(key(m.group()))
             marks = w.marks[m.start() : m.end()]
             under.append(bool(marks) and marks.count("u") >= 0.5 * len(marks))
-    per_region = [tokens(raw) for raw in raws]
+    per_region = [_visible_tokens(raw) for raw in raws]
     partner = match([t[2] for toks in per_region for t in toks], keys)
     out, pos = list(raws), 0
     for r, (raw, toks) in enumerate(zip(raws, per_region, strict=True)):
@@ -198,6 +282,8 @@ def refine_format(page: Page, rendered, options: dict) -> None:
     words = getattr(rendered, "text_words", None) if rendered is not None else None
     if options.get("strike") and words:
         new = _strikes(page, new, words)
+    if options.get("underline") and words:
+        new = _underlines(page, new, words)
     if options.get("unbold") and words:
         new = _unbold(page, new, words)
     if options.get("drop_underline") and words:

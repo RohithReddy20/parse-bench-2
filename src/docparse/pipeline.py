@@ -102,11 +102,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         from docparse.fixes.formatting import needs_decorations, needs_styles
 
         decorations, styles = needs_decorations(config.format_options), needs_styles(config.format_options)
-    layer = False
+    layer = bool(config.verify_pdf)
     if config.text_options:
         from docparse.fixes.text import needs_layer
 
-        layer = needs_layer(config.text_options)
+        layer = layer or needs_layer(config.text_options)
     rendered = render_pages(pdf_bytes, config.dpi, decorations=decorations, styles=styles, layer=layer)
     doc_sha = sha256_hex(pdf_bytes)
     pages, pending = [], []
@@ -139,8 +139,24 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             ch_ok = (
                 ch_read.finish_reason != "length" and bool(ch_read.markdown.strip()) and not looped(ch_read.markdown)
             )
+            verify_needed, verify_reason = (False, "")
+            if (
+                ch_ok
+                and config.reader == "chandra_hybrid"
+                and config.verify_pdf
+                and not vlm_specialists.has_chart_figure(ch_read.raw_answer)
+            ):
+                from docparse.fixes.verify import needs_pdf_verification
+
+                full_ch_md = (
+                    vlm_specialists.chandra_markdown(ch_read.raw_answer, drop_furniture=False)
+                    if config.strip_furniture
+                    else ch_read.markdown
+                )
+                verify_needed, verify_reason = needs_pdf_verification(full_ch_md, rp)
             need_ocria = (
                 not ch_ok
+                or verify_needed
                 or (config.reader == "chandra_hybrid" and vlm_specialists.has_chart_figure(ch_read.raw_answer))
                 or config.layout == "ground"
             )
@@ -148,6 +164,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         else:
             ch_read = None
             ch_ok = False
+            verify_needed, verify_reason = (False, "")
             result = client.get(call, blobs, meta)
 
         detections = regions2 = None
@@ -187,6 +204,12 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     continue
                 attention = read_attention(attention)
 
+        if use_chandra and ch_ok and ch_read is not None and verify_needed and read is not None:
+            from docparse.fixes.verify import secondary_improves
+
+            sec_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
+            if secondary_improves(ch_read.markdown, sec_md, rp, verify_reason):
+                ch_ok = False
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
@@ -321,10 +344,30 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
             # OCRia-1's grounding reads the raw answer; published stand-ins only have the scored markdown
             page.layout = ground(read.raw_answer or read.markdown, rp, heron.read_detections(detections), attention)
+        chandra_regions = None
+        chandra_texts = None
+        if ch_read is not None and any(
+            config.layout_options.get(k) for k in ("chandra_arbiter", "chandra_add", "chandra_fallback")
+        ):
+            from docparse.core.ir import Box
+            from docparse.fixes.layout_kdl import PtRegion
+            from docparse.models.adapters import vlm_specialists
+
+            blocks = vlm_specialists.chandra_layout_blocks(ch_read.raw_answer, rp.width_pt, rp.height_pt)
+            chandra_regions = [PtRegion(lbl, Box(x0=b[0], y0=b[1], x1=b[2], y1=b[3])) for lbl, b, _ in blocks]
+            chandra_texts = [md_txt for _, _, md_txt in blocks]
         if regions2 is not None and page.layout is not None:
             from docparse.fixes.layout_kdl import apply_kdl
 
-            page.layout = apply_kdl(page.layout, rp, kdl.read_detections(regions2), config.layout_options, markdown)
+            page.layout = apply_kdl(
+                page.layout, rp, kdl.read_detections(regions2), config.layout_options, markdown, chandra_regions
+            )
+        if chandra_regions and page.layout is not None:
+            from docparse.fixes.layout_kdl import apply_chandra_layout
+
+            page.layout = apply_chandra_layout(
+                page.layout, rp, chandra_regions, config.layout_options, chandra_texts
+            )
         if config.layout_options and page.layout and read is not None:
             from docparse.fixes.layout_refine import refine
 
