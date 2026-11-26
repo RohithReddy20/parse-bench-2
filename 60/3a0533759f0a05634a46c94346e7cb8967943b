@@ -1,0 +1,14 @@
+serve/modal_vlm.py
+  h_4802a42b335f3b 25,27,179-187,249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "603a0533759f0a05634a46c94346e7cb8967943b",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
