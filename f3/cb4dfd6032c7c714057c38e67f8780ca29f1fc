@@ -1,0 +1,23 @@
+src/docparse/models/adapters/qwen_tier2.py
+  s_6e78563db01caf::t_74026456f40289 525-590
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_74026456f40289 386-410,632-637
+src/docparse/core/config.py
+  s_6e78563db01caf::t_74026456f40289 100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3cb4dfd6032c7c714057c38e67f8780ca29f1fc",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
