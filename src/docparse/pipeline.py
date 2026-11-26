@@ -228,6 +228,11 @@ def _is_form_page(raw_chandra: str, markdown: str, pdf_bytes: bytes, index: int,
     return acroform_widgets(pdf_bytes, index)[0] >= int(opts.get("min_acro_widgets", 3))
 
 
+def _data_table_count(markdown: str) -> int:
+    """HTML tables with `<th>` headers and no form checkboxes (true data tables, not `<table border=0>` form grids)."""
+    return sum(1 for t in _TABLE.findall(markdown) if "<th" in t.lower() and not _CHECKBOX.search(t))
+
+
 def _word_coverage(draft: str, candidate: str) -> float:
     """Share of the draft's words (3+ letters or digits, tags ignored) that `candidate` keeps; 1.0 without any."""
     d_set, c_set = (set(re.findall(r"[a-z0-9]{3,}", re.sub(r"<[^>]+>", " ", s).lower())) for s in (draft, candidate))
@@ -451,9 +456,9 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     cand_md = f_read.markdown
                     if config.strip_furniture:
                         cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
-                    # a refinement that drops the draft's printed text or HTML tables is a rewrite, not a correction
+                    # a refinement that drops the draft's printed text or data tables is a rewrite, not a correction
                     min_cov = float(f_opts.get("min_word_coverage", 0.93))
-                    keeps_tables = len(_TABLE.findall(cand_md)) >= len(_TABLE.findall(markdown))
+                    keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
                     if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
                         markdown = cand_md
                         used.append(f_res)
