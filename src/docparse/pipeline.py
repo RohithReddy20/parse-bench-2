@@ -5,10 +5,13 @@ A pure function of (bytes, config, cache): model answers come from the client, w
 
     S0 render -> S2 OCRia-1 page read (one cached call per page) -> S3 answer parsed into the IR
     -> S4 correctors, each behind its options (layout_options, text_options, format_options) -> writers
+
+With `tier2_charts`, Chandra pages that show a chart are read once more by Qwen3.5-27B-FP8 (Tier-2) before S4.
 """
 
 from __future__ import annotations
 
+import re
 from collections import ChainMap
 from dataclasses import dataclass, field
 
@@ -21,9 +24,19 @@ from docparse.fixes.layout_kdl import KDL_OPTIONS
 from docparse.models.adapters import heron, kdl, ppdoclayout
 from docparse.models.adapters.attention import attention_call, read_attention
 from docparse.models.adapters.ocria import build_page_call, read_page_result
-from docparse.models.calls import ModelClient, Pending
-from docparse.pdf.render import render_pages
+from docparse.models.calls import ModelCall, ModelClient, ModelResult, Pending
+from docparse.pdf.render import RenderedPage, render_pages
 from docparse.write.layout_items import items_from_layout_page
+
+_FLAGS = re.DOTALL | re.IGNORECASE
+_TABLE = re.compile(r"<table\b.*?</table>", _FLAGS)
+_CHANDRA_DIV = re.compile(r"<div\b([^>]*)>(.*?)</div>", _FLAGS)
+_FIGURE_LABEL = re.compile(r"""\bdata-label\s*=\s*(["'])Figure\1""", re.IGNORECASE)
+_BBOX = re.compile(r'\bdata-bbox\s*=\s*"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"')
+_IMG_ALT = re.compile(r"""<img\b[^>]*?\salt\s*=\s*(["'])(.*?)\1""", _FLAGS)
+CHART_PAD = 0.06  # share of the page width / height added around the chart boxes before cropping
+CHART_CROP_SHARE = (0.03, 0.92)  # a crop is sent only when the padded box covers this share of the page
+DUPLICATE_SHARE = 0.35  # token overlap that makes a Tier-2 table a repeat of a table Chandra already read
 
 
 @dataclass
@@ -93,6 +106,108 @@ def _ocria_markdown(
                 region.selected = region.candidates[0].id
     tables = [r.chosen().raw for r in pg.regions if r.kind == "table"]
     return write_page(pg), tables, vector_measured
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]{2,}", re.sub(r"<[^>]+>", " ", text).lower()))
+
+
+def _chandra_figures(raw: str) -> list[tuple[int, int, str, tuple[int, ...] | None]]:
+    """`(start, end, alt text, 0-1000 data-bbox or None)` of each `Figure` block of Chandra's layout HTML."""
+    figures = []
+    for m in _CHANDRA_DIV.finditer(raw):
+        if _FIGURE_LABEL.search(m[1]):
+            bbox = _BBOX.search(m[1])
+            alt = " ".join(a[2] for a in _IMG_ALT.finditer(m[2]))
+            figures.append((m.start(), m.end(), alt, tuple(int(v) for v in bbox.groups()) if bbox else None))
+    return figures
+
+
+def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
+    """`(crop, box_pt)`: the union of the chart `boxes` (page pixels) padded by CHART_PAD and clipped to the page, as
+    a crop of the page image (None when it covers too little or nearly all of the page) and in PDF points."""
+    if not boxes:
+        return None, None
+    w, h = rp.image.size
+    x0, y0 = max(0.0, min(b[0] for b in boxes) - CHART_PAD * w), max(0.0, min(b[1] for b in boxes) - CHART_PAD * h)
+    x1, y1 = min(w, max(b[2] for b in boxes) + CHART_PAD * w), min(h, max(b[3] for b in boxes) + CHART_PAD * h)
+    if x1 <= x0 or y1 <= y0:
+        return None, None
+    lo, hi = CHART_CROP_SHARE
+    crop = None
+    if lo <= (x1 - x0) * (y1 - y0) / (w * h) <= hi:
+        crop = rp.image.crop((round(x0), round(y0), round(x1), round(y1)))
+    return crop, (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
+
+
+def _chart_hint(pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[float, ...] | None) -> str:
+    """The PDF's vector measurements of the chart in `box_pt` (the whole page when None); "" without any."""
+    from docparse.fixes.chart_hints import extract_chart_hint, format_chart_hint
+    from docparse.pdf.graphics import load_shapes
+
+    try:
+        return format_chart_hint(extract_chart_hint(rp, load_shapes(pdf_bytes, index), box_pt))
+    except Exception:  # the hint is optional evidence: image uploads and odd geometry read the chart from pixels
+        return ""
+
+
+def _tier2_chart_call(
+    pdf_bytes: bytes,
+    index: int,
+    rp: RenderedPage,
+    turn: int,
+    raw_chandra: str,
+    pp_boxes: list[tuple[float, ...]],
+    drafts: list[str],
+    opts: dict,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """Tier-2 chart read: the page, a zoomed crop of its charts, their vector hint, and the draft tables to verify."""
+    from docparse.models.adapters import qwen_tier2
+    from docparse.models.adapters.vlm_specialists import _CHART_ALT
+
+    w, h = rp.image.size
+    figures = [b for _, _, alt, b in _chandra_figures(raw_chandra) if b and _CHART_ALT.search(alt)]
+    boxes = pp_boxes or [(b[0] * w / 1000, b[1] * h / 1000, b[2] * w / 1000, b[3] * h / 1000) for b in figures]
+    crop, box_pt = _chart_crop(rp, boxes)
+    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)  # vector paths follow the page as stored
+    return qwen_tier2.build_chart_call(
+        rp.image,
+        crop_image=crop,
+        vector_hint=hint,
+        draft_tables="\n\n".join(drafts or _TABLE.findall(raw_chandra)),
+        enable_thinking=bool(opts.get("enable_thinking", False)),
+        temperature=float(opts.get("temperature", 0.1)),
+        top_p=float(opts.get("top_p", 0.95)),
+        top_k=int(opts.get("top_k", 20)),
+        presence_penalty=float(opts.get("presence_penalty", 1.0)),
+        max_tokens=int(opts.get("max_tokens", 10240)),
+    )
+
+
+def _tier2_markdown(
+    raw_chandra: str, markdown: str, answer: str, chart_figure: bool, drop_furniture: bool
+) -> str | None:
+    """The page with the Tier-2 chart tables: in Chandra's chart `Figure` blocks, or (for charts only PP-DocLayoutV3
+    saw) appended with their titles, minus the tables Chandra already read. None when the answer changes nothing."""
+    from docparse.models.adapters import vlm_specialists
+
+    tables = _TABLE.findall(answer)
+    if not tables:
+        return None
+    if chart_figure:
+        fused_md, fused = vlm_specialists.fuse_figure_charts(
+            raw_chandra, tables, ocria_vector_measured=True, drop_furniture=drop_furniture
+        )
+        return fused_md if fused else None
+    spans = [(start, end) for start, end, _, _ in _chandra_figures(raw_chandra)]
+    known = [_tokens(t[0]) for t in _TABLE.finditer(raw_chandra) if not any(s <= t.start() < e for s, e in spans)]
+    parts: list[str] = []
+    pos = 0
+    for t in _TABLE.finditer(answer):
+        title, pos, toks = answer[pos : t.start()].strip(), t.end(), _tokens(t[0])
+        if not any(k and len(toks & k) / max(1, min(len(toks), len(k))) >= DUPLICATE_SHARE for k in known):
+            parts.append(f"{title}\n{t[0]}" if title else t[0])
+    return "\n\n".join([markdown, *parts]) if parts else None
 
 
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
@@ -174,7 +289,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             regions2 = client.get(kdl.layout_call(call.inputs[0]), blobs, meta)
         if config.layout != "none" and any(config.layout_options.get(k) for k in ("pp_arbiter", "pp_add")):
             pp_res = client.get(ppdoclayout.detect_call(call.inputs[0]), blobs, meta)
-        waiting = [r.key for r in (result, detections, regions2, pp_res) if isinstance(r, Pending)]
+        pp_chart = None  # PP-DocLayoutV3 finds the charts Chandra misses (sharing the layout's call)
+        if config.tier2_charts and ch_ok and config.tier2_chart_options.get("use_ppdoclayout", True):
+            pp_chart = pp_res
+            if pp_chart is None:
+                pp_chart = client.get(ppdoclayout.detect_call(call.inputs[0]), blobs, meta)
+        waiting = list(
+            dict.fromkeys(r.key for r in (result, detections, regions2, pp_res, pp_chart) if isinstance(r, Pending))
+        )
         if waiting:
             pending += waiting
             continue
@@ -215,14 +337,12 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
+            assert chandra_res is not None
             markdown = ch_read.markdown
-            used_calls = 1
-            fused = False
-            if (
-                config.reader == "chandra_hybrid"
-                and read is not None
-                and vlm_specialists.has_chart_figure(ch_read.raw_answer)
-            ):
+            used: list[ModelResult] = [chandra_res]  # the calls whose answers the page shows
+            ocria_tables: list[str] = []
+            ch_has_chart = vlm_specialists.has_chart_figure(ch_read.raw_answer)
+            if config.reader == "chandra_hybrid" and read is not None and ch_has_chart:
                 _, ocria_tables, vec_measured = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
                 markdown, fused = vlm_specialists.fuse_figure_charts(
                     ch_read.raw_answer,
@@ -230,7 +350,33 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     ocria_vector_measured=vec_measured,
                     drop_furniture=config.strip_furniture,
                 )
-                used_calls = 2 if fused else 1
+                if fused:
+                    used.append(result)
+            if config.tier2_charts:
+                from docparse.models.adapters import qwen_tier2
+
+                opts = config.tier2_chart_options
+                pp_boxes: list[tuple[float, ...]] = []
+                if pp_chart is not None:
+                    pp_min = float(opts.get("pp_chart_score", 0.40))
+                    pp_boxes = [d.box for d in ppdoclayout.read_raw_detections(pp_chart, pp_min) if d.label == "chart"]
+                if ch_has_chart or pp_boxes:  # a chart Chandra drew as a Figure, or one only PP-DocLayoutV3 saw
+                    t2_call, t2_blobs = _tier2_chart_call(
+                        pdf_bytes, index, rp, turn, ch_read.raw_answer, pp_boxes, ocria_tables, opts
+                    )
+                    t2_res = client.get(t2_call, t2_blobs, meta)
+                    if isinstance(t2_res, Pending):
+                        pending.append(t2_res.key)
+                        continue
+                    t2_read = qwen_tier2.read_tier2_result(t2_res)
+                    t2_markdown = None
+                    if t2_read.usable:  # a cut-off or looping answer leaves the page as read without Tier-2
+                        t2_markdown = _tier2_markdown(
+                            ch_read.raw_answer, markdown, t2_read.markdown, ch_has_chart, config.strip_furniture
+                        )
+                    if t2_markdown is not None:
+                        markdown = t2_markdown
+                        used.append(t2_res)
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
             if config.form_options:
                 from docparse.fixes.forms import repair
@@ -266,15 +412,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     for region in page.regions:
                         region.selected = region.candidates[0].id
                     page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
-            assert chandra_res is not None
             page.cost = CostRecord(
-                calls=used_calls,
-                gpu_seconds=(chandra_res.gpu_seconds or 0.0)
-                + ((result.gpu_seconds or 0.0) if (used_calls > 1 and result is not None) else 0.0),
-                tokens_in=(chandra_res.tokens_in or 0)
-                + ((result.tokens_in or 0) if (used_calls > 1 and result is not None) else 0),
-                tokens_out=(chandra_res.tokens_out or 0)
-                + ((result.tokens_out or 0) if (used_calls > 1 and result is not None) else 0),
+                calls=len(used),
+                gpu_seconds=sum(r.gpu_seconds or 0.0 for r in used),
+                tokens_in=sum(r.tokens_in or 0 for r in used),
+                tokens_out=sum(r.tokens_out or 0 for r in used),
             )
         else:
             assert read is not None and result is not None

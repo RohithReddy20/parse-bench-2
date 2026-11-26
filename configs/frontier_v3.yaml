@@ -1,0 +1,69 @@
+# hybrid_v2 + Tier-2 frontier chart reading: pages with a chart (a Chandra chart Figure, or a PP-DocLayoutV3
+# "chart" box) are read once more by Qwen/Qwen3.5-27B-FP8 (zoomed chart crop, PDF vector hint, draft tables), and
+# its chart tables replace the OCRia-1 chart fusion. An unusable Tier-2 answer leaves the hybrid_v2 page.
+reader: chandra_hybrid
+strip_furniture: false
+verify_pdf: true
+chandra_model:
+  repo: datalab-to/chandra-ocr-2
+  revision: af93b47dba1b47b6640c86ccf487ed2260ab9a09
+  dtype: bf16
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: dae83aa51ecd0a8574d415d929a4d9e79348fd2a
+  dtype: bf16
+page_runtime: vllm-0.34.0
+prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38
+dpi: 300
+fallback_below: 0.5
+upright_read: true
+layout: ground
+layout_attention: always
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+  pp_arbiter: true
+  pp_keep_pictures: true
+  pp_add: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+  leaf: true
+  leaf_mode: 3
+  dedupe: true
+  complete_extent: true
+form_options:
+  acroform: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
+  lost: true
+  legend: true
+  titles: true
+  legend_min: 2
+  legend_override: true
+  panel_override: true
+format_options:
+  cell_strike: true
+  strike: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true
+tier2_charts: true
+tier2_chart_options:
+  enable_thinking: false
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 10240
+  use_ppdoclayout: true
+  pp_chart_score: 0.40

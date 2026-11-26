@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -85,6 +85,13 @@ CHART_OPTIONS = frozenset(
         "panel_override",  # round two: ... and a binding to another panel than the titled one moves to it
     }
 )
+# Tier-2 chart reads with Qwen3.5-27B-FP8 (pipeline.py, models/adapters/qwen_tier2.py)
+TIER2_CHART_OPTIONS = frozenset(
+    {
+        "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
+        "use_ppdoclayout", "pp_chart_score",
+    }
+)  # fmt: skip
 
 
 class Config(BaseModel):
@@ -101,6 +108,11 @@ class Config(BaseModel):
     strip_furniture: bool = False
     # Verify Chandra reads against a healthy PDF text layer (low word recall or flattened table -> secondary check)
     verify_pdf: bool = False
+    # Chandra readers: a page with a chart (a Chandra chart Figure, or a PP-DocLayoutV3 chart box) is read once more
+    # by Qwen3.5-27B-FP8, whose chart tables replace Chandra's (or are added when only PP-DocLayoutV3 saw the chart)
+    tier2_charts: bool = False
+    # sampling and trigger settings of that read (TIER2_CHART_OPTIONS); empty = the defaults in pipeline.py
+    tier2_chart_options: dict[str, Any] = Field(default_factory=dict)
     dpi: int = 300
     # where layout items come from: carried by the page read (published stand-ins); built here from detector
     # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all
@@ -132,7 +144,9 @@ class Config(BaseModel):
     fixes: dict[str, bool] = Field(default_factory=lambda: dict.fromkeys(FIXES, False))
 
     def config_hash(self) -> str:
-        return sha256_hex(canonical_json(self.model_dump(mode="json")))[:16]
+        # the Tier-2 fields enter the hash only when set, so configs that predate them keep their hash
+        unset = {name for name in ("tier2_charts", "tier2_chart_options") if not getattr(self, name)}
+        return sha256_hex(canonical_json(self.model_dump(mode="json", exclude=unset)))[:16]
 
     @classmethod
     def load(cls, path: str | Path, overrides: list[str] | None = None) -> Config:
@@ -165,6 +179,9 @@ class Config(BaseModel):
 
         if set(data.get("text_options") or {}) - TEXT_OPTIONS:
             raise ValueError(f"unknown text option(s): {sorted(set(data['text_options']) - TEXT_OPTIONS)}")
+        unknown = set(data.get("tier2_chart_options") or {}) - TIER2_CHART_OPTIONS
+        if unknown:
+            raise ValueError(f"unknown tier2 chart option(s): {sorted(unknown)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")
