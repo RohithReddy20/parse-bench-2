@@ -1,0 +1,19 @@
+src/docparse/pdf/scan_prep.py
+  s_71f411c73f4050::t_bb0c17503d48bd 1-604
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f12a1fe1faeed311042b18c5019d82015f7e491",
+  "prompts": {},
+  "sessions": {
+    "s_71f411c73f4050": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5722716e-a6a2-49e8-a226-dbe977df2b02",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
