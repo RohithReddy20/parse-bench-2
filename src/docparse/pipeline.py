@@ -616,9 +616,25 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.models.adapters import vlm_specialists
 
             if not vlm_specialists.has_chart_figure(ch_read.raw_answer):  # a chart's values are not in the layer
+                from docparse.fixes.verify import has_healthy_text_layer
+
                 alt_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
-                if prefer_alternative(ch_read.markdown, alt_md, rp, config.select_options):
-                    ch_ok = False
+                if rp.hidden is not None and has_healthy_text_layer(rp):
+                    if prefer_alternative(ch_read.markdown, alt_md, rp, config.select_options):
+                        ch_ok = False
+                elif config.select_options.get("judge") and alt_md.strip():
+                    # no text layer to check against: a third, general reader says which reading it agrees with
+                    from docparse.fixes.select import agreement
+
+                    q_call, q_blobs = _qwen_page_call(rp, config)
+                    q_res = client.get(q_call, q_blobs, meta)
+                    if isinstance(q_res, Pending):
+                        pending.append(q_res.key)
+                        continue
+                    q_md = _qwen_page_read(q_res).markdown
+                    margin = float(config.select_options.get("judge_margin", 0.0))
+                    if q_md.strip() and agreement(alt_md, q_md) > agreement(ch_read.markdown, q_md) + margin:
+                        ch_ok = False
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
