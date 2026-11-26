@@ -35,7 +35,15 @@ MAX_SWAP = 2  # tokens swapped one for one in a row
 MIN_LETTERS = 4
 LETTER_RATE = 0.25
 LIGATURES = ("fi", "fl", "ff", "ft")
-_MARKUP = re.compile(r"<[^>\n]*>|\]\([^)\n]*\)")  # tags and link targets are not text
+_MARKUP = re.compile(
+    r"\$\$[\s\S]*?\$\$"  # display math
+    r"|\\\[[\s\S]*?\\\]"  # \[ ... \] display math
+    r"|\\\([\s\S]*?\\\)"  # \( ... \) inline math
+    r"|\$(?!\s)[^$\n]*?(?:\\[A-Za-z]+|[_^{}=<>])[^$\n]*?(?<!\s)\$"  # inline $...$ with math syntax (not currency)
+    r"|\\[A-Za-z]+"  # LaTeX commands (\pmod, \equiv, \alpha, ...)
+    r"|<[^>\n]*>"  # HTML tags
+    r"|\]\([^)\n]*\)"  # markdown link targets
+)
 
 
 EMPTY_READ = 0.05  # a read with fewer words than this share of the layer's counts as empty

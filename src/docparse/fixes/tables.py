@@ -233,8 +233,13 @@ def regrid(table: HTable, al: Alignment, lines: list[list[TWord]], used: set[int
                 if col is not None:
                     target[id(cell)] = col
         if own < width:
-            cells = _insert_empties(row.cells, target, table.spanned_into(r))
-            if cells is None or own + len(cells) - len(row.cells) > width:
+            cells = _insert_empties(
+                row.cells,
+                target,
+                table.spanned_into(r),
+                _leaf_header_spans(table) if r >= _header_rows(table) else None,
+            )
+            if cells is None or own + sum(c.colspan for c in cells) - sum(c.colspan for c in row.cells) > width:
                 continue
         else:  # a row with a stray empty cell: the empty cells are laid out again around the found cells
             if len(target) < 2 or all(c.col == target[id(c)] for c in row.cells if id(c) in target):
@@ -253,13 +258,15 @@ _COLSPAN_ATTR = re.compile(r"\s*colspan\s*=\s*[\"']?\d+[\"']?", re.I)  # with th
 
 
 def right_align_leaf(table: HTable, mode: float = 0) -> bool:
-    """With no page geometry to place it (a scan, or a text layer that did not match): the last header row, one
-    or more cells short of its table, is moved right so that its cells stand over the last columns. Leaf headers
-    name the value columns, which follow the row-label columns; a short leaf row left out the blank corner.
+    """With no page geometry to place it (a scan, or a text layer that did not match): the last header row of a
+    multi-row header (`h >= 2`), one or more cells short of its table, is moved right so that its cells stand over
+    the last columns. Leaf headers name the value columns, which follow the row-label columns; a short leaf row
+    left out the blank corner. Never shifts a flat 1-row header (`h < 2`), where column 0 is usually already the
+    row-label header.
     mode 0: only when every body row is as wide as the table; mode 2: whatever the body rows; mode 3 (the one
     kept): as mode 2, but not when a one-column header ends the row above. True when the row changed."""
     h = _header_rows(table)
-    if h == 0 or h == len(table.rows):
+    if h < 2 or h == len(table.rows):
         return False
     width = table.width()
     r = h - 1
@@ -582,22 +589,86 @@ def _relayout(cells: list[HCell], target: dict[int, int], taken: set[int], width
     return out if pos <= width else None
 
 
-def _insert_empties(cells: list[HCell], target: dict[int, int], taken: set[int]) -> list[HCell] | None:
-    """The row with empty cells inserted so each targeted cell starts on its column; None when that is
-    impossible (a cell would have to move left) or nothing needs to move."""
+def _leaf_header_spans(table: HTable) -> dict[int, tuple[int, int]]:
+    """For each column covered by a multi-column header cell (`colspan >= 2`) in the table's bottom-most header
+    row covering that column, map column -> `(start_col, end_col_exclusive)`."""
+    h = _header_rows(table)
+    if h == 0:
+        return {}
+    spans: dict[int, tuple[int, int]] = {}
+    for r in range(h):
+        for cell in table.rows[r].cells:
+            if cell.colspan >= 2:
+                rng = (cell.col, cell.col + cell.colspan)
+                for k in range(cell.col, cell.col + cell.colspan):
+                    spans[k] = rng
+            else:
+                spans.pop(cell.col, None)
+    return spans
+
+
+def _widen_cell(cell: HCell, delta: int) -> HCell:
+    """Return a copy of `cell` with its colspan widened by `delta`."""
+    new_span = cell.colspan + delta
+    if _COLSPAN.search(cell.attrs):
+        attrs = _COLSPAN.sub(f'colspan="{new_span}"', cell.attrs)
+    else:
+        attrs = f'{cell.attrs} colspan="{new_span}"'
+    return HCell(
+        tag=cell.tag,
+        attrs=attrs,
+        inner=cell.inner,
+        raw="",
+        rowspan=cell.rowspan,
+        colspan=new_span,
+        row=cell.row,
+        col=cell.col,
+    )
+
+
+def _insert_empties(
+    cells: list[HCell],
+    target: dict[int, int],
+    taken: set[int],
+    header_spans: dict[int, tuple[int, int]] | None = None,
+) -> list[HCell] | None:
+    """The row with empty cells inserted (or a preceding cell's colspan widened when the header spans both columns)
+    so each targeted cell starts on its column; None when a cell would have to move left or nothing needs to move."""
     out: list[HCell] = []
-    pos, inserted = 0, 0
+    pos, added = 0, 0
+    prev_start: int | None = None
     for cell in cells:
         while pos in taken:
             pos += 1
         if id(cell) in target:
             if target[id(cell)] < pos:
                 return None
-            while pos < target[id(cell)]:
-                if pos not in taken:
-                    out.append(HCell.empty(cell.tag))
-                    inserted += 1
-                pos += 1
+            if pos < target[id(cell)]:
+                gap_end = target[id(cell)]
+                # If the preceding cell sits under a multi-column header spanning [prev_start .. gap_end],
+                # widen that cell's colspan instead of inserting a phantom empty <td></td> inside the column.
+                if (
+                    header_spans
+                    and out
+                    and prev_start is not None
+                    and not out[-1].plain_empty
+                    and out[-1].rowspan == 1
+                    and prev_start in header_spans
+                    and header_spans[prev_start][0] <= prev_start
+                    and header_spans[prev_start][1] >= gap_end
+                    and not any(k in taken for k in range(pos, gap_end))
+                ):
+                    delta = gap_end - pos
+                    out[-1] = _widen_cell(out[-1], delta)
+                    added += delta
+                    pos = gap_end
+                else:
+                    while pos < gap_end:
+                        if pos not in taken:
+                            out.append(HCell.empty(cell.tag))
+                            added += 1
+                        pos += 1
+        prev_start = pos
         out.append(cell)
         pos += cell.colspan
-    return out if inserted else None
+    return out if added else None
