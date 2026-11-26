@@ -528,7 +528,7 @@ def main() -> int:
 
     # ── Stage 3: Frontier Reasoning Tier-2 (Qwen3.5-27B AWQ-4bit on L4/A100, with 30B-A3B fallback) ──
     if not only or "qwen35" in only or "qwen35_l4" in only:
-        q_mt = 8192 if gpu_mem >= 32000 else 4096
+        q_mt = 12288 if gpu_mem >= 70000 else (8192 if gpu_mem >= 32000 else 4096)
         reqs_qwen: list[dict[str, Any]] = []
         # 3a. 40 Chart pages (full page + zoomed Figure crop + vector measurements + thinking!)
         for r in records:
@@ -587,18 +587,32 @@ def main() -> int:
                     "enable_thinking": False,
                 }
             )
-        if gpu_mem >= 32000:
-            q_repo = "Qwen/Qwen3.5-27B-GPTQ-Int4"
-            q_workers = 12 if gpu_mem >= 60000 else 6
-            q_len = 20480 if gpu_mem >= 60000 else 14336
+        if gpu_mem >= 70000:
+            # 80-96 GB Blackwell/Hopper (Colab G4 RTX PRO 6000 96GB / H100 80GB / CloudRift RTX PRO 6000):
+            # Official Qwen/Qwen3.5-27B-FP8 (30.87 GB, native FP8 Tensor Cores, ~BF16 fidelity, huge KV headroom!)
+            q_repo = "Qwen/Qwen3.5-27B-FP8"
+            q_workers = 12
+            q_len = 24576
             q_args = [
                 "--trust-remote-code",
                 "--dtype", "bfloat16",
                 "--reasoning-parser", "qwen3",
                 "--limit-mm-per-prompt", '{"image": 2}',
-                "--gpu-memory-utilization", "0.94" if gpu_mem < 60000 else "0.92",
+                "--gpu-memory-utilization", "0.90",
                 "--max-num-seqs", str(q_workers),
-                *(["--enforce-eager"] if gpu_mem < 60000 else []),
+            ]
+        elif gpu_mem >= 32000:
+            q_repo = "Qwen/Qwen3.5-27B-GPTQ-Int4"
+            q_workers = 6
+            q_len = 14336
+            q_args = [
+                "--trust-remote-code",
+                "--dtype", "bfloat16",
+                "--reasoning-parser", "qwen3",
+                "--limit-mm-per-prompt", '{"image": 2}',
+                "--gpu-memory-utilization", "0.94",
+                "--max-num-seqs", str(q_workers),
+                "--enforce-eager",
             ]
         else:
             # 24 GB L4 (Ada SM89 native FP8 KV cache): cyankiwi/Qwen3.5-27B-AWQ-4bit (18.68 GiB, lossless BF16 visual)
