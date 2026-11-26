@@ -3,8 +3,8 @@
 #   with the layer clearly better (word F1 + number F1, margin 0.03).
 # - format_options.underline: PDF-drawn underlines (lines that overrun their text, span three columns or are dashed
 #   are rules, not underlines).
-# - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking and the v3 prompt (estimate off
-#   the axis, one column per series, labelled ticks for dense lines); forms rewritten as `caption: value` lines from
+# - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking, the v2b prompt (v2 plus: always
+#   estimate off the axis, one column per series), small crops enlarged to 2048 px and the full vector measurements; forms rewritten as `caption: value` lines from
 #   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
 #   must stay tables).
 # - table_options round three: duplicate/split column squeeze, currency-sign columns, missing header leaves and
@@ -77,7 +77,9 @@ text_options:
 tier2_charts: true
 tier2_chart_options:
   model: q38
-  prompt: v3
+  prompt: v2b
+  crop_zoom_to: 2048
+  hint_chars: 10000
   enable_thinking: true
   temperature: 0.6
   top_p: 0.95
