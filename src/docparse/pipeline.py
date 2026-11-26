@@ -292,9 +292,49 @@ def _is_form_page(raw_chandra: str, markdown: str, pdf_bytes: bytes, index: int,
         return False
     if _FORM_LABEL.search(raw_chandra) or len(_CHECKBOX.findall(markdown)) >= int(opts.get("min_checkboxes", 4)):
         return True
+    if opts.get("wide") and _looks_like_form(markdown):  # the rewrite itself may still answer "not a form"
+        return True
     from docparse.fixes.forms_acro import acroform_widgets
 
     return acroform_widgets(pdf_bytes, index)[0] >= int(opts.get("min_acro_widgets", 3))
+
+
+_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", _FLAGS)
+_ROW = re.compile(r"<tr\b", re.IGNORECASE)
+_BLANK_RUN = re.compile(r"_{4,}|\.{6,}")
+
+
+def _empty_cells(table: str) -> tuple[int, int]:
+    """`(empty cells, cells)` of an HTML table."""
+    cells = _CELL.findall(table)
+    return sum(1 for c in cells if not re.sub(r"<[^>]+>|&nbsp;|\s", "", c)), len(cells)
+
+
+def _looks_like_form(markdown: str) -> bool:
+    """Signs of a form in a reading that carries no `Form` block: a checkbox, runs of blanks to write on, several
+    one- or two-row tables (boxed fields), or tables that are largely empty cells (slots to fill)."""
+    if _CHECKBOX.search(markdown) or len(_BLANK_RUN.findall(markdown)) >= 3:
+        return True
+    tables = _TABLE.findall(markdown)
+    if sum(1 for t in tables if len(_ROW.findall(t)) <= 2) >= 3:
+        return True
+    empty, cells = map(sum, zip(*(_empty_cells(t) for t in tables), strict=True)) if tables else (0, 0)
+    return empty >= 5 and empty >= 0.25 * cells
+
+
+def _grid_table_count(markdown: str) -> int:
+    """Data tables that a form rewrite must keep: a header, three or more rows, no checkbox, mostly filled."""
+    n = 0
+    for t in _TABLE.findall(markdown):
+        empty, cells = _empty_cells(t)
+        if (
+            "<th" in t.lower()
+            and len(_ROW.findall(t)) >= 3
+            and not _CHECKBOX.search(t)
+            and empty < 0.25 * max(1, cells)
+        ):
+            n += 1
+    return n
 
 
 def _data_table_count(markdown: str) -> int:
@@ -666,13 +706,19 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     pending.append(f_res.key)
                     continue
                 f_read = qwen_tier2.read_tier2_result(f_res)
-                if f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
+                kv = f_opts.get("prompt") == "kv"
+                if kv and f_read.markdown.strip().strip("`") == qwen_tier2.NOT_A_FORM:
+                    pass  # the model looked and saw no form: the draft stands
+                elif f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
                     cand_md = f_read.markdown
                     if config.strip_furniture:
                         cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
                     # a refinement that drops the draft's printed text or data tables is a rewrite, not a correction
                     min_cov = float(f_opts.get("min_word_coverage", 0.93))
-                    keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
+                    if kv:  # boxed fields drawn as small tables may become lines; real data grids must stay
+                        keeps_tables = _grid_table_count(cand_md) >= _grid_table_count(markdown)
+                    else:
+                        keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
                     if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
                         markdown = cand_md
                         used.append(f_res)
@@ -841,9 +887,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         if chandra_regions and page.layout is not None:
             from docparse.fixes.layout_kdl import apply_chandra_layout
 
-            page.layout = apply_chandra_layout(
-                page.layout, rp, chandra_regions, config.layout_options, chandra_texts
-            )
+            page.layout = apply_chandra_layout(page.layout, rp, chandra_regions, config.layout_options, chandra_texts)
         if config.layout_options and page.layout and read is not None:
             from docparse.fixes.layout_refine import refine
 

@@ -522,7 +522,8 @@ def read_tier2_result(result: ModelResult) -> Tier2Read:
     return Tier2Read(markdown, reasoning.strip(), finish, usable)
 
 
-FORM_KV_PROMPT_ID = "qwen/form-kv-v1"
+FORM_KV_PROMPT_ID = "qwen/form-kv-v2"
+NOT_A_FORM = "NOT_A_FORM"
 FORM_KV_PROMPT = """\
 Rewrite this form page as clean Markdown that keeps every printed word and pairs each field with what was filled in.
 
@@ -547,7 +548,9 @@ one character per box is joined into one value.
 in a header row and each row's caption in its first cell. Do not use a table for anything else.
 6. Keep all other printed text (titles, section headings as `#`/`##`, instructions, notes, page furniture) in \
 reading order, and keep the draft's wording wherever it matches the page.
-7. Output only the Markdown: no code fences, no commentary."""
+7. Output only the Markdown: no code fences, no commentary.
+8. If the page is not a form (it has no fields, boxes or blanks for a person to fill in: for example a report, a \
+letter, a statement or a plain data table), output exactly `NOT_A_FORM` and nothing else."""
 FORM_KV_LAYER = """
 The PDF's own text layer, line by line from top to bottom (exact characters of the typed text; trust it for \
 spelling and digits, and use the image to decide which value belongs to which field):
