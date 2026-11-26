@@ -1,0 +1,37 @@
+tests/test_tier2_charts.py
+  s_ecb6f46844f7b6::t_0ed5395dc28066 16,21,23,28-29
+  s_ecb6f46844f7b6::t_56f613c665db1e 54-66
+  s_ecb6f46844f7b6::t_4d4d9f191ae8b9 113-114
+  s_ecb6f46844f7b6::t_75be30ef0740cc 30,182-250
+  s_ecb6f46844f7b6::t_2ca7c2c4db9ab0 81,87
+  s_ecb6f46844f7b6::t_8038c7d5e65781 1-2
+src/docparse/core/config.py
+  s_ecb6f46844f7b6::t_46854a4b0208bf 123-128
+  s_ecb6f46844f7b6::t_27836598dadb91 161-162
+  s_ecb6f46844f7b6::t_260e8f3cc3ffc6 95-101
+  s_ecb6f46844f7b6::t_a87526dedbd8e5 199-201
+src/docparse/pipeline.py
+  s_ecb6f46844f7b6::t_92fa48c6b0443a 9-10,15
+  s_ecb6f46844f7b6::t_1d810b34604388 220-257
+  s_ecb6f46844f7b6::t_210a1ed8502b7c 39-41
+  s_ecb6f46844f7b6::t_d4231fb48f6844 427-457
+configs/frontier_v3.yaml
+  s_ecb6f46844f7b6::t_ba3b9c84ab5e9c 4-6
+  s_ecb6f46844f7b6::t_c5ce974a58f844 73-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c46a8c3cc2b82966ff2456eb12df5ad50514bf6e",
+  "prompts": {},
+  "sessions": {
+    "s_ecb6f46844f7b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52b60564-674a-4b21-b1f5-50c7528b03ac",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
