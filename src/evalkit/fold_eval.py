@@ -86,6 +86,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True)
+    for stale in base.glob("manifest_*"):  # per-model manifests of an earlier plan: results stay in the cache
+        shutil.rmtree(stale)
     lay = [e for e in ids if e.startswith("layout/")]
     md = [e for e in ids if not e.startswith("layout/")]
     new = 0
