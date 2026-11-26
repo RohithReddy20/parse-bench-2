@@ -89,6 +89,14 @@ class Config(BaseModel):
     page_model: ModelRef
     page_runtime: str
     prompt_sha: str  # sha256 of OCRia-1's prompt.txt ("published" for stand-in readings)
+    # Primary page reader engine:
+    # - "ocria": single-model OCRia-1 page read (default)
+    # - "chandra": single-model Chandra-OCR-2 layout-HTML read (with OCRia-1 fallback on length/loop)
+    # - "chandra_hybrid": Chandra-OCR-2 primary + OCRia-1 fallback on length/loop & vector-chart Figure fusion
+    reader: Literal["ocria", "chandra", "chandra_hybrid"] = "ocria"
+    chandra_model: ModelRef | None = None
+    # Drop Page-Header and Page-Footer blocks when the reader tags page furniture (e.g. Chandra layout blocks)
+    strip_furniture: bool = False
     dpi: int = 300
     # where layout items come from: carried by the page read (published stand-ins); built here from detector
     # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all
