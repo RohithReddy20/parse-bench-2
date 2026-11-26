@@ -74,7 +74,7 @@ exactly as written, paired cleanly with its corresponding field label.
 3. Keep blank/unfilled fields explicitly blank — NEVER hallucinate or invent values for empty fields, and NEVER shift \
 a value into the wrong field.
 4. For character-box / comb fields (e.g., postal codes, dates, ID numbers written one character per box), read the \
-complete assembled value cleanly (e.g., `M2 9YT`, `2025-04-12`) rather than splitting each character into separate table cells.
+complete assembled value cleanly (e.g., `M2 9YT`, `2025-04-12`) instead of splitting characters into separate cells.
 5. Do not add commentary or code fences; output only the faithful document transcription."""
 
 HARD_OCR_PROMPT = """\
@@ -236,7 +236,10 @@ def _run_batch(
 
     done = _load_done(out_file)
     todo = [r for r in requests if r["uid"] not in done]
-    print(f"\n================ [{tag}] repo={repo} total={len(requests)} done={len(done)} todo={len(todo)} ================", flush=True)
+    print(
+        f"\n==== [{tag}] repo={repo} total={len(requests)} done={len(done)} todo={len(todo)} ====",
+        flush=True,
+    )
     if not todo:
         return {"tag": tag, "done": 0, "skipped": len(done), "failed": 0}
 
@@ -371,7 +374,14 @@ def _run_batch(
         _stop_vllm(proc)
         log_fh.close()
 
-    return {"tag": tag, "repo": repo, "sha": sha, "done": completed, "failed": failed, "sec": round(time.monotonic() - t0, 1)}
+    return {
+        "tag": tag,
+        "repo": repo,
+        "sha": sha,
+        "done": completed,
+        "failed": failed,
+        "sec": round(time.monotonic() - t0, 1),
+    }
 
 
 def main() -> int:
@@ -478,9 +488,47 @@ def main() -> int:
     elif (not only or "infparser2" in only) and gpu_mem < 32000:
         print(f"[infparser2_pro] Skipping 35B MoE W4A16 on {gpu_mem} MB GPU (needs >=32 GB VRAM)", flush=True)
 
-    # ── Stage 3: Qwen/Qwen3.5-27B-GPTQ-Int4 (Official 27B Int4 Marlin on A100-40GB / L4-24GB + reasoning) ──
-    if not only or "qwen35" in only:
-        q_mt = 8192 if gpu_mem >= 32000 else 6144
+    # ── Stage 2b: Infinity-Parser2-Flash (2B RLVR, 4.43 GB BF16, 86.0 olmOCR — fits L4 & runs in ~2 min!) ──
+    if "infflash" in only:
+        inf_prompt = _fetch_infparser2_prompt()
+        reqs_inff = [
+            {
+                "uid": r["uid"],
+                "bucket": r["bucket"],
+                "item_id": r["item_id"],
+                "subtask": "doc2md",
+                "images": [r["page_img"]],
+                "prompt": inf_prompt,
+                "max_tokens": 6144,
+                "temperature": 0.0,
+                "enable_thinking": False,
+            }
+            for r in records
+        ]
+        summary.append(
+            _run_batch(
+                tag="infparser2_flash",
+                repo="infly/Infinity-Parser2-Flash",
+                vllm_args=[
+                    "--trust-remote-code",
+                    "--dtype", "bfloat16",
+                    "--reasoning-parser", "qwen3",
+                    "--limit-mm-per-prompt", '{"image": 1}',
+                    "--gpu-memory-utilization", "0.90",
+                    "--max-num-seqs", "16",
+                    "--no-enable-prefix-caching",
+                ],
+                requests=reqs_inff,
+                out_file=OUT / "infparser2_flash.jsonl",
+                workers=16,
+                max_model_len=16384,
+                gpu_name=gpu_name,
+            )
+        )
+
+    # ── Stage 3: Frontier Reasoning Tier-2 (Qwen3.5-27B AWQ-4bit on L4/A100, with 30B-A3B fallback) ──
+    if not only or "qwen35" in only or "qwen35_l4" in only:
+        q_mt = 8192 if gpu_mem >= 32000 else 4096
         reqs_qwen: list[dict[str, Any]] = []
         # 3a. 40 Chart pages (full page + zoomed Figure crop + vector measurements + thinking!)
         for r in records:
@@ -539,26 +587,126 @@ def main() -> int:
                     "enable_thinking": False,
                 }
             )
-        q_workers = 12 if gpu_mem >= 32000 else 4
-        q_len = 20480 if gpu_mem >= 32000 else 10240
-        q_extra = ["--enforce-eager"] if gpu_mem < 32000 else []
+        if gpu_mem >= 32000:
+            q_repo = "Qwen/Qwen3.5-27B-GPTQ-Int4"
+            q_workers = 12 if gpu_mem >= 60000 else 6
+            q_len = 20480 if gpu_mem >= 60000 else 14336
+            q_args = [
+                "--trust-remote-code",
+                "--dtype", "bfloat16",
+                "--reasoning-parser", "qwen3",
+                "--limit-mm-per-prompt", '{"image": 2}',
+                "--gpu-memory-utilization", "0.94" if gpu_mem < 60000 else "0.92",
+                "--max-num-seqs", str(q_workers),
+                *(["--enforce-eager"] if gpu_mem < 60000 else []),
+            ]
+        else:
+            # 24 GB L4 (Ada SM89 native FP8 KV cache): cyankiwi/Qwen3.5-27B-AWQ-4bit (18.68 GiB, lossless BF16 visual)
+            q_repo = "cyankiwi/Qwen3.5-27B-AWQ-4bit"
+            q_workers = 2
+            q_len = 8192
+            q_args = [
+                "--trust-remote-code",
+                "--dtype", "bfloat16",
+                "--reasoning-parser", "qwen3",
+                "--kv-cache-dtype", "fp8",
+                "--enforce-eager",
+                "--no-enable-prefix-caching",
+                "--mm-processor-cache-gb", "0",
+                "--limit-mm-per-prompt", '{"image": 2}',
+                "--gpu-memory-utilization", "0.95",
+                "--max-num-seqs", str(q_workers),
+            ]
+        res_q = _run_batch(
+            tag="qwen35_27b_int4",
+            repo=q_repo,
+            vllm_args=q_args,
+            requests=reqs_qwen,
+            out_file=OUT / "qwen35_27b_int4.jsonl",
+            workers=q_workers,
+            max_model_len=q_len,
+            gpu_name=gpu_name,
+        )
+        summary.append(res_q)
+        # Automatic L4 fallback if 27B AWQ still OOMs: Qwen3-VL-30B-A3B-Thinking-AWQ (16.66 GiB, 3B active MoE!)
+        if res_q.get("error") and gpu_mem < 32000:
+            print(
+                "[qwen35_27b_int4] OOM/error on L4 -> falling back to QuantTrio/Qwen3-VL-30B-A3B-Thinking-AWQ!",
+                flush=True,
+            )
+            res_fb = _run_batch(
+                tag="qwen3vl_30b_a3b",
+                repo="QuantTrio/Qwen3-VL-30B-A3B-Thinking-AWQ",
+                vllm_args=[
+                    "--trust-remote-code",
+                    "--dtype", "bfloat16",
+                    "--reasoning-parser", "qwen3",
+                    "--kv-cache-dtype", "fp8",
+                    "--enforce-eager",
+                    "--no-enable-prefix-caching",
+                    "--mm-processor-cache-gb", "0",
+                    "--limit-mm-per-prompt", '{"image": 2}',
+                    "--gpu-memory-utilization", "0.94",
+                    "--max-num-seqs", "4",
+                ],
+                requests=reqs_qwen,
+                out_file=OUT / "qwen3vl_30b_a3b.jsonl",
+                workers=4,
+                max_model_len=10240,
+                gpu_name=gpu_name,
+            )
+            summary.append(res_fb)
+
+    # ── Stage 3b: Qwen3.5-9B-AWQ-4bit (8.45 GiB, ultra-fast Qwen3.5 thinking comparison on charts + forms) ──
+    if "qwen35_9b" in only:
+        reqs_9b = []
+        for r in records:
+            if r["is_chart"]:
+                imgs = [r["page_img"]] + ([r["crop_img"]] if r.get("crop_img") else [])
+                reqs_9b.append({
+                    "uid": f"chart::{r['uid']}",
+                    "bucket": r["bucket"],
+                    "item_id": r["item_id"],
+                    "subtask": "chart",
+                    "images": imgs,
+                    "system": CHART_SYSTEM,
+                    "prompt": CHART_PROMPT.format(
+                        hint=(r.get("vector_hint") or "").strip() or "(none)",
+                        draft=(r.get("draft_tables") or "").strip() or "(none)",
+                    ),
+                    "max_tokens": 6144,
+                    "temperature": 0.0,
+                    "enable_thinking": True,
+                })
+            elif r["is_form"]:
+                reqs_9b.append({
+                    "uid": f"form::{r['uid']}", "bucket": r["bucket"], "item_id": r["item_id"], "subtask": "form",
+                    "images": [r["page_img"]], "prompt": FORM_PROMPT,
+                    "max_tokens": 6144, "temperature": 0.0, "enable_thinking": True,
+                })
+            elif r["is_hard"]:
+                reqs_9b.append({
+                    "uid": f"hard::{r['uid']}", "bucket": r["bucket"], "item_id": r["item_id"], "subtask": "hard",
+                    "images": [r["page_img"]], "prompt": HARD_OCR_PROMPT,
+                    "max_tokens": 6144, "temperature": 0.0, "enable_thinking": False,
+                })
         summary.append(
             _run_batch(
-                tag="qwen35_27b_int4",
-                repo="Qwen/Qwen3.5-27B-GPTQ-Int4",
+                tag="qwen35_9b_awq",
+                repo="cyankiwi/Qwen3.5-9B-AWQ-4bit",
                 vllm_args=[
                     "--trust-remote-code",
                     "--dtype", "bfloat16",
                     "--reasoning-parser", "qwen3",
                     "--limit-mm-per-prompt", '{"image": 2}',
-                    "--gpu-memory-utilization", "0.92",
-                    "--max-num-seqs", str(q_workers),
-                    *q_extra,
+                    "--gpu-memory-utilization", "0.90",
+                    "--max-num-seqs", "8",
+                    "--no-enable-prefix-caching",
                 ],
-                requests=reqs_qwen,
-                out_file=OUT / "qwen35_27b_int4.jsonl",
-                workers=q_workers,
-                max_model_len=q_len,
+                requests=reqs_9b,
+                out_file=OUT / "qwen35_9b_awq.jsonl",
+                workers=8,
+                max_model_len=14336,
                 gpu_name=gpu_name,
             )
         )

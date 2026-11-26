@@ -24,6 +24,9 @@ layout_options:
   native_text: true
   orphans: true
   orphan_ink: true
+  pp_arbiter: true
+  pp_keep_pictures: true
+  pp_add: true
 table_options:
   regrid: true
   regrid_wide: true

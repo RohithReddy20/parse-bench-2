@@ -115,7 +115,56 @@ def kdl_executor(device: str | None = None):
     return execute
 
 
-EXECUTORS = {"heron": heron_executor, "kdl": kdl_executor}
+def ppdoclayout_executor(device: str | None = None):
+    """PaddlePaddle PP-DocLayoutV3 (133 MB RT-DETR, Apache 2.0) pure-PyTorch box + reading-order detector."""
+    import torch
+    from PIL import Image
+    from transformers import AutoImageProcessor, AutoModelForObjectDetection
+
+    from docparse.models.adapters import ppdoclayout
+
+    state: dict[str, Any] = {}
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+
+    def execute(call: ModelCall, blobs: dict[str, bytes]) -> dict[str, Any]:
+        if call.prompt_id != ppdoclayout.PROMPT_ID:
+            raise ValueError(f"not a PP-DocLayoutV3 call: {call.prompt_id}")
+        if "model" not in state:
+            repo, revision = call.model.repo, call.model.revision
+            state["proc"] = AutoImageProcessor.from_pretrained(repo, revision=revision)
+            state["model"] = AutoModelForObjectDetection.from_pretrained(repo, revision=revision).to(device).eval()
+        proc, model = state["proc"], state["model"]
+        started = time.monotonic()
+        image = Image.open(io.BytesIO(blobs[call.inputs[0]])).convert("RGB")
+        w, h = image.size
+        inputs = {k: v.to(device) for k, v in proc(images=image, return_tensors="pt").items()}
+        with torch.no_grad():
+            out = model(**inputs)
+        r = ppdoclayout.post_process_boxes(
+            proc, out, threshold=float(call.params["threshold"]), target_sizes=[(h, w)]
+        )[0]
+        detections = [
+            {
+                "label": model.config.id2label[int(lab.item())],
+                "score": round(float(sc.item()), 4),
+                "box": [round(float(v), 2) for v in b.tolist()],
+                "order": int(oseq.item()),
+            }
+            for sc, lab, b, oseq in zip(r["scores"], r["labels"], r["boxes"], r["order_seq"], strict=True)
+        ]
+        return {
+            "detections": detections,
+            "width": w,
+            "height": h,
+            "_gpu_seconds": round(time.monotonic() - started, 4),
+            "_gpu_type": f"local-{device}",
+        }
+
+    return execute
+
+
+EXECUTORS = {"heron": heron_executor, "kdl": kdl_executor, "ppdoclayout": ppdoclayout_executor}
 
 
 def main(argv: list[str] | None = None) -> int:

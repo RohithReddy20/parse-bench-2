@@ -192,3 +192,46 @@ def test_chandra_promotes_section_header_and_unwraps_overwide_strike() -> None:
     ]
     refine_format(pg, SimpleNamespace(text_words=words), {"strike": True})
     assert pg.regions[0].chosen().raw == "~~Old clause~~ stays and new clause added"
+
+
+def test_verify_weak_table_alignment_and_ppdoclayout_adapter() -> None:
+    from types import SimpleNamespace
+
+    from docparse.fixes.verify import needs_pdf_verification, secondary_improves
+    from docparse.models.adapters import ppdoclayout
+    from docparse.models.calls import ModelResult
+
+    words = [
+        SimpleNamespace(text=f"r{r}c{c}", box=(c * 100.0, r * 18.0, c * 100.0 + 40.0, r * 18.0 + 10.0))
+        for r in range(10)
+        for c in range(6)
+    ]
+    rp = SimpleNamespace(hidden=0.0, map_errors=0.0, scale=1.0, text_words=words, words=words)
+    # Mangled table keeps words (high page recall) but mis-groups cells across columns so PDF alignment is low
+    bad_rows = "".join(
+        f"<tr><td>r{r}c0 r{r}c2</td><td>r{r}c1 r{r}c3</td><td>r{r}c4 r{r}c5</td></tr>" for r in range(10)
+    )
+    good_rows = "".join(
+        "<tr>" + "".join(f"<td>r{r}c{c}</td>" for c in range(6)) + "</tr>" for r in range(10)
+    )
+    bad_md = f"<table>{bad_rows}</table>"
+    good_md = f"<table>{good_rows}</table>"
+    need, reason = needs_pdf_verification(bad_md, rp)
+    assert need and reason.startswith("weak_table:")
+    assert secondary_improves(bad_md, good_md, rp, reason) is True
+    assert secondary_improves(bad_md, bad_md, rp, reason) is False
+
+    res = ModelResult(
+        key="k",
+        output={
+            "detections": [
+                {"label": "chart", "score": 0.91, "box": [10, 20, 200, 300]},
+                {"label": "paragraph_title", "score": 0.60, "box": [10, 5, 100, 18]},
+                {"label": "text", "score": 0.28, "box": [10, 310, 200, 350]},
+            ]
+        },
+    )
+    dets = ppdoclayout.read_detections(res, min_score=0.40)
+    assert [(d.label, d.score) for d in dets] == [("Chart", 0.91), ("Section-header", 0.6)]
+    raw = ppdoclayout.read_raw_detections(res, min_score=0.40)
+    assert [d.label for d in raw] == ["chart", "paragraph_title"]

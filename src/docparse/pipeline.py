@@ -18,7 +18,7 @@ from docparse.core.config import Config
 from docparse.core.hashing import sha256_hex
 from docparse.core.ir import CostRecord, Document, Finding
 from docparse.fixes.layout_kdl import KDL_OPTIONS
-from docparse.models.adapters import heron, kdl
+from docparse.models.adapters import heron, kdl, ppdoclayout
 from docparse.models.adapters.attention import attention_call, read_attention
 from docparse.models.adapters.ocria import build_page_call, read_page_result
 from docparse.models.calls import ModelClient, Pending
@@ -167,12 +167,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             verify_needed, verify_reason = (False, "")
             result = client.get(call, blobs, meta)
 
-        detections = regions2 = None
+        detections = regions2 = pp_res = None
         if config.layout == "ground":  # the detector reads the same page image, so it shares the blob
             detections = client.get(heron.detect_call(call.inputs[0]), blobs, meta)
         if config.layout != "none" and any(config.layout_options.get(k) for k in KDL_OPTIONS):  # second detector
             regions2 = client.get(kdl.layout_call(call.inputs[0]), blobs, meta)
-        waiting = [r.key for r in (result, detections, regions2) if isinstance(r, Pending)]
+        if config.layout != "none" and any(config.layout_options.get(k) for k in ("pp_arbiter", "pp_add")):
+            pp_res = client.get(ppdoclayout.detect_call(call.inputs[0]), blobs, meta)
+        waiting = [r.key for r in (result, detections, regions2, pp_res) if isinstance(r, Pending)]
         if waiting:
             pending += waiting
             continue
@@ -361,6 +363,18 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
             page.layout = apply_kdl(
                 page.layout, rp, kdl.read_detections(regions2), config.layout_options, markdown, chandra_regions
+            )
+        if pp_res is not None and page.layout is not None:
+            from docparse.fixes.layout_kdl import apply_kdl
+
+            pp_min = float(config.layout_options.get("pp_min_score", 0.40))
+            pp_opts = {
+                "kdl_arbiter": bool(config.layout_options.get("pp_arbiter")),
+                "kdl_keep_pictures": bool(config.layout_options.get("pp_keep_pictures")),
+                "kdl_add": bool(config.layout_options.get("pp_add")),
+            }
+            page.layout = apply_kdl(
+                page.layout, rp, ppdoclayout.read_detections(pp_res, min_score=pp_min), pp_opts, markdown
             )
         if chandra_regions and page.layout is not None:
             from docparse.fixes.layout_kdl import apply_chandra_layout

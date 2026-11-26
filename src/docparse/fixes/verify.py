@@ -58,8 +58,34 @@ def pdf_looks_tabular(words: list[PtWord], min_rows: int = 4, min_cols: int = 3)
     return False
 
 
-def needs_pdf_verification(markdown: str, rendered: RenderedPage, min_recall: float = 0.68) -> tuple[bool, str]:
-    """Return `(should_verify, reason)` when `markdown` looks incomplete or flattened against the PDF text layer."""
+def table_alignment_stats(markdown: str, rendered: RenderedPage) -> tuple[int, int, int, float]:
+    """Measure `(n_tables, matched_cells, total_cells, weighted_found)` of HTML tables against the PDF text layer."""
+    twords = page_words(rendered)
+    if not twords:
+        return 0, 0, 0, 1.0
+    tlines = table_lines_of(twords)
+    used: set[int] = set()
+    n_tables = matched = total = 0
+    for raw_tbl in _TABLE_RE.findall(markdown):
+        ht = parse_table(raw_tbl)
+        if ht is None or len(ht.rows) < 2 or ht.width() < 2:
+            continue
+        n_tables += 1
+        al = align_table(ht, tlines, used)
+        for ws in al.words.values():
+            used.update(w.index for w in ws)
+        matched += len(al.words)
+        total += al.cells
+    return n_tables, matched, total, (matched / total if total else 1.0)
+
+
+def needs_pdf_verification(
+    markdown: str,
+    rendered: RenderedPage,
+    min_recall: float = 0.68,
+    min_table_found: float = 0.80,
+) -> tuple[bool, str]:
+    """Return `(should_verify, reason)` when `markdown` looks incomplete, flattened, or poorly table-aligned."""
     from docparse.fixes.fallback import has_math
 
     if not has_healthy_text_layer(rendered) or has_math(markdown):
@@ -68,8 +94,13 @@ def needs_pdf_verification(markdown: str, rendered: RenderedPage, min_recall: fl
     recall = pdf_word_recall(markdown, words)
     if recall < min_recall:
         return True, f"low_recall:{recall:.3f}"
-    if "<table" not in markdown.lower() and pdf_looks_tabular(words):
-        return True, f"missing_table:{recall:.3f}"
+    if "<table" not in markdown.lower():
+        if pdf_looks_tabular(words):
+            return True, f"missing_table:{recall:.3f}"
+        return False, ""
+    n_tbl, matched, total, found = table_alignment_stats(markdown, rendered)
+    if n_tbl >= 1 and total >= 10 and found < min_table_found:
+        return True, f"weak_table:{found:.3f}:{matched}"
     return False, ""
 
 
@@ -80,6 +111,7 @@ def secondary_improves(
     reason: str,
     recall_margin: float = 0.12,
     table_health: float = 0.65,
+    table_found_margin: float = 0.12,
 ) -> bool:
     """True only when `secondary_md` objectively fixes the flagged PDF verification defect."""
     if not secondary_md.strip():
@@ -107,4 +139,10 @@ def secondary_improves(
             if al.cells and al.found >= table_health:
                 return True
         return False
+    if reason.startswith("weak_table:"):
+        if s_rec < p_rec - 0.02:
+            return False
+        _, p_matched, p_total, p_found = table_alignment_stats(primary_md, rendered)
+        s_nt, s_matched, _, s_found = table_alignment_stats(secondary_md, rendered)
+        return s_nt >= 1 and p_total >= 10 and s_matched >= p_matched and s_found >= p_found + table_found_margin
     return False

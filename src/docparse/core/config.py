@@ -17,6 +17,7 @@ LAYOUT_OPTIONS = frozenset(
         "orphans", "orphan_gap", "orphan_min", "orphan_ink",
         "kdl_replace", "kdl_words", "kdl_add", "kdl_split", "kdl_children", "kdl_pictures", "kdl_picbox",
         "kdl_arbiter", "kdl_keep_pictures", "kdl_keep_tables",
+        "pp_arbiter", "pp_keep_pictures", "pp_add", "pp_min_score",
         "chandra_arbiter", "chandra_add", "chandra_fallback",
     }
 )  # fmt: skip
