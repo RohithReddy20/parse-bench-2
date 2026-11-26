@@ -1,0 +1,21 @@
+serve/modal_frontier_pilot.py
+  s_a92dd84b33403f::t_f9fa85706f7ec6 70
+  s_a92dd84b33403f::t_693e11df257c91 67-69
+  s_a92dd84b33403f::t_397653a78ec276 71-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a1e4489c827272e5931e463725e5b1f633aadea",
+  "prompts": {},
+  "sessions": {
+    "s_a92dd84b33403f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21821-bf72-7ac0-b2d8-968a0d090c61",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
