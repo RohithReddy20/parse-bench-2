@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw
 from docparse.fixes.forms import apply_edits
 from docparse.fixes.forms_ink import (
     _box_ink_stats,
+    _box_owner_side,
     box_ink_ratio,
     checkbox_candidates,
     classify_box_ink,
@@ -13,6 +14,7 @@ from docparse.fixes.forms_ink import (
     repair_checkbox_ink,
     vector_checkbox_rects,
 )
+from docparse.fixes.layout_refine import PtWord
 from docparse.pdf.render import RenderedPage, Word, render_pages
 from tests.pdfgen import make_pdf
 
@@ -24,6 +26,26 @@ BOX_C = (20.0, 36.0, 30.0, 46.0)  # a third, unlabelled box below BOX_A
 LABELS = [("Yes", (34.0, 21.0, 48.0, 29.0)), ("No", (74.0, 21.0, 84.0, 29.0))]  # each just right of its box
 BOX_JA, BOX_NEIN = (31.0, 20.0, 41.0, 30.0), (69.0, 20.0, 79.0, 30.0)
 RIGHT_LABELS = [("ja", (20.0, 21.0, 28.0, 29.0)), ("nein", (50.0, 21.0, 66.0, 29.0))]  # each just left of its box
+# `Government [x]   UN Refugee [ ]`: each box 2.5 pt right of its label, the first 13 pt left of `UN`
+GOV_BOXES = ((22.5, 20.0, 32.5, 30.0), (74.5, 20.0, 84.5, 30.0))
+GOV_LABELS = [
+    ("Government", (2.0, 21.0, 20.0, 29.0)),
+    ("UN", (45.5, 21.0, 52.0, 29.0)),
+    ("Refugee", (54.0, 21.0, 72.0, 29.0)),
+]
+# `[ ] Madame   [x] Monsieur` (boxes 2.5 pt left of their labels) over `Oui [x]   Non [ ]` (2.5 pt right of them)
+MIXED_BOXES = (
+    (4.0, 20.0, 14.0, 30.0),
+    (51.0, 20.0, 61.0, 30.0),  # 13 pt right of Madame
+    (18.5, 36.0, 28.5, 46.0),  # 13 pt left of Non
+    (56.5, 36.0, 66.5, 46.0),
+)
+MIXED_LABELS = [
+    ("Madame", (16.5, 21.0, 38.0, 29.0)),
+    ("Monsieur", (63.5, 21.0, 92.0, 29.0)),
+    ("Oui", (4.0, 37.0, 16.0, 45.0)),
+    ("Non", (41.5, 37.0, 54.0, 45.0)),
+]
 
 
 def _px(box):
@@ -174,6 +196,67 @@ def test_box_right_of_its_label_sets_the_mark_after_it(md, want):
     _draw(img, BOX_JA)
     _draw(img, BOX_NEIN, "x")
     assert _fix(md, img, boxes=(BOX_JA, BOX_NEIN), labels=RIGHT_LABELS) == want
+
+
+@pytest.mark.parametrize(
+    ("gap_l", "gap_r", "want"),
+    [
+        (2.5, 13.0, "left"),  # `Government [x]   UN`
+        (13.0, 2.5, "right"),  # `Madame   [x] Monsieur`
+        (5.0, 5.0, None),  # midway between two words
+        (5.0, 4.5, None),  # nearer, but not by OWNER_GAP
+        (0.0, 0.0, None),  # touching both
+        (None, 13.0, "right"),
+        (13.0, None, "left"),
+        (None, None, None),
+    ],
+)
+def test_box_owner_side_is_the_clearly_nearer_word_on_its_line(gap_l, gap_r, want):
+    box = (30.0, 20.0, 40.0, 30.0)
+    words = [PtWord("Below", 0.0, 50.0, 90.0, 58.0)]  # another line: never a neighbour
+    if gap_l is not None:
+        words.append(PtWord("Left", 10.0, 21.0, 30.0 - gap_l, 29.0))
+    if gap_r is not None:
+        words.append(PtWord("Right", 40.0 + gap_r, 21.0, 60.0, 29.0))
+    assert _box_owner_side(box, words) == want
+
+
+@pytest.mark.parametrize(
+    ("md", "want"),
+    [
+        ("* [x] Government\n* [ ] UN Refugee", "* [x] Government\n* [ ] UN Refugee"),  # VLM put the boxes first
+        ("Government [ ] UN Refugee [x]", "Government [x] UN Refugee [ ]"),
+    ],
+)
+def test_right_of_label_box_is_never_given_to_the_next_label(md, want):
+    img = _canvas()
+    _draw(img, GOV_BOXES[0], "x")  # Government's box: 13 pt left of `UN`, but 2.5 pt right of its own label
+    _draw(img, GOV_BOXES[1])
+    assert _fix(md, img, boxes=GOV_BOXES, labels=GOV_LABELS) == want
+
+
+@pytest.mark.parametrize(
+    ("md", "want"),
+    [
+        ("[x] Madame [ ] Monsieur\nOui [ ] Non [x]", "[ ] Madame [x] Monsieur\nOui [x] Non [ ]"),
+        # each row read in the other orientation: no mark gets a box from the wrong side
+        ("* Madame [ ]\n* Monsieur [ ]\n* [ ] Oui\n* [ ] Non", "* Madame [ ]\n* Monsieur [ ]\n* [ ] Oui\n* [ ] Non"),
+    ],
+)
+def test_mixed_orientations_are_each_set_from_their_own_side(md, want):
+    img = _canvas()
+    for box, mark in zip(MIXED_BOXES, (None, "x", "x", None), strict=True):
+        _draw(img, box, mark)
+    assert _fix(md, img, boxes=MIXED_BOXES, labels=MIXED_LABELS) == want
+
+
+def test_box_midway_between_two_labels_keeps_its_mark():
+    img = _canvas()
+    mid, far = (25.0, 20.0, 35.0, 30.0), (61.0, 20.0, 71.0, 30.0)  # mid: 5 pt from both `Yes` and `No`
+    _draw(img, mid, "x")
+    _draw(img, far)
+    labels = [("Yes", (4.0, 21.0, 20.0, 29.0)), ("No", (40.0, 21.0, 56.0, 29.0))]
+    assert _fix("Yes [ ] No [ ]", img, boxes=(mid, far), labels=labels) == "Yes [ ] No [ ]"
 
 
 def test_touching_comb_boxes_are_all_excluded_but_a_touching_pair_is_kept():

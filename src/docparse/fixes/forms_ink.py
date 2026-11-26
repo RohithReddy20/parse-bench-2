@@ -3,7 +3,9 @@
 Where the markdown already carries a `[ ]`/`[x]` mark beside the printed label of a vector check box, the mark
 is set to what the render shows: the mark right before a label whose box sits immediately left of it on its
 line (`[ ] Yes`, as `forms_acro._box_left_of` finds it), else the mark right after a label whose box sits
-immediately right of it (`ja [ ] nein [x]`). Only unambiguous ink counts (`classify_box_ink`): ink <= empty_max
+immediately right of it (`ja [ ] nein [x]`). A box labels only the word beside it that it is clearly nearer
+(`_box_owner_side`): `Yes [x]   No [ ]` read as `[x] Yes [ ] No` never gives `No` the box of `Yes`, and a box
+midway between two words labels neither. Only unambiguous ink counts (`classify_box_ink`): ink <= empty_max
 is unchecked; checked_min <= ink <= bullet_max over a contrasted interior (grey-level std >= min_std: dark
 strokes on a light ground) is checked (an X, a tick); anything else (a faint speck, a solid `■` bullet, a shaded
 or coloured section box) keeps the read. Ink is the share of the box interior, inset past its border, darker
@@ -55,6 +57,7 @@ BG_PERCENTILE, MIN_BG = 85, 110  # surround luminance; a darker surround (a reve
 DARK_DELTA = 45  # grey levels below the surround that count as ink
 EMPTY_MAX, CHECKED_MIN, BULLET_MAX = 0.025, 0.12, 0.58
 MIN_STD = 28.0  # grey levels across a ticked interior (strokes on a light ground); a shaded box is flatter
+OWNER_GAP = 0.85  # a box labels the word beside it whose gap is at most this share of the other word's gap
 # text a check box may hold (a check glyph); any other word centred in a box is a printed field number
 _CHECK_GLYPHS = frozenset({"", "x", "X", "×", "✓", "✔", "✗", "✘", "√", "☑", "☒", "☐", "■", "□", "•", "v", "V"})
 _MARK_GAP_AFTER = re.compile(r"(?:[ \t*_:]|</?(?:strong|b|em|i|u)>)*")  # what may sit between a word and its mark
@@ -211,6 +214,24 @@ def _box_right_of(w0: PtWord, cboxes: list[CheckWidget], words: list[PtWord], sk
     return None
 
 
+def _box_owner_side(box: Rect, words: Sequence[PtWord]) -> str | None:
+    """Which side's printed word a box labels: "right" for a box left of its label (`[ ] Yes`), "left" for one
+    right of its label (`Yes [ ]`). With words on both sides of it on its line, its gap to its label is at most
+    OWNER_GAP of its gap to the other word; None with no word beside it, or neither gap clearly the smaller."""
+    bx0, by0, bx1, by1 = box
+    bcy, tol = (by0 + by1) / 2, max(6.0, 0.8 * (by1 - by0))
+    line = [w for w in words if abs(w.cy - bcy) <= tol]
+    gap_l = min((max(0.0, bx0 - w.x1) for w in line if w.x1 <= bx0 + 1.0), default=None)
+    gap_r = min((max(0.0, w.x0 - bx1) for w in line if w.x0 >= bx1 - 1.0), default=None)
+    if gap_l is None:
+        return None if gap_r is None else "right"
+    if gap_r is None:
+        return "left"
+    if gap_l > 0 and gap_r <= OWNER_GAP * gap_l:
+        return "right"
+    return "left" if gap_r > 0 and gap_l <= OWNER_GAP * gap_r else None
+
+
 def _mark_before(md: str, lo: int, start: int) -> re.Match[str] | None:
     """The last `[ ]`/`[x]` mark in md[lo:start] with only spaces or emphasis between it and `start`."""
     marks = list(_BOX_MARK.finditer(md, lo, start))
@@ -237,10 +258,10 @@ def ink_checkbox_edits(
     """Set the `[ ]`/`[x]` mark beside each aligned printed label to the ink state of its check box (`boxes` in
     top-down points, default `vector_checkbox_rects`): the mark right before the label (within `_MARK_WINDOW`
     characters in its unit, only spaces or emphasis between) for a box immediately left of it, else the mark
-    right after it (only spaces, emphasis or a colon between) for a box immediately right of it. Each box and
-    each mark is used once. Squares around a printed character are not boxes; boxes overlapping `skip_boxes`
-    (AcroForm widgets already set) and ambiguous boxes keep their marks; pages with < MIN_BOXES boxes or no
-    text layer are left alone."""
+    right after it (only spaces, emphasis or a colon between) for a box immediately right of it; a box counts
+    only from the side of the word it labels (`_box_owner_side`). Each box and each mark is used once. Squares
+    around a printed character are not boxes; boxes overlapping `skip_boxes` (AcroForm widgets already set) and
+    ambiguous boxes keep their marks; pages with < MIN_BOXES boxes or no text layer are left alone."""
     if not markdown or not rendered.text_words or rendered.image is None:
         return []
     words = _pt_words(rendered)
@@ -262,6 +283,10 @@ def ink_checkbox_edits(
     first, last = dict(reversed(matched)), dict(matched)
     units = [0] + [m.end() for m in _UNIT_END.finditer(markdown)] + [len(markdown)]
     widgets = [(*b, False) for b in boxes]  # the shared geometry checks read only the rect
+    # a box is read only from the side of the word it labels: `[ ] Yes` before its word, `Yes [ ]` after it
+    sides = [_box_owner_side(b, words) for b in boxes]
+    not_before = {i for i, sd in enumerate(sides) if sd != "right"}
+    not_after = {i for i, sd in enumerate(sides) if sd != "left"}
     used: set[int] = set()
     taken: set[tuple[int, int]] = set()  # spans of marks already set from a box
     edits: list[tuple[int, int, str]] = []
@@ -270,8 +295,9 @@ def ink_checkbox_edits(
         i = bisect.bisect_right(units, tok.start) - 1
         before = _mark_before(markdown, max(units[i], tok.start - _MARK_WINDOW), tok.start)
         after = _mark_after(markdown, tok.end, min(units[i + 1], tok.end + _MARK_WINDOW))
-        for mark, near, word in ((before, _box_left_of, words[w]), (after, _box_right_of, words[last[t]])):
-            if mark is None or mark.span() in taken or (bi := near(word, widgets, words, used)) is None:
+        pairs = ((before, _box_left_of, words[w], not_before), (after, _box_right_of, words[last[t]], not_after))
+        for mark, near, word, wrong_side in pairs:
+            if mark is None or mark.span() in taken or (bi := near(word, widgets, words, used | wrong_side)) is None:
                 continue
             used.add(bi)
             taken.add(mark.span())
