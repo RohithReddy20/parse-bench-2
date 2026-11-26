@@ -158,7 +158,9 @@ def _zoom_crop(crop, opts: dict):
     from PIL import Image
 
     scale = target / max(crop.size)
-    return crop.resize((max(1, round(crop.width * scale)), max(1, round(crop.height * scale))), Image.Resampling.LANCZOS)
+    return crop.resize(
+        (max(1, round(crop.width * scale)), max(1, round(crop.height * scale))), Image.Resampling.LANCZOS
+    )
 
 
 def _chart_hint(pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[float, ...] | None) -> str:
