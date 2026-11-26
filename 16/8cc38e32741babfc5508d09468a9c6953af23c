@@ -1,0 +1,14 @@
+src/docparse/pipeline.py
+  h_4802a42b335f3b 231-235,459,461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "168cc38e32741babfc5508d09468a9c6953af23c",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
