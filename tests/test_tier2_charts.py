@@ -387,3 +387,20 @@ def test_a_low_recall_table_page_takes_the_strips_only_when_they_recover_pdf_wor
         assert doc.pages[0].cost.calls == 4  # Chandra and the three strips
     else:  # Chandra's page, as if Tier-2 tables were off
         assert doc.pages == parse(STRIPED, BASE, ScriptedClient(page)).document.pages
+
+
+def test_a_page_already_escalated_to_tier2_charts_is_not_re_escalated_to_tier2_tables(monkeypatch):
+    from docparse.fixes import verify
+
+    monkeypatch.setattr(verify, "has_healthy_text_layer", lambda rp: True)
+    monkeypatch.setattr(verify, "pdf_word_recall", _item_recall)
+    page = (
+        '<div data-bbox="50 50 400 250" data-label="Figure"><img alt="Bar chart of monthly totals"/></div>'
+        f'<div data-bbox="50 300 950 900" data-label="Table">{_ledger(1, 10)}</div>'
+    )
+    cfg = FRONTIER.model_copy(update={"tier2_tables": True, "tier2_table_options": V3.tier2_table_options})
+    client = ScriptedClient(page, tier2="Decorative diagram without numeric values.", strips=LEDGER_STRIPS)
+    doc = parse(STRIPED, cfg, client).document
+    assert len(client.of(TIER2)) == 1
+    assert len(client.of(STRIP)) == 0
+    assert "Item 10" in write_document(doc) and "Item 15" not in write_document(doc)

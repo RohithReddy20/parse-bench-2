@@ -525,7 +525,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 )
                 if fused:
                     used.append(result)
-            tier2_chart_used = tier2_form_used = False
+            tier2_chart_used = tier2_tried = False
             if config.tier2_charts:
                 from docparse.models.adapters import qwen_tier2
 
@@ -537,6 +537,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         [d.box for d in ppdoclayout.read_raw_detections(pp_chart, pp_min) if d.label == "chart"]
                     )
                 if ch_has_chart or pp_boxes:  # a chart Chandra drew as a Figure, or one only PP-DocLayoutV3 saw
+                    tier2_tried = True
                     chart_model = qwen_tier2.resolve_tier2_model(opts.get("model"))
                     per_chart = (
                         bool(opts.get("per_chart_crops"))
@@ -575,9 +576,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             f_opts = config.tier2_form_options
             if (
                 config.tier2_forms
-                and not tier2_chart_used  # a chart page is never escalated twice
+                and not tier2_tried  # a page already escalated to Tier-2 is never escalated twice
                 and _is_form_page(ch_read.raw_answer, markdown, pdf_bytes, index, f_opts)
             ):
+                tier2_tried = True
                 from docparse.models.adapters import qwen_tier2
 
                 f_call, f_blobs = qwen_tier2.build_form_refine_call(
@@ -606,8 +608,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
                         markdown = cand_md
                         used.append(f_res)
-                        tier2_form_used = True
-            if not tier2_chart_used and not tier2_form_used:  # a page a Tier-2 read already changed is left alone
+            if not tier2_tried:  # at most one Tier-2 escalation per page (keeps planning single-pass too)
                 markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
                 if t_wait:
                     pending += t_wait
