@@ -117,7 +117,11 @@ class Config(BaseModel):
     # - "ocria": single-model OCRia-1 page read (default)
     # - "chandra": single-model Chandra-OCR-2 layout-HTML read (with OCRia-1 fallback on length/loop)
     # - "chandra_hybrid": Chandra-OCR-2 primary + OCRia-1 fallback on length/loop & vector-chart Figure fusion
-    reader: Literal["ocria", "chandra", "chandra_hybrid"] = "ocria"
+    # - "qwen_page": a general VLM (Qwen3.8-27B by default) transcribes the page (models/adapters/qwen_tier2.py)
+    reader: Literal["ocria", "chandra", "chandra_hybrid", "qwen_page"] = "ocria"
+    # model alias and sampling of the general-VLM page read (the `qwen_page` reader and the third reading of
+    # `select`); empty = the defaults of `qwen_tier2.build_page_call`
+    qwen_page_options: dict[str, Any] = Field(default_factory=dict)
     chandra_model: ModelRef | None = None
     # Drop Page-Header and Page-Footer blocks when the reader tags page furniture (e.g. Chandra layout blocks)
     strip_furniture: bool = False
@@ -179,6 +183,7 @@ class Config(BaseModel):
             "tier2_charts", "tier2_chart_options", "tier2_forms", "tier2_form_options",
             "tier2_tables", "tier2_table_options",
         )  # fmt: skip
+        tier2 += ("qwen_page_options",)
         unset = {name for name in tier2 if not getattr(self, name)}
         return sha256_hex(canonical_json(self.model_dump(mode="json", exclude=unset)))[:16]
 

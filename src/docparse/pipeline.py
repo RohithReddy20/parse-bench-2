@@ -383,6 +383,24 @@ def _run_tier2_tables(
     return (merged, done, []) if taken else (markdown, [], [])
 
 
+def _qwen_page_call(rp: RenderedPage, config: Config) -> tuple[ModelCall, dict[str, bytes]]:
+    """The general-VLM transcription of the page (`qwen_page_options`: model alias and sampling)."""
+    from docparse.models.adapters import qwen_tier2
+
+    opts = dict(config.qwen_page_options)
+    model = qwen_tier2.resolve_tier2_model(opts.pop("model", "q38"))
+    return qwen_tier2.build_page_call(rp.image, model=model, **opts)
+
+
+def _qwen_page_read(result: ModelResult):
+    """That transcription as a page read; a cut-off or looping answer keeps its text and says `length`."""
+    from docparse.models.adapters import qwen_tier2
+    from docparse.models.adapters.ocria import PageRead
+
+    t2 = qwen_tier2.read_tier2_result(result)
+    return PageRead(t2.markdown, None, None, "stop" if t2.usable else "length")
+
+
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
     decorations = styles = False
@@ -453,7 +471,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             ch_read = None
             ch_ok = False
             verify_needed, verify_reason = (False, "")
-            result = client.get(call, blobs, meta)
+            if config.reader == "qwen_page":
+                q_call, q_blobs = _qwen_page_call(rp, config)
+                result = client.get(q_call, q_blobs, meta)
+            else:
+                result = client.get(call, blobs, meta)
 
         detections = regions2 = pp_res = None
         if config.layout == "ground":  # the detector reads the same page image, so it shares the blob
@@ -475,6 +497,8 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             continue
 
         read = read_page_result(result) if result is not None else None
+        if config.reader == "qwen_page" and result is not None:
+            read = _qwen_page_read(result)
         if read is not None and config.reread_truncated and read.finish_reason == "length":
             call2, _ = build_page_call(
                 rp.image, config.page_model, config.page_runtime, config.prompt_sha, dict(config.reread_truncated)

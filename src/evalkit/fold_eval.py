@@ -19,7 +19,6 @@ from collections import Counter
 from pathlib import Path
 
 from docparse.core.config import Config
-from docparse.models.cache import Cache
 from docparse.models.manifest import ManifestWriter, read_manifest
 from evalkit import paths
 from evalkit.explode import split_example_id

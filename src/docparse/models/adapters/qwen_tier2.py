@@ -34,7 +34,12 @@ QWEN35_122B_A10B_FP8 = ModelRef(
     revision="a099dee70ccfcd8d5dda56aaa0b60cb8ecadabc9",
     dtype="fp8",
 )
-TIER2_MODELS = {"27b": QWEN35_27B_FP8, "122b": QWEN35_122B_A10B_FP8}
+QWEN38_27B_FP8 = ModelRef(
+    repo="Qwen/Qwen3.8-27B-FP8",
+    revision="c3a462cc3d38cf351f3b26cbd763469eeb74ef81",
+    dtype="fp8",
+)
+TIER2_MODELS = {"27b": QWEN35_27B_FP8, "122b": QWEN35_122B_A10B_FP8, "q38": QWEN38_27B_FP8}
 
 
 def resolve_tier2_model(spec: str | None) -> ModelRef:
@@ -515,3 +520,52 @@ def read_tier2_result(result: ModelResult) -> Tier2Read:
     markdown = answer.strip()
     usable = finish == "stop" and bool(markdown) and not _looped(markdown)
     return Tier2Read(markdown, reasoning.strip(), finish, usable)
+
+
+PAGE_PROMPT_ID = "qwen/page-v1"
+PAGE_SYSTEM = "You are a meticulous document transcriber. You copy pages exactly as printed and never add commentary."
+PAGE_PROMPT = """\
+Transcribe this document page into Markdown, completely and exactly, in natural reading order.
+
+Rules:
+1. Copy every word, number, sign, unit and symbol exactly as printed, including running headers, footers, page \
+numbers, footnotes, captions, stamps and handwriting. Never summarize, correct, translate or reorder, and never \
+write text that is not on the page.
+2. Headings use `#`/`##`/`###` by level. Keep bold (`**`), italic (`*`), underline (`<u>`), strikethrough (`~~`), \
+superscript (`<sup>`) and subscript (`<sub>`) where the page shows them. Keep list markers and numbering.
+3. Every table is an HTML `<table>` with `<thead>`/`<th>` header rows and `colspan`/`rowspan` for merged cells. \
+Keep EVERY row and column in order, with empty cells left empty; never use Markdown pipe tables.
+4. Formulas are LaTeX: `$...$` inline, `$$...$$` on their own line.
+5. Forms: write each field label followed by its filled value on the same line; a checkbox or radio button is \
+`[x]` when it is ticked, crossed or filled and `[ ]` when empty, placed by its label. Leave an unfilled field empty: \
+never invent a value.
+6. A chart or plot becomes its title line followed by an HTML `<table>` of the plotted data (one row per category \
+or x value, one column per series, named as in the legend or axis; read unlabelled values off the axis). One table \
+per chart or panel. Any other picture, logo or diagram becomes `![short description]()`.
+7. Output only the transcription: no code fences, no explanations."""
+
+
+def build_page_call(
+    page_image: Image.Image,
+    *,
+    model: ModelRef = QWEN38_27B_FP8,
+    runtime: str = RUNTIME,
+    enable_thinking: bool = False,
+    temperature: float = 0.1,
+    top_p: float = 0.95,
+    top_k: int | None = None,
+    presence_penalty: float = 1.0,
+    max_tokens: int = 16384,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """A full transcription of one page by a general VLM: an independent third reading of the page."""
+    params: dict[str, Any] = {
+        "system_prompt": PAGE_SYSTEM,
+        "enable_thinking": enable_thinking,
+        "temperature": temperature,
+        "top_p": top_p,
+        "presence_penalty": presence_penalty,
+        "max_tokens": max_tokens,
+    }
+    if top_k is not None:
+        params["top_k"] = top_k
+    return _call([page_image], PAGE_PROMPT_ID, PAGE_PROMPT, PAGE_PROMPT, model, runtime, params)

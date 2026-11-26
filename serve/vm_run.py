@@ -125,9 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--system-prompt-file", type=Path)
     args = ap.parse_args(argv)
     system = args.system_prompt_file.read_text(encoding="utf-8") if args.system_prompt_file else ""
-    gpu = subprocess.run(
-        ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True
-    ).stdout.strip().replace("\n", " + ")
+    gpu = (
+        subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True)
+        .stdout.strip()
+        .replace("\n", " + ")
+    )
     executor = make_vlm_executor(args.base_url, args.served_model, system, gpu)
     stats = run_manifest(args.manifest, args.results, executor, max_workers=args.workers)
     print(
