@@ -194,6 +194,168 @@ def test_chandra_promotes_section_header_and_unwraps_overwide_strike() -> None:
     assert pg.regions[0].chosen().raw == "~~Old clause~~ stays and new clause added"
 
 
+def test_chandra_heading_breaks_stay_on_one_line() -> None:
+    from docparse.models.adapters.vlm_specialists import chandra_markdown
+
+    assert chandra_markdown("<h2>Two<br>lines</h2>") == "## Two lines"
+    assert chandra_markdown("<h6>Two \r\n <br/> lines</h6>") == "###### Two lines"
+    assert chandra_markdown("<h1>Two&#10;lines</h1>") == "# Two lines"
+
+
+def test_chandra_preserves_block_breaks_in_inferred_section_headers() -> None:
+    from docparse.models.adapters.vlm_specialists import chandra_markdown
+
+    wrapper = '<div data-label="Section-Header">{}</div>'
+    assert chandra_markdown(wrapper.format("<p>Instructions<br>For submissions<br>Use this form</p>")) == (
+        "Instructions\nFor submissions\nUse this form"
+    )
+    assert chandra_markdown(wrapper.format("<p>First paragraph</p><p>Second paragraph</p>")) == (
+        "First paragraph\n\nSecond paragraph"
+    )
+    assert chandra_markdown(wrapper.format("<ul><li>Water quality</li></ul>")) == "- Water quality"
+
+
+def test_chandra_serializes_nested_ordered_and_unordered_lists() -> None:
+    from docparse.models.adapters.vlm_specialists import chandra_markdown
+
+    raw = (
+        "<ol start='3'>\n<li><b>Overview</b><ul>\n"
+        "<li>• <i>Value</i> <math>x^2</math> <u>check</u> <del>old</del> <code>run()</code> "
+        '<a href="/guide">guide</a><ol><li>Detail</li></ol></li>\n'
+        "<li>Next</li></ul>Summary</li>\n<li>Conclusion</li></ol>"
+    )
+    assert chandra_markdown(raw) == (
+        "3. **Overview**\n"
+        "   - *Value* $x^2$ <u>check</u> ~~old~~ `run()` [guide](/guide)\n"
+        "     1. Detail\n"
+        "   - Next\n"
+        "   Summary\n"
+        "4. Conclusion"
+    )
+
+
+def test_chandra_does_not_duplicate_explicit_decimal_list_markers() -> None:
+    from docparse.models.adapters.vlm_specialists import chandra_markdown
+
+    raw = "<p>Before</p><ol start='4'><li>4. First</li><li>5. Second</li><li>2024. Year</li></ol><p>After</p>"
+    assert chandra_markdown(raw) == "Before\n\n4. First\n5. Second\n6. 2024. Year\n\nAfter"
+
+
+def test_chandra_keeps_ordered_list_numbering_that_markdown_cannot_express() -> None:
+    from docparse.models.adapters.vlm_specialists import chandra_markdown
+
+    roman = '<ol type="i"><li>Read the <i>guide</i>.</li><li>Complete the form.</li></ol>'
+    nested = f"<ul><li>Instructions{roman}</li></ul>"
+    reversed_list = "<ol reversed><li>Last</li><li>First</li></ol>"
+    assert chandra_markdown(f"<p>Before</p>{roman}<p>After</p>") == f"Before\n\n{roman}\n\nAfter"
+    assert chandra_markdown(nested) == nested
+    assert chandra_markdown(reversed_list) == reversed_list
+    table = f"<table><tr><td>{roman}</td></tr></table>"
+    assert chandra_markdown(table) == table
+
+
+def test_fuse_figure_charts_keeps_all_panels_of_a_single_figure() -> None:
+    from docparse.models.adapters.vlm_specialists import fuse_figure_charts
+
+    prose = "<table><tr><th>Glossary</th><td>Term</td></tr></table>"
+    north = "<table><tr><th>North</th><td>23</td></tr></table>"
+    south = "<table><tr><th>South</th><td>46</td></tr></table>"
+    digits = "<table><tr><td>1</td><td>2</td></tr></table>"
+    raw = f'{prose}<div data-label="Figure"><img alt="Bar chart with two panels"/></div>'
+    md, fused = fuse_figure_charts(raw, [north, prose, south, digits])
+    assert fused
+    assert md.count(prose) == 1
+    assert md.index(prose) < md.index(north) < md.index(south) < md.index(digits)
+
+
+def test_fuse_figure_charts_assigns_multiple_panels_and_keeps_original_insets() -> None:
+    from docparse.models.adapters.vlm_specialists import fuse_figure_charts
+
+    inset = "<table>\n<tr><td>Calibration</td><td><math>0.95</math></td></tr>  \n</table>"
+    original = "<table><tr><th>Ridership</th><td>20</td></tr></table>"
+    unmatched = "<table>\n<tr><th>Flights</th><td>12</td></tr>  \n</table>"
+    north = "<table><tr><th>Ridership North</th><td>23</td></tr></table>"
+    south = "<table><tr><th>Ridership South</th><td>46</td></tr></table>"
+    rainfall = "<table><tr><th>Rainfall</th><td>42</td></tr></table>"
+    raw = (
+        f'<div data-label="Figure"><img alt="Ridership chart"/>{inset}{original}</div>'
+        '<div data-label="Figure"><img alt="Rainfall plot"/></div>'
+        f'<div data-label="Figure"><img alt="Flights chart"/>{unmatched}</div>'
+    )
+    md, fused = fuse_figure_charts(raw, [north, rainfall, south])
+    assert fused
+    assert original not in md
+    parts = [inset, north, south, "Rainfall plot", rainfall, "Flights chart", unmatched]
+    assert [md.index(part) for part in parts] == sorted(md.index(part) for part in parts)
+
+
+def test_fuse_figure_charts_preserves_an_unmatched_inset_table() -> None:
+    from docparse.models.adapters.vlm_specialists import fuse_figure_charts
+
+    inset = "<table>\n  <tr><td>Calibration</td><td><math>0.95</math></td></tr>  \n</table>"
+    chart = "<table><tr><th>Month</th><th>Rainfall</th></tr><tr><td>May</td><td>42</td></tr></table>"
+    raw = (
+        f'<div data-label="Figure"><img alt="Calibration plot"/>{inset}</div>'
+        '<div data-label="Figure"><img alt="Bar chart"/><div data-label="Caption">Monthly Rainfall</div>'
+        "<table><tr><th>Period</th><th>Reading</th></tr><tr><td>April</td><td>99</td></tr></table></div>"
+    )
+    for vector_measured in (False, True):
+        md, fused = fuse_figure_charts(raw, [chart], ocria_vector_measured=vector_measured)
+        assert fused
+        assert md.count("<table>") == 2
+        assert md.index("Calibration plot") < md.index(inset) < md.index("Bar chart") < md.index(chart)
+
+
+def test_fuse_figure_charts_prefers_overlap_and_limits_positional_fallback() -> None:
+    from docparse.models.adapters.vlm_specialists import fuse_figure_charts
+
+    first = '<div data-label="Figure"><img alt="Ridership chart"/></div>'
+    second = """<div data-label="Figure"><img alt='Rainfall chart'/></div>"""
+    ridership = "<table><tr><th>Ridership</th><td>25</td></tr></table>"
+    rainfall = "<table><tr><th>Rainfall</th><td>70</td></tr></table>"
+    unrelated = "<table><tr><th>Capacity</th><td>96</td></tr></table>"
+    md, fused = fuse_figure_charts(first + second, [rainfall, ridership])
+    assert fused
+    assert md.index("Ridership chart") < md.index(ridership) < md.index("Rainfall chart") < md.index(rainfall)
+    md, fused = fuse_figure_charts(first + second, [unrelated, rainfall])
+    assert fused
+    assert md.index("Ridership chart") < md.index(unrelated) < md.index("Rainfall chart") < md.index(rainfall)
+    md, fused = fuse_figure_charts(first.replace("</div>", ridership + "</div>") + second, [rainfall])
+    assert fused
+    assert md.index(ridership) < md.index("Rainfall chart") < md.index(rainfall)
+    inset = "<table><tr><td>Calibration</td><td>95%</td></tr></table>"
+    first = first.replace("</div>", inset + "</div>")
+    md, fused = fuse_figure_charts(first + second, [unrelated, rainfall])
+    assert fused
+    assert inset in md and rainfall in md and unrelated not in md
+
+
+def test_weak_table_rejects_tiny_secondary_fragment_and_skips_forms() -> None:
+    from types import SimpleNamespace
+
+    from docparse.fixes.verify import needs_pdf_verification, secondary_improves, table_alignment_stats
+
+    words = [
+        SimpleNamespace(text=f"r{r}c{c}", box=(c * 100.0, r * 18.0, c * 100.0 + 40.0, r * 18.0 + 10.0))
+        for r in range(10)
+        for c in range(6)
+    ]
+    page = SimpleNamespace(hidden=0.0, map_errors=0.0, scale=1.0, text_words=words, words=words)
+    body = " ".join(w.text for w in words)
+    bad_rows = "".join(f"<tr><td>r{r}c0</td><td>Unknown</td><td>Missing</td></tr>" for r in range(10))
+    fragment_rows = "".join(f"<tr><td>r{r}c0</td><td>r{r}c1</td></tr>" for r in range(5))
+    primary = f"{body}\n\n<table>{bad_rows}</table>"
+    fragment = f"{body}\n\n<table>{fragment_rows}</table>"
+    assert table_alignment_stats(primary, page)[1:3] == (10, 30)
+    assert table_alignment_stats(fragment, page)[1:3] == (10, 10)
+    need, reason = needs_pdf_verification(primary, page)
+    assert need and reason.startswith("weak_table:")
+    assert not secondary_improves(primary, fragment, page, reason)
+    checkboxes = " [ ] [x] <input type='checkbox'>"
+    assert needs_pdf_verification(primary + checkboxes, page) == (need, reason)
+    assert needs_pdf_verification(primary + checkboxes + " [X]", page) == (False, "")
+
+
 def test_verify_weak_table_alignment_and_ppdoclayout_adapter() -> None:
     from types import SimpleNamespace
 

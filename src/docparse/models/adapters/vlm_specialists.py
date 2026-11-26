@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import re
 from collections import ChainMap
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -226,21 +227,126 @@ _ROW = re.compile(r"<tr\b[^>]*>(.*?)</tr>", _FLAGS)
 _CELL = re.compile(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", _FLAGS)
 _FIELD = re.compile(r"^[ \t*#]*(title|axes|legend)[ \t*]*:[ \t*]*(.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE)
 _INVENTED = re.compile(r"(?:grand )?total|sum|average|avg\.?|mean", re.IGNORECASE)
+_BR_TAG = r"<br(?=[\s/>])[^>]*>"
+_HEADING_BREAKS = re.compile(rf"[ \t]*(?:(?:{_BR_TAG}|[\r\n]|&(?:NewLine|#0*(?:10|13)|#x0*[ad]);)[ \t]*)+", _FLAGS)
+_LIST_TAG = re.compile(r"<(/?)(ol|ul|li)(?=[\s>])([^>]*)>\s*", _FLAGS)
+_LIST_CONTAINER = re.compile(rf"{_TABLE.pattern}|<(/?)(ol|ul)(?=[\s>])([^>]*)>", _FLAGS)
+_HTML_ONLY_NUMBERING = re.compile(r"""\s(?:type\s*=\s*(?:"[ai]"|'[ai]'|[ai](?=\s|$))|reversed(?=[\s=]|$))""", re.I)
+_LIST_START = re.compile(r"""\sstart\s*=\s*(["']?)\s*([+-]?[0-9]+)\s*\1(?=\s|$)""", re.I)
+_LIST_BULLET = re.compile(r"[•▪‣◦●]\s*")
+_LIST_NUMBER = re.compile(r"([0-9]+)[.)](?=\s|$)\s*")
+_LIST_ITEM_BREAK = re.compile(rf"{_BR_TAG}|</?p\b[^>]*>", _FLAGS)
+_LIST_CODE = re.compile(r"<code\b[^>]*>(.*?)</code>", _FLAGS)
+_LIST_LINK = re.compile(r"""<a\b[^>]*?\shref\s*=\s*(["'])(.*?)\1[^>]*>(.*?)</a>""", _FLAGS)
+_IMG_ALT_TAG = r"""<img\b[^>]*?\salt\s*=\s*(["'])(.*?)\1[^>]*>"""
+
+
+def _single_line(text: str) -> str:
+    return _HEADING_BREAKS.sub(" ", text).strip()
+
+
+def _list_inline_code(match: re.Match[str]) -> str:
+    code = match[1]
+    delimiter = "`" * (1 + max(map(len, re.findall(r"`+", code)), default=0))
+    if code.startswith((" ", "`")) or code.endswith((" ", "`")):
+        code = f" {code} "
+    return f"{delimiter}{code}{delimiter}"
+
+
+def _preserve_list_numbering(text: str, stash: Callable[[str], str]) -> str:
+    """Keep HTML for ordered list styles that Markdown cannot represent."""
+    parts: list[str] = []
+    pos = start = depth = 0
+    needs_html = False
+    for match in _LIST_CONTAINER.finditer(text):
+        closing, tag, attrs = match.groups()
+        if tag is None:
+            continue
+        if closing:
+            if not depth:
+                continue
+            depth -= 1
+            if not depth and needs_html:
+                parts.extend((text[pos:start], stash(text[start : match.end()])))
+                pos = match.end()
+        else:
+            if not depth:
+                start = match.start()
+                needs_html = False
+            depth += 1
+            if tag.lower() == "ol" and _HTML_ONLY_NUMBERING.search(attrs):
+                needs_html = True
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
+def _lists_to_markdown(text: str) -> str:
+    parts: list[str] = []
+    # Each list tracks its next number (None for bullets) and its current item's continuation indentation.
+    numbers: list[int | None] = [None]
+    indents = [0]
+    pos = 0
+    for match in _LIST_TAG.finditer(text):
+        body = text[pos : match.start()].rstrip()
+        item_indent = indents[-1]
+        if item_indent:
+            body = _LIST_ITEM_BREAK.sub("\n", body).strip()
+            body = _LIST_CODE.sub(_list_inline_code, body)
+            body = _LIST_LINK.sub(r"[\3](\2)", body)
+            body = re.sub(r"\n[ \t]*(?=\S)", "\n" + " " * item_indent, body)
+        parts.append(body)
+        pos = match.end()
+        closing, tag, attrs = match.groups()
+        tag = tag.lower()
+        if tag == "li":
+            if closing:
+                indents[-1] = 0
+                continue
+            number = numbers[-1]
+            marker = "- " if number is None else f"{number}. "
+            if number is not None:
+                numbers[-1] = number + 1
+            indent = indents[-2] if len(indents) > 1 else 0
+            indents[-1] = indent + len(marker)
+            parts.append("\n" + " " * indent + marker)
+            bullet = _LIST_BULLET.match(text, pos)
+            if bullet:
+                pos = bullet.end()
+            if number is not None and (explicit := _LIST_NUMBER.match(text, pos)):
+                if explicit[1] == str(number):
+                    pos = explicit.end()
+        elif not closing:
+            start = _LIST_START.search(attrs) if tag == "ol" else None
+            number = None if tag == "ul" else 1
+            numbers.append(int(start[2]) if start else number)
+            indents.append(0)
+            if len(numbers) == 2:
+                parts.append("\n\n")
+        elif len(numbers) > 1:
+            numbers.pop()
+            indents.pop()
+            if len(numbers) == 1:
+                parts.append("\n\n")
+            elif pos < len(text) and not _LIST_TAG.match(text, pos):
+                parts.append("\n" + " " * indents[-1])
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
 _HTML_TO_MD = [
     (re.compile(pattern, _FLAGS), repl)
     for pattern, repl in [
         (r'<math\b[^>]*display="block"[^>]*>(.*?)</math>', r"\n\n$$\1$$\n\n"),
         (r"<math\b[^>]*>(.*?)</math>", r"$\1$"),
-        (r"<h([1-6])\b[^>]*>(.*?)</h\1>", lambda m: "\n\n" + "#" * int(m[1]) + " " + m[2].strip() + "\n\n"),
-        (r"<li\b[^>]*>\s*[•▪‣◦●]?\s*(.*?)</li>", r"\n- \1"),
         (r"<(b|strong)\b[^>]*>(.*?)</\1>", r"**\2**"),
         (r"<(i|em)\b[^>]*>(.*?)</\1>", r"*\2*"),
         (r"<(del|s)\b[^>]*>(.*?)</\1>", r"~~\2~~"),
-        (r'<img\b[^>]*\balt="([^"]*)"[^>]*>', r"![\1]()"),
+        (_IMG_ALT_TAG, r"![\2]()"),
         (r"<input\b[^>]*\bchecked\b[^>]*>", "[x]"),
         (r"<input\b[^>]*>", "[ ]"),
-        (r"<br\s*/?>", "\n"),
-        (r"</?(?:p|div|ul|ol|pre|hr)\b[^>]*>", "\n\n"),
+        (_BR_TAG, "\n"),
+        (r"</?(?:p|div|pre|hr)\b[^>]*>", "\n\n"),
+        (r"<h([1-6])\b[^>]*>(.*?)</h\1>", lambda m: f"\n\n{'#' * int(m[1])} {_single_line(m[2])}\n\n"),
         # Preserve `<u>` for underline fidelity; strip wrapper and sub/sup tags so prose tokens stay contiguous
         (r"<(?!/?u\b)[^>]+>", ""),
     ]
@@ -274,12 +380,12 @@ _FURNITURE_DIV = re.compile(
 _IMAGE_DIV = re.compile(r'<div\b[^>]*data-label="Image"[^>]*>(.*?)</div>', _FLAGS)
 _SEC_HDR_DIV = re.compile(r'<div\b[^>]*data-label="Section-Header"[^>]*>(.*?)</div>', _FLAGS)
 _IMG_TAG = re.compile(r"<img\b[^>]*>", _FLAGS)
-_HEADING_OR_BLOCK = re.compile(r"<(?:h[1-6]|table|ul|ol|img|pre)\b", _FLAGS)
-_FIGURE_DIV = re.compile(r'<div\b[^>]*data-label="Figure"[^>]*>(.*?)</div>', _FLAGS)
-_CHART_ALT = re.compile(
-    r'<img\b[^>]*alt="[^"]*\b(?:chart|graph|plot|bar|line|pie|histogram|scatter|series|axis|axes)\b',
-    _FLAGS,
-)
+_HEADING_OR_BLOCK = re.compile(r"<(?:h[1-6]|p|div|table|ul|ol|li|img|pre|hr|blockquote)\b", _FLAGS)
+_DIV_TAG = re.compile(r"</?div\b[^>]*>", _FLAGS)
+_FIGURE_LABEL = re.compile(r"""\sdata-label\s*=\s*(["'])Figure\1""", _FLAGS)
+_IMG_ALT_TEXT = re.compile(_IMG_ALT_TAG, _FLAGS)
+_TABLE_HEADER = re.compile(r"<th\b", re.I)
+_CHART_ALT = re.compile(r"\b(?:chart|graph|plot|bar|line|pie|histogram|scatter|series|axis|axes)\b", re.I)
 
 
 def _promote_section_headers(raw_html: str) -> str:
@@ -287,11 +393,11 @@ def _promote_section_headers(raw_html: str) -> str:
 
     def _repl(m: re.Match) -> str:
         inner = m.group(1).strip()
-        if not inner or _HEADING_OR_BLOCK.search(inner):
+        body = re.sub(r"^<p\b[^>]*>(.*?)</p>$", r"\1", inner, flags=_FLAGS).strip()
+        if _HEADING_OR_BLOCK.search(body) or _HEADING_BREAKS.search(body):
             return m.group(0)
-        # Strip outer <p>...</p> wrapper and bold wrapper when promoting to a Markdown heading
-        body = re.sub(r"^\s*<p\b[^>]*>(.*?)</p>\s*$", r"\1", inner, flags=_FLAGS).strip()
-        if not body or "\n" in body or "<br" in body.lower():
+        visible = html.unescape(re.sub(r"<[^>]+>", "", body)).strip()
+        if not visible:
             return m.group(0)
         return f'<div data-label="Section-Header"><h2>{body}</h2></div>'
 
@@ -370,13 +476,64 @@ def chandra_layout_blocks(
     return out
 
 
+@dataclass(frozen=True)
+class _Figure:
+    body: str
+    body_start: int
+    body_end: int
+    alt: str
+
+
+def _figure_divs(text: str) -> Iterator[_Figure]:
+    depth = 0
+    for tag in _DIV_TAG.finditer(text):
+        if not depth:
+            if _FIGURE_LABEL.search(tag[0]) and not tag[0].startswith("</"):
+                body_start = tag.end()
+                depth = 1
+        elif tag[0].startswith("</"):
+            depth -= 1
+            if not depth:
+                body = text[body_start : tag.start()]
+                alt = " ".join(match[2] for match in _IMG_ALT_TEXT.finditer(body))
+                yield _Figure(body, body_start, tag.start(), alt)
+        else:
+            depth += 1
+
+
 def has_chart_figure(raw_chandra: str) -> bool:
     """True when Chandra tagged at least one `Figure` block whose alt text describes a data chart/plot."""
-    return any(_CHART_ALT.search(m.group(1)) for m in _FIGURE_DIV.finditer(raw_chandra))
+    return any(_CHART_ALT.search(figure.alt) for figure in _figure_divs(raw_chandra))
 
 
 def _html_tokens(raw_html: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]{2,}", re.sub(r"<[^>]+>", " ", raw_html).lower()))
+
+
+def _match_chart_tables(
+    figures: list[_Figure], chart_tables: list[tuple[str, set[str]]], protected: set[int], empty: set[int]
+) -> dict[int, list[str]]:
+    if len(figures) == 1:
+        return {0: [table for table, _ in chart_tables]} if chart_tables and not protected else {}
+
+    figure_tokens = [_html_tokens(f"{figure.body} {figure.alt}") for figure in figures]
+    assignments: dict[int, list[str]] = {}
+    unmatched = []
+    for table, tokens in chart_tables:
+        scores = [len(tokens & known) for known in figure_tokens]
+        best = max(scores)
+        if not best or scores.count(best) != 1:
+            unmatched.append(table)
+            continue
+        index = scores.index(best)
+        if index not in protected:
+            assignments.setdefault(index, []).append(table)
+
+    if len(chart_tables) == len(figures) and not protected:
+        vacant = [index for index in range(len(figures)) if index not in assignments]
+        if len(vacant) == len(unmatched) and all(index in empty for index in vacant):
+            assignments.update((index, [table]) for index, table in zip(vacant, unmatched, strict=True))
+    return assignments
 
 
 def fuse_figure_charts(
@@ -388,42 +545,48 @@ def fuse_figure_charts(
 ) -> tuple[str, bool]:
     """Fuse vector-measured chart tables from a secondary reader into Chandra's chart `Figure` blocks.
 
-    Preserves all Chandra prose, math, multi-column text, non-chart tables, and printed inset tables inside figures.
-    Only injects/replaces a Figure block's table when Chandra omitted the chart table OR the secondary table was
-    measured from PDF vector chart geometry.
+    Keeps panels together in their chart figure and protects printed insets from unmeasured replacements.
     """
-    fig_matches = [m for m in _FIGURE_DIV.finditer(raw_chandra) if _CHART_ALT.search(m.group(1))]
+    figures = list(_figure_divs(raw_chandra))
+    fig_matches = [figure for figure in figures if _CHART_ALT.search(figure.alt)]
+    original_tables = {figure: _TABLE.findall(figure.body) for figure in figures}
+    insets = {figure: [t for t in tables if not _TABLE_HEADER.search(t)] for figure, tables in original_tables.items()}
     if not fig_matches or not ocria_tables:
-        return chandra_markdown(raw_chandra, drop_furniture=drop_furniture), False
+        preserved_tables = frozenset(t for tables in original_tables.values() for t in tables)
+        return chandra_markdown(raw_chandra, drop_furniture, _preserve_tables=preserved_tables), False
 
-    nonfig_html = _FIGURE_DIV.sub("", raw_chandra)
-    nonfig_toks = [_html_tokens(t) for t in _TABLE.findall(nonfig_html)]
-    chart_tbls: list[str] = []
+    nonfig_toks = [
+        _html_tokens(table[0])
+        for table in _TABLE.finditer(raw_chandra)
+        if not any(figure.body_start <= table.start() < figure.body_end for figure in figures)
+    ]
+    chart_tbls: list[tuple[str, set[str]]] = []
     for tbl in ocria_tables:
         otoks = _html_tokens(tbl)
-        if not otoks:
+        if not otoks and not html.unescape(re.sub(r"<[^>]+>", "", tbl)).strip():
             continue
         if any(len(otoks & rt) / max(1, min(len(otoks), len(rt))) >= 0.35 for rt in nonfig_toks if rt):
             continue
-        chart_tbls.append(tbl)
-    if not chart_tbls:
-        return chandra_markdown(raw_chandra, drop_furniture=drop_furniture), False
+        chart_tbls.append((tbl, otoks))
 
-    ch_fig_tbls = [t for m in fig_matches for t in _TABLE.findall(m.group(1))]
-    if ch_fig_tbls and not ocria_vector_measured and all("<th" not in t.lower() for t in ch_fig_tbls):
-        # Preserve headerless inset metric tables inside figures (e.g. ROC summary cards) when no PDF vector
-        # measurement improved the secondary chart table.
-        return chandra_markdown(raw_chandra, drop_furniture=drop_furniture), False
-
+    protected = {
+        i
+        for i, figure in enumerate(fig_matches)
+        if not ocria_vector_measured and insets[figure] and insets[figure] == original_tables[figure]
+    }
+    empty = {i for i, figure in enumerate(fig_matches) if not original_tables[figure]}
+    replacements = _match_chart_tables(fig_matches, chart_tbls, protected, empty)
+    replaced_figures = {fig_matches[i] for i in replacements}
+    preserved_tables = {t for figure in figures if figure not in replaced_figures for t in original_tables[figure]}
     replaced = raw_chandra
-    for idx, m in enumerate(reversed(fig_matches)):
-        inner_no_tbl = _TABLE.sub("", m.group(1))
-        if idx == 0:
-            new_div = f'<div data-label="Figure">{inner_no_tbl}\n' + "\n".join(chart_tbls) + "</div>"
-        else:
-            new_div = f'<div data-label="Figure">{inner_no_tbl}</div>'
-        replaced = replaced[: m.start()] + new_div + replaced[m.end() :]
-    return chandra_markdown(replaced, drop_furniture=drop_furniture), True
+    for figure_idx in sorted(replacements, reverse=True):
+        figure = fig_matches[figure_idx]
+        keep_insets = set(insets[figure]) if insets[figure] != original_tables[figure] else set()
+        preserved_tables.update(keep_insets)
+        body = _TABLE.sub(lambda table, keep=keep_insets: table[0] if table[0] in keep else "", figure.body)
+        panels = "\n".join(replacements[figure_idx])
+        replaced = replaced[: figure.body_start] + body + "\n" + panels + replaced[figure.body_end :]
+    return chandra_markdown(replaced, drop_furniture, _preserve_tables=frozenset(preserved_tables)), bool(replacements)
 
 
 _MATH_TAG = re.compile(r"<math\b[^>]*>(.*?)</math>", _FLAGS)
@@ -513,24 +676,34 @@ def _clean_table_math(table_html: str) -> str:
     return _MATH_TAG.sub(_repl, out)
 
 
-def chandra_markdown(text: str, drop_furniture: bool = False) -> str:
-    """Chandra's layout-HTML answer as markdown; tables stay valid HTML with `<math>` normalized."""
-    tables: list[str] = []
+def _tidy_markdown_whitespace(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+\n", "\n", text))
 
-    def stash(m: re.Match) -> str:
-        tables.append(_clean_table_math(m[0]))
-        return f"\n\n\x00{len(tables) - 1}\x00\n\n"
+
+def chandra_markdown(text: str, drop_furniture: bool = False, *, _preserve_tables: frozenset[str] = frozenset()) -> str:
+    """Chandra's layout-HTML answer as markdown; tables stay valid HTML with `<math>` normalized."""
+    fragments: list[str] = []
+
+    def stash(fragment: str) -> str:
+        fragments.append(fragment)
+        return f"\n\n\x00{len(fragments) - 1}\x00\n\n"
+
+    def stash_table(match: re.Match[str]) -> str:
+        table = match[0]
+        return stash(table if table in _preserve_tables else _tidy_markdown_whitespace(_clean_table_math(table)))
 
     s = re.sub(r"^\s*```\w*\n|\n```\s*$", "", text)
     if drop_furniture:
         s = _FURNITURE_DIV.sub("", s)
     s = _trim_image_div_essays(s)
     s = _promote_section_headers(s)
-    s = _TABLE.sub(stash, s)
+    s = _preserve_list_numbering(s, stash)
+    s = _TABLE.sub(stash_table, s)
+    s = _lists_to_markdown(s)
     for pattern, repl in _HTML_TO_MD:
         s = pattern.sub(repl, s)
-    s = re.sub(r"\x00(\d+)\x00", lambda m: tables[int(m[1])], html.unescape(s))
-    return re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+\n", "\n", s)).strip()
+    s = _tidy_markdown_whitespace(html.unescape(s)).strip()
+    return re.sub(r"\x00(\d+)\x00", lambda m: fragments[int(m[1])], s)
 
 
 def read_chandra_result(result: ModelResult, drop_furniture: bool = False) -> SpecialistRead:

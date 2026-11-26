@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from statistics import median
 from typing import Any
 
+from docparse.fixes.charts import _axis_side
 from docparse.fixes.charts_geometry import (
     Axis,
     Bar,
@@ -32,7 +33,7 @@ from docparse.pdf.render import RenderedPage
 BBox = tuple[float, float, float, float]
 
 MAX_SERIES = 12
-MAX_POINTS_PER_SERIES = 40
+MAX_POINTS_PER_SERIES = 80
 MAX_PRINTED_LABELS = 60
 MAX_NEARBY_LINES = 25
 MAX_LEGEND_ENTRIES = 24
@@ -254,6 +255,13 @@ def _same_scale(a: Axis, b: Axis) -> bool:
     return abs(a.value(mid) - b.value(mid)) <= 0.03 * span
 
 
+def _plots_overlap(a: BBox, b: BBox) -> bool:
+    return (
+        _overlap_1d(a[0], a[2], b[0], b[2]) >= 0.5 * min(a[2] - a[0], b[2] - b[0])
+        and _overlap_1d(a[1], a[3], b[1], b[3]) >= 0.5 * min(a[3] - a[1], b[3] - b[1])
+    )
+
+
 def _has_marks_in_box(marks: Marks, box: BBox, words: Sequence[PtWord]) -> bool:
     if any(_pt_in_box(b.cx, b.cy, box, 2.0) and not _is_swatch(b, words) for b in marks.bars):
         return True
@@ -272,8 +280,9 @@ def _build_zones(
     marks: Marks,
     words: Sequence[PtWord],
     bounds: BBox,
+    mirrored_axes: set[int] | None = None,
 ) -> list[_PlotZone]:
-    """Build non-overlapping plot zones pairing value axes with their mark regions and category axes."""
+    """Pair value axes with their plot regions and category axes."""
     bx0, by0, bx1, by1 = bounds
     v_indexed = [(i, ax) for i, ax in enumerate(axes) if ax.orient == "v"]
     h_indexed = [(i, ax) for i, ax in enumerate(axes) if ax.orient == "h"]
@@ -322,18 +331,14 @@ def _build_zones(
                 for o in raw_v_zones
                 if o.side == "left"
                 and o.axis_index != z.axis_index
-                and _overlap_1d(o.plot_box[0], o.plot_box[2], z.plot_box[0], z.plot_box[2])
-                >= 0.5 * min(o.plot_box[2] - o.plot_box[0], z.plot_box[2] - z.plot_box[0])
-                and _overlap_1d(o.plot_box[1], o.plot_box[3], z.plot_box[1], z.plot_box[3])
-                >= 0.5 * min(o.plot_box[3] - o.plot_box[1], z.plot_box[3] - z.plot_box[1])
+                and _plots_overlap(o.plot_box, z.plot_box)
             ]
             # Small multiples: axis owns a panel to its right -> don't also read the panel on its left.
             if z.axis_index in left_axes and overlapping_left:
                 continue
-            # Mirrored twin axis or dual axis already covered by a left axis: avoid duplicating every mark.
-            if overlapping_left and any(_same_scale(z.axis, o.axis) for o in overlapping_left):
-                continue
-            if overlapping_left:
+            if any(_same_scale(z.axis, o.axis) for o in overlapping_left):
+                if mirrored_axes is not None:
+                    mirrored_axes.add(z.axis_index)
                 continue
         v_zones.append(z)
 
@@ -789,7 +794,7 @@ def _extract_bar_series(
             "axis_index": z.axis_index,
             "points": pts,
         }
-        if total_pts > len(pts):
+        if total_pts >= MAX_POINTS_PER_SERIES:
             entry["total_points"] = total_pts
         series.append(entry)
     return series, clean
@@ -896,7 +901,7 @@ def _extract_line_series(
             "axis_index": z.axis_index,
             "points": measured_pts,
         }
-        if total_pts > len(measured_pts):
+        if total_pts >= MAX_POINTS_PER_SERIES:
             entry["total_points"] = total_pts
         series.append(entry)
     return series, line_pts_by_color
@@ -980,7 +985,7 @@ def _extract_marker_series(
             "axis_index": z.axis_index,
             "points": measured_pts,
         }
-        if total_pts > len(measured_pts):
+        if total_pts >= MAX_POINTS_PER_SERIES:
             entry["total_points"] = total_pts
         series.append(entry)
     return series
@@ -1213,9 +1218,21 @@ def extract_chart_hint(
 
     # 3. Build plot zones and measure bar, line, and marker series.
     bounds: BBox = norm_box if norm_box is not None else (0.0, 0.0, page_w, page_h)
-    zones = _build_zones(snapped_axes, region_marks, pt_words, bounds) if snapped_axes else []
+    mirrored_axes: set[int] = set()
+    zones = _build_zones(snapped_axes, region_marks, pt_words, bounds, mirrored_axes)
+    kept_axes = [i for i in range(len(axes_dicts)) if i not in mirrored_axes]
+    axis_indices = {old: new for new, old in enumerate(kept_axes)}
+    axes_dicts = [axes_dicts[i] for i in kept_axes]
+    axis_sides: dict[int, set[str]] = defaultdict(set)
+    for z in zones:
+        z.axis_index = axis_indices[z.axis_index]
+        if z.side:
+            axis_sides[z.axis_index].add(z.side)
+    for i, sides in axis_sides.items():
+        if len(sides) == 1:
+            axes_dicts[i]["side"] = next(iter(sides))
 
-    all_series: list[dict[str, Any]] = []
+    series_by_zone: list[tuple[_PlotZone, list[dict[str, Any]]]] = []
     for z in zones:
         bar_series, used_bars = _extract_bar_series(z, region_marks.bars, pt_words, legend_map, tick_word_ids)
         line_series, line_pts_by_color = _extract_line_series(
@@ -1224,9 +1241,24 @@ def extract_chart_hint(
         marker_series = _extract_marker_series(
             z, region_marks.markers, pt_words, legend_map, tick_word_ids, used_bars, line_pts_by_color
         )
-        all_series.extend(bar_series)
-        all_series.extend(line_series)
-        all_series.extend(marker_series)
+        series_by_zone.append((z, bar_series + line_series + marker_series))
+
+    all_series: list[dict[str, Any]] = []
+    for z, series in series_by_zone:
+        other_side = {
+            (s["type"], s["color"])
+            for other, readings in series_by_zone
+            if z.side and other.side and z.side != other.side and _plots_overlap(z.plot_box, other.plot_box)
+            for s in readings
+        }
+        for s in series:
+            # A legend that explicitly names the opposite axis can resolve ownership on a shared plot.
+            named_side = _axis_side(s["label"]) if other_side else ""
+            if named_side and named_side != z.side and (s["type"], s["color"]) in other_side:
+                continue
+            if z.side:
+                s["axis_side"] = z.side
+            all_series.append(s)
 
     # Prioritize legend-named and multi-point series when capping at MAX_SERIES.
     total_series = len(all_series)
@@ -1351,8 +1383,10 @@ def format_chart_hint(hint: dict[str, Any], max_chars: int = 2500) -> str:
                 tick_s = ", ".join(tick_labels[:5] + ["..."] + tick_labels[-5:])
             else:
                 tick_s = ", ".join(tick_labels)
+            side = ax.get("side")
             label = f"Axis {i}" if len(axes) > 1 else ("Y-axis" if orient == "vertical" else "X-axis")
-            ax_lines.append(f"- {label} ({orient}, {scale}): {rng_s}{step_s}; ticks: [{tick_s}]")
+            axis_meta = ", ".join(part for part in (side, orient, scale) if part)
+            ax_lines.append(f"- {label} ({axis_meta}): {rng_s}{step_s}; ticks: [{tick_s}]")
         blocks.append(ax_lines)
 
     # 2. Legend
@@ -1363,7 +1397,7 @@ def format_chart_hint(hint: dict[str, Any], max_chars: int = 2500) -> str:
     # 3. Measured series
     if series:
         ser_lines = ["Series (vector-measured):"]
-        multi_axis = len({s.get("axis_index") for s in series}) > 1
+        multi_axis = len(axes) > 1 or len({s.get("axis_index") for s in series}) > 1
         for s in series:
             name = s.get("label") or s.get("color", "series")
             color = s.get("color", "")
@@ -1373,11 +1407,14 @@ def format_chart_hint(hint: dict[str, Any], max_chars: int = 2500) -> str:
             kind_str = f"{orient} {kind}s".strip() if kind == "bar" else kind
             meta_parts = [p for p in (color if name != color else "", kind_str, layout) if p]
             if multi_axis and s.get("axis_index") is not None:
-                meta_parts.append(f"axis {int(s['axis_index']) + 1}")
+                side = s.get("axis_side")
+                axis_label = f"axis {int(s['axis_index']) + 1}"
+                meta_parts.append(f"{side} {axis_label}" if side else axis_label)
             stacked = layout in ("stacked", "grouped_stacked")
-            pts_s = ", ".join(_fmt_point(p, stacked) for p in s.get("points") or [])
+            points = s.get("points") or []
+            pts_s = ", ".join(_fmt_point(p, stacked) for p in points)
             total = s.get("total_points")
-            suffix = f" [sampled from {total} pts]" if total else ""
+            suffix = f" [sampled from {total} pts]" if total and total > len(points) else ""
             ser_lines.append(f"- {name} ({', '.join(meta_parts)}): {pts_s}{suffix}")
         omitted = hint.get("omitted_series")
         if omitted:

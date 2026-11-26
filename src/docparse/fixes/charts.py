@@ -1011,24 +1011,6 @@ def _same(a: Measured, b: Measured) -> bool:
     return len(both) >= 2 and sum(abs(x - y) <= tol for x, y in both) >= 0.8 * len(both)
 
 
-def printed_numbers(words: list, axes: list[Axis]) -> set[tuple[float, int]]:
-    """(value, decimals) of every number printed on the page outside the tick labels: data labels."""
-    out: set[tuple[float, int]] = set()
-    ticks = {(round(w_c, 1), v) for a in axes for w_c, v in zip(a.coords, a.values, strict=True)}
-    for w in words:
-        v = tick_value(w.text.strip(".,;:"))
-        if v is None:
-            continue
-        c = w.cy
-        if any(abs(v - tv) < 1e-9 and abs(c - tc) < 8 for tc, tv in ticks) or any(
-            abs(v - tv) < 1e-9 and abs(w.cx - tc) < 8 for tc, tv in ticks
-        ):
-            continue
-        frac = re.search(r"\.(\d+)", w.text)
-        out.add((round(v, 6), len(frac.group(1)) if frac else 0))
-    return out
-
-
 def printed_words(words: list, axes: list[Axis]) -> list[tuple[float, int, float, float]]:
     """(value, decimals, x, y) of every number printed on the page outside the tick labels."""
     ticks = [(c, v) for a in axes for c, v in zip(a.coords, a.values, strict=True)]
@@ -1048,37 +1030,41 @@ def _label_at(box, v: float, span: float, labels: list[tuple[float, int, float, 
     near = [
         (abs(p - v), p, d)
         for p, d, x, y in labels
-        if x0 - 18 <= x <= x1 + 18 and y0 - 18 <= y <= y1 + 18 and abs(p - v) <= tol * span
+        if x0 - 18 <= x <= x1 + 18
+        and y0 - 18 <= y <= y1 + 18
+        and abs(p - v) <= tol * span
+        and not (p < 0 < v or v < 0 < p)
     ]
     return min(near)[1:] if near else None
-
-
-def _printed(num: Number, printed: set[tuple[float, int]]) -> bool:
-    return (round(num.value, 6), num.decimals) in printed or (round(-num.value, 6), num.decimals) in printed
 
 
 def _edits(
     raw: str,
     pairs: list[tuple[Unit, Measured]],
     opts: dict,
-    printed: set[tuple[float, int]],
-    labels: list[tuple[float, int, float, float]] | None = None,
+    labels: list[tuple[float, int, float, float]],
 ) -> list[tuple[tuple[int, int], str]]:
     edits = []
     for u, m in pairs:
         ax = m.axis
         span = ax.span
         d = _decimals(ax, u)
+        local_labels = [
+            (value, decimals, x, y)
+            for value, decimals, x, y in labels
+            if m.box is not None and _inside(m.box, x, y, x, y, 0.0)
+        ]
+        printed = {(value, decimals) for value, decimals, _, _ in local_labels}
         for i, (num, v) in enumerate(zip(u.nums, m.values, strict=True)):
             if num is None or v is None:
                 continue
-            if _printed(num, printed):
+            if (num.value, num.decimals) in printed:
                 continue  # the chart prints this number (a data label): it is exact
             if abs(v - num.value) <= opts.get("replace_min", 0.0) * span:
                 continue
             text = format_number(v, d, num)
-            box = m.where[i] if labels and m.where else None
-            hit = _label_at(box, v, span, labels, float(opts.get("snap_tol", 0.03))) if box else None
+            box = m.where[i] if opts.get("snap") and m.where else None
+            hit = _label_at(box, v, span, local_labels, float(opts.get("snap_tol", 0.03))) if box else None
             if hit is not None:  # the label printed at the mark: its exact number
                 text = format_number(hit[0], hit[1], num)
             if text != raw[num.span[0] : num.span[1]]:
@@ -1120,8 +1106,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
     changed = 0
     used: set[tuple] = set()
     mode = str(opts.get("bar_mode", "auto"))
-    printed = printed_numbers(words, axes)
-    labels = printed_words(words, axes) if opts.get("snap") else None
+    labels = printed_words(words, axes)
     legend = find_legend(marks, words) if opts.get("legend") else {}
     titled = bool(opts.get("titles")) and bool(legend)
     for region in tables:
@@ -1164,7 +1149,7 @@ def correct_tables(page: Page, words: list, shapes: list[Shape], opts: dict) -> 
                 best = (n, pairs)
         if best is None:
             continue
-        edits = _edits(base.raw, best[1], opts, printed, labels)
+        edits = _edits(base.raw, best[1], opts, labels)
         used |= {m.key for _, m in best[1]}
         if not edits:
             continue

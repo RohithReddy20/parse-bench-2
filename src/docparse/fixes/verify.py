@@ -25,6 +25,7 @@ MAX_MAP_ERRORS = 0.01
 MIN_WORDS = 50
 _TAG_RE = re.compile(r"<[^>]+>")
 _TABLE_RE = re.compile(r"<table\b.*?</table>", re.S | re.I)
+_CHECKBOX_RE = re.compile(r"\[[ x]\]|<input\b", re.I)
 
 
 def has_healthy_text_layer(rendered: RenderedPage) -> bool:
@@ -98,6 +99,8 @@ def needs_pdf_verification(
         if pdf_looks_tabular(words):
             return True, f"missing_table:{recall:.3f}"
         return False, ""
+    if len(_CHECKBOX_RE.findall(markdown)) >= 4:
+        return False, ""
     n_tbl, matched, total, found = table_alignment_stats(markdown, rendered)
     if n_tbl >= 1 and total >= 10 and found < min_table_found:
         return True, f"weak_table:{found:.3f}:{matched}"
@@ -143,6 +146,12 @@ def secondary_improves(
         if s_rec < p_rec - 0.02:
             return False
         _, p_matched, p_total, p_found = table_alignment_stats(primary_md, rendered)
-        s_nt, s_matched, _, s_found = table_alignment_stats(secondary_md, rendered)
-        return s_nt >= 1 and p_total >= 10 and s_matched >= p_matched and s_found >= p_found + table_found_margin
+        s_nt, s_matched, s_total, s_found = table_alignment_stats(secondary_md, rendered)
+        return (
+            s_nt >= 1
+            and p_total >= 10
+            and s_total >= max(10, int(0.70 * p_total))
+            and s_matched >= p_matched
+            and s_found >= p_found + table_found_margin
+        )
     return False
