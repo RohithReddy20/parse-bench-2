@@ -149,6 +149,18 @@ def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
     return crop, (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
 
 
+def _zoom_crop(crop, opts: dict):
+    """A chart crop enlarged so its longer side reaches `crop_zoom_to` pixels (small charts keep their tick labels
+    and thin marks legible to the reader); unchanged when larger already or the option is unset."""
+    target = int(opts.get("crop_zoom_to", 0) or 0)
+    if crop is None or not target or max(crop.size) >= target:
+        return crop
+    from PIL import Image
+
+    scale = target / max(crop.size)
+    return crop.resize((max(1, round(crop.width * scale)), max(1, round(crop.height * scale))), Image.Resampling.LANCZOS)
+
+
 def _chart_hint(pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[float, ...] | None) -> str:
     """The PDF's vector measurements of the chart in `box_pt` (the whole page when None); "" without any."""
     from docparse.fixes.chart_hints import extract_chart_hint, format_chart_hint
@@ -227,7 +239,7 @@ def _tier2_chart_call(
     hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)  # vector paths follow the page as stored
     return qwen_tier2.build_chart_call(
         rp.image,
-        crop_image=crop,
+        crop_image=_zoom_crop(crop, opts),
         vector_hint=hint,
         draft_tables="\n\n".join(drafts or _TABLE.findall(raw_chandra)),
         model=model or qwen_tier2.resolve_tier2_model(opts.get("model")),
@@ -257,7 +269,7 @@ def _tier2_single_chart_call(
         box_pt = (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
     hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)
     return qwen_tier2.build_single_chart_call(
-        rp.image, crop, vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
+        rp.image, _zoom_crop(crop, opts), vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
     )
 
 
