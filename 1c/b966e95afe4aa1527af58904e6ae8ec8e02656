@@ -1,0 +1,18 @@
+src/docparse/models/adapters/vlm_specialists.py
+  h_4802a42b335f3b 12,253-257,270,277-278,284,286,288,291
+src/docparse/pipeline.py
+  h_4802a42b335f3b 454-457
+tests/fixes/test_audit_fixes.py
+  h_4802a42b335f3b 228-233,237,240-241,244,248-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1cb966e95afe4aa1527af58904e6ae8ec8e02656",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
