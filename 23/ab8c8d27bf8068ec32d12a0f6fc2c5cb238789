@@ -1,0 +1,14 @@
+serve/colab_frontier_pilot.py
+  h_4802a42b335f3b 313-318,734-909
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23ab8c8d27bf8068ec32d12a0f6fc2c5cb238789",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
