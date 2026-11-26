@@ -5,6 +5,7 @@ Supports any OpenAI-compatible VLM served by vLLM:
   - Qwen/Qwen3-VL-8B-Instruct    (image + optional text prompt, e.g. vector-hinted chart reading)
   - allenai/olmOCR-2-7B-1025     (degraded scan / multi-column / math specialist)
   - datalab-to/chandra-ocr-2     (degraded scan / handwriting / layout specialist)
+  - Qwen/Qwen3.5-27B-FP8         (Tier-2 multi-image chart/form/hard-table reads; needs an 80GB+ GPU)
 
 Safety guardrail: refuses manifests larger than `--max-calls` (default 300) so an exploratory
 pilot can never accidentally burn credits on a full 4,000-page sweep.
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 import subprocess
 import threading
@@ -80,26 +82,27 @@ def _make_vlm_executor(base_url: str, served_model: str, default_system: str, gp
     client = httpx.Client(base_url=base_url.rstrip("/"), timeout=600.0)
 
     def execute(call, blobs: dict[str, bytes]) -> dict[str, Any]:
-        img_blob = blobs[call.inputs[0]]
-        user_text = blobs[call.inputs[1]].decode("utf-8") if len(call.inputs) > 1 else ""
+        # inputs[:n_images] are PNG images; an optional inputs[n_images] is the UTF-8 user prompt.
+        n_images = int(call.params.get("n_images", 1))
+        scale = float(call.params.get("image_scale", 1.0))
+        pngs = [blobs[name] for name in call.inputs[:n_images]]
+        if scale != 1.0:
+            pngs = [_downscale_png(png, scale) for png in pngs]
+        user_text = blobs[call.inputs[n_images]].decode("utf-8") if len(call.inputs) > n_images else ""
         sys_prompt = str(call.params.get("system_prompt") or default_system)
         max_tokens = int(call.params.get("max_tokens", 8192))
         temp = float(call.params.get("temperature", 0.0))
-        scale = float(call.params.get("image_scale", 1.0))
-        png = _downscale_png(img_blob, scale) if scale != 1.0 else img_blob
 
         started = time.monotonic()
         text_first = bool(call.params.get("text_first", False))
         for attempt in range(3):
-            img_part: dict[str, Any] = {
-                "type": "image_url",
-                "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()},
-            }
+            urls = ["data:image/png;base64," + base64.b64encode(png).decode() for png in pngs]
+            img_parts: list[dict[str, Any]] = [{"type": "image_url", "image_url": {"url": url}} for url in urls]
             text_part: dict[str, Any] | None = {"type": "text", "text": user_text} if user_text else None
             if text_first and text_part:
-                content = [text_part, img_part]
+                content = [text_part, *img_parts]
             else:
-                content = [img_part] + ([text_part] if text_part else [])
+                content = img_parts + ([text_part] if text_part else [])
             messages: list[dict[str, Any]] = []
             if sys_prompt:
                 messages.append({"role": "system", "content": sys_prompt})
@@ -112,20 +115,24 @@ def _make_vlm_executor(base_url: str, served_model: str, default_system: str, gp
             }
             if "enable_thinking" in call.params:
                 body["chat_template_kwargs"] = {"enable_thinking": bool(call.params["enable_thinking"])}
-            if "repetition_penalty" in call.params:
-                body["repetition_penalty"] = float(call.params["repetition_penalty"])
+            for key in ("top_p", "presence_penalty", "repetition_penalty"):
+                if key in call.params:
+                    body[key] = float(call.params[key])
+            if "top_k" in call.params:
+                body["top_k"] = int(call.params["top_k"])
             resp = client.post("/chat/completions", json=body)
             if resp.status_code == 400 and attempt < 2:
-                png = _downscale_png(png, 0.7)
+                pngs = [_downscale_png(png, 0.7) for png in pngs]
                 max_tokens = max(512, max_tokens // 2)
                 continue
             if resp.status_code != 200:
                 raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:500]}")
             data = resp.json()
             choice = data["choices"][0]
+            message = choice["message"]
             usage = data.get("usage") or {}
-            return {
-                "answer": choice["message"].get("content") or "",
+            out: dict[str, Any] = {
+                "answer": message.get("content") or "",
                 "finish_reason": choice.get("finish_reason"),
                 "max_tokens": max_tokens,
                 "_tokens_in": usage.get("prompt_tokens"),
@@ -133,6 +140,10 @@ def _make_vlm_executor(base_url: str, served_model: str, default_system: str, gp
                 "_gpu_seconds": round(time.monotonic() - started, 3),
                 "_gpu_type": gpu_type,
             }
+            reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+            if reasoning:
+                out["reasoning"] = reasoning
+            return out
         raise RuntimeError("request failed after 3 attempts")
 
     return execute
@@ -151,6 +162,9 @@ def run(
     max_model_len: int = 16384,
     workers: int = 16,
     max_calls: int = 300,
+    reasoning_parser: str = "",
+    limit_mm_images: int = 1,
+    gpu_memory_utilization: float = 0.90,
 ) -> dict[str, Any]:
     import sys
 
@@ -166,6 +180,10 @@ def run(
         raise RuntimeError(f"manifest {manifest!r} is empty")
     if len(calls) > max_calls:
         raise RuntimeError(f"safety cap: manifest has {len(calls)} calls > max_calls={max_calls}")
+    if not reasoning_parser and ("Qwen3.5" in repo or "Qwen3-VL" in repo):
+        reasoning_parser = "qwen3"
+    # never serve fewer images per prompt than the manifest's multi-image calls need
+    limit_mm_images = max(limit_mm_images, max(int(call.params.get("n_images", 1)) for call in calls))
 
     default_system = ""
     if repo == "llamaindex/OCRia-1":
@@ -184,12 +202,19 @@ def run(
         "--max-model-len",
         str(max_model_len),
         "--limit-mm-per-prompt",
-        '{"image": 1}',
+        json.dumps({"image": limit_mm_images}),
+        "--trust-remote-code",
+        "--gpu-memory-utilization",
+        str(gpu_memory_utilization),
+        "--max-num-seqs",
+        str(workers),
         "--port",
         "8000",
     ]
     if revision:
         cmd += ["--revision", revision]
+    if reasoning_parser:
+        cmd += ["--reasoning-parser", reasoning_parser]
 
     started = time.monotonic()
     proc = subprocess.Popen(cmd)
@@ -238,5 +263,20 @@ def main(
     max_model_len: int = 16384,
     workers: int = 16,
     max_calls: int = 300,
+    reasoning_parser: str = "",
+    limit_mm_images: int = 1,
+    gpu_memory_utilization: float = 0.90,
 ):
-    print(run.remote(manifest, repo, revision, max_model_len, workers, max_calls))
+    print(
+        run.remote(
+            manifest,
+            repo,
+            revision,
+            max_model_len,
+            workers,
+            max_calls,
+            reasoning_parser,
+            limit_mm_images,
+            gpu_memory_utilization,
+        )
+    )
