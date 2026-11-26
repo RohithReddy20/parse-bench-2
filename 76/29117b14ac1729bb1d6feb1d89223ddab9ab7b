@@ -1,0 +1,18 @@
+src/docparse/fixes/formatting.py
+  h_4802a42b335f3b 32,177-193,200-213
+src/docparse/models/adapters/vlm_specialists.py
+  h_4802a42b335f3b 275,277,285-300,528
+tests/fixes/test_audit_fixes.py
+  h_4802a42b335f3b 171-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7629117b14ac1729bb1d6feb1d89223ddab9ab7b",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
