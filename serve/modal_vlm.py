@@ -22,7 +22,9 @@ import base64
 import io
 import json
 import os
+import shutil
 import subprocess
+import tarfile
 import threading
 import time
 from pathlib import Path
@@ -174,7 +176,15 @@ def run(
     from docparse.models.manifest import read_manifest
     from serve.run_manifest import run_manifest
 
-    mdir = Path("/manifests") / manifest
+    vol_dir = Path("/manifests") / manifest
+    mdir = vol_dir
+    if not (mdir / "manifest.jsonl").exists() and (vol_dir / "manifest.tar").exists():
+        mdir = Path("/tmp") / f"manifest_{manifest}"
+        if mdir.exists():
+            shutil.rmtree(mdir)
+        mdir.mkdir(parents=True)
+        with tarfile.open(vol_dir / "manifest.tar", "r") as tf:
+            tf.extractall(mdir)
     calls = [call for call, _meta in read_manifest(mdir)]
     if not calls:
         raise RuntimeError(f"manifest {manifest!r} is empty")
@@ -236,7 +246,7 @@ def run(
 
         threading.Thread(target=keep_committing, daemon=True).start()
         try:
-            stats = run_manifest(mdir, mdir / "results.jsonl", executor, max_workers=workers)
+            stats = run_manifest(mdir, vol_dir / "results.jsonl", executor, max_workers=workers)
         finally:
             stop.set()
     finally:
