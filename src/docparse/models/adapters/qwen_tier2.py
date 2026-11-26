@@ -117,6 +117,15 @@ axis measurements verified visually against the zoomed crop.
 4. Keep exact units, signs (negative `-` values), percentages, and decimal precision. Preserve \
 full category/legend names.
 5. Output ONLY the short title line and HTML `<table>...</table>` (no code fences, prose paragraphs, or commentary)."""
+CHART_V2B_PROMPT_ID = "qwen/chart-v2b"
+SINGLE_CHART_V2B_PROMPT_ID = "qwen/chart-single-v2b"
+CHART_V2B_RULES = """
+Also:
+- Every plotted mark needs a number: copy a printed data label; else use the vector measurements; else read the \
+value off the axis from its position between the nearest gridlines or tick labels. An estimate read from the axis \
+is expected, so never leave a cell empty or write "N/A" because a value is not printed. For a dense line or area \
+with more points than x-axis labels, give each series' value at every labelled x-axis tick.
+- One row per category or x value and one column per series: never put two series' values in one cell."""
 CHART_V3_PROMPT_ID = "qwen/chart-v3"
 SINGLE_CHART_V3_PROMPT_ID = "qwen/chart-single-v3"
 _CHART_V3_RULES = """\
@@ -261,6 +270,9 @@ def build_chart_call(
     images = [page_image] if crop_image is None else [page_image, crop_image]
     if prompt == "v3":
         template, prompt_id = CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else ""), CHART_V3_PROMPT_ID
+    elif prompt == "v2b":
+        template = CHART_PROMPT + (CHART_THINK_RULE if enable_thinking else "") + CHART_V2B_RULES
+        prompt_id = CHART_V2B_PROMPT_ID
     else:
         template, prompt_id = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT, CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
@@ -288,6 +300,9 @@ def build_single_chart_call(
     if prompt == "v3":
         template = SINGLE_CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else "")
         prompt_id = SINGLE_CHART_V3_PROMPT_ID
+    elif prompt == "v2b":
+        template = SINGLE_CHART_PROMPT + (CHART_THINK_RULE if enable_thinking else "") + CHART_V2B_RULES
+        prompt_id = SINGLE_CHART_V2B_PROMPT_ID
     else:
         template = SINGLE_CHART_PROMPT + CHART_THINK_RULE if enable_thinking else SINGLE_CHART_PROMPT
         prompt_id = SINGLE_CHART_PROMPT_ID
