@@ -310,6 +310,12 @@ def _run_batch(
                 }
                 if enable_thinking is not None:
                     body["chat_template_kwargs"] = {"enable_thinking": bool(enable_thinking)}
+                if req.get("top_p") is not None:
+                    body["top_p"] = float(req["top_p"])
+                if req.get("top_k") is not None:
+                    body["top_k"] = int(req["top_k"])
+                if req.get("presence_penalty") is not None:
+                    body["presence_penalty"] = float(req["presence_penalty"])
                 try:
                     resp = client.post("/chat/completions", json=body)
                 except Exception as exc:
@@ -721,6 +727,182 @@ def main() -> int:
                 out_file=OUT / "qwen35_9b_awq.jsonl",
                 workers=8,
                 max_model_len=14336,
+                gpu_name=gpu_name,
+            )
+        )
+
+    # ── Stage 3c: Qwen3.5-27B-FP8 v2 A/B (official sampling params + anti-loop + HTML-only tables + 2-strip tiling) ──
+    if "qwen35_v2" in only:
+        from PIL import Image
+
+        chart_v2_prompt = (
+            CHART_PROMPT
+            + "\n6. Keep your internal reasoning concise (under 400 words), then immediately output the final HTML table(s)."
+        )
+        form_v2_prompt = """\
+Transcribe this document form page completely and accurately into clean Markdown.
+
+Strict rules:
+1. Preserve every section heading, printed instruction, field number/code, and field label paired directly with its filled value (typed or handwritten).
+2. Mark every checkbox or radio button from visual inspection: `[x]` ONLY if visibly checked/ticked/crossed/filled, `[ ]` if unchecked/empty.
+3. Mark blank/unfilled fields with `[___]` (never invent values, never shift values into the wrong field, and never repeat `<br>` tags).
+4. Use clean Markdown paragraphs/lines for normal label-value sections; use HTML `<table>` ONLY for genuine multi-column tabular grids.
+5. For character-box / comb fields (dates, IDs, postal codes), output the complete assembled string cleanly (e.g. `2025-04-12`).
+6. Keep your internal reasoning concise (under 350 words), then output only the faithful document transcription without code fences."""
+        hard_html_prompt = """\
+Transcribe this document page completely and faithfully into clean Markdown in natural reading order.
+
+Strict rules:
+1. Output EVERY table as complete, valid HTML `<table>` using `<thead>`, `<tbody>`, `<th>`, `<td>`, `colspan`, and `rowspan`.
+   NEVER output LaTeX `\\begin{tabular}` and NEVER output Markdown pipe tables (`| ... |`).
+2. Preserve EVERY row, EVERY column, and EVERY numeric cell verbatim — never summarize, skip rows, or truncate.
+3. Convert mathematical formulas to `$...$` (inline) or `$$...$$` (display).
+4. Output only the faithful document transcription with no code fences or commentary."""
+
+        strip_dir = WORK / "strips"
+        strip_dir.mkdir(exist_ok=True)
+
+        reqs_v2: list[dict[str, Any]] = []
+        # A. 40 Charts: A/B think (official Qwen3.5 sampling: temp=0.6, top_p=0.95, top_k=20, presence_penalty=1.5) vs no-think
+        for r in records:
+            if not r["is_chart"]:
+                continue
+            imgs = [r["page_img"]] + ([r["crop_img"]] if r.get("crop_img") else [])
+            hint_s = (r.get("vector_hint") or "").strip() or "(none)"
+            draft_s = (r.get("draft_tables") or "").strip() or "(none)"
+            reqs_v2.append(
+                {
+                    "uid": f"chart_think::{r['uid']}",
+                    "bucket": r["bucket"],
+                    "item_id": r["item_id"],
+                    "subtask": "chart_think",
+                    "images": imgs,
+                    "system": CHART_SYSTEM,
+                    "prompt": chart_v2_prompt.format(hint=hint_s, draft=draft_s),
+                    "max_tokens": 10240,
+                    "temperature": 0.6,
+                    "top_p": 0.95,
+                    "top_k": 20,
+                    "presence_penalty": 1.5,
+                    "enable_thinking": True,
+                }
+            )
+            reqs_v2.append(
+                {
+                    "uid": f"chart_nothink::{r['uid']}",
+                    "bucket": r["bucket"],
+                    "item_id": r["item_id"],
+                    "subtask": "chart_nothink",
+                    "images": imgs,
+                    "system": CHART_SYSTEM,
+                    "prompt": CHART_PROMPT.format(hint=hint_s, draft=draft_s),
+                    "max_tokens": 6144,
+                    "temperature": 0.1,
+                    "top_p": 0.95,
+                    "presence_penalty": 1.0,
+                    "enable_thinking": False,
+                }
+            )
+        # B. 40 Forms: official anti-loop thinking sampling + FORM_PROMPT v2, plus no-think comparison
+        for r in records:
+            if not r["is_form"]:
+                continue
+            reqs_v2.append(
+                {
+                    "uid": f"form_think::{r['uid']}",
+                    "bucket": r["bucket"],
+                    "item_id": r["item_id"],
+                    "subtask": "form_think",
+                    "images": [r["page_img"]],
+                    "prompt": form_v2_prompt,
+                    "max_tokens": 10240,
+                    "temperature": 0.6,
+                    "top_p": 0.95,
+                    "top_k": 20,
+                    "presence_penalty": 1.5,
+                    "enable_thinking": True,
+                }
+            )
+            reqs_v2.append(
+                {
+                    "uid": f"form_nothink::{r['uid']}",
+                    "bucket": r["bucket"],
+                    "item_id": r["item_id"],
+                    "subtask": "form_nothink",
+                    "images": [r["page_img"]],
+                    "prompt": form_v2_prompt,
+                    "max_tokens": 8192,
+                    "temperature": 0.1,
+                    "top_p": 0.95,
+                    "presence_penalty": 1.0,
+                    "enable_thinking": False,
+                }
+            )
+        # C. 30 PB2 hard tables/text: strict HTML <table> ONLY + 2-strip overlapping crops for dense/insurance mega-tables
+        for r in records:
+            if not r["is_hard"] or r["bucket"] == "olm_old_scans":
+                continue
+            reqs_v2.append(
+                {
+                    "uid": f"hard_html::{r['uid']}",
+                    "bucket": r["bucket"],
+                    "item_id": r["item_id"],
+                    "subtask": "hard_html",
+                    "images": [r["page_img"]],
+                    "prompt": hard_html_prompt,
+                    "max_tokens": 16384,
+                    "temperature": 0.1,
+                    "top_p": 0.95,
+                    "presence_penalty": 1.0,
+                    "enable_thinking": False,
+                }
+            )
+            # Also generate 2 overlapping horizontal strips (top 56% / bottom 56%) for dense/mega tables
+            if r["item_id"].startswith(("dense_tables/", "insurance_filing_tables/")):
+                im = Image.open(WORK / r["page_img"]).convert("RGB")
+                w, h = im.size
+                top_p = strip_dir / f"{r['uid']}_top.png"
+                bot_p = strip_dir / f"{r['uid']}_bot.png"
+                im.crop((0, 0, w, int(h * 0.56))).save(top_p)
+                im.crop((0, int(h * 0.44), w, h)).save(bot_p)
+                for half, sp in (("top", top_p), ("bot", bot_p)):
+                    reqs_v2.append(
+                        {
+                            "uid": f"strip_{half}::{r['uid']}",
+                            "bucket": r["bucket"],
+                            "item_id": r["item_id"],
+                            "subtask": f"strip_{half}",
+                            "images": [str(sp.relative_to(WORK))],
+                            "prompt": hard_html_prompt,
+                            "max_tokens": 12288,
+                            "temperature": 0.1,
+                            "top_p": 0.95,
+                            "presence_penalty": 1.0,
+                            "enable_thinking": False,
+                        }
+                    )
+
+        q_repo = "Qwen/Qwen3.5-27B-FP8" if gpu_mem >= 70000 else "Qwen/Qwen3.5-27B-GPTQ-Int4"
+        q_workers = 16 if gpu_mem >= 70000 else 6
+        q_len = 24576 if gpu_mem >= 70000 else 14336
+        q_args = [
+            "--trust-remote-code",
+            "--dtype", "bfloat16",
+            "--reasoning-parser", "qwen3",
+            "--limit-mm-per-prompt", '{"image": 2}',
+            "--gpu-memory-utilization", "0.90" if gpu_mem >= 70000 else "0.94",
+            "--max-num-seqs", str(q_workers),
+            *([] if gpu_mem >= 70000 else ["--enforce-eager"]),
+        ]
+        summary.append(
+            _run_batch(
+                tag="qwen35_27b_v2",
+                repo=q_repo,
+                vllm_args=q_args,
+                requests=reqs_v2,
+                out_file=OUT / "qwen35_27b_v2.jsonl",
+                workers=q_workers,
+                max_model_len=q_len,
                 gpu_name=gpu_name,
             )
         )
