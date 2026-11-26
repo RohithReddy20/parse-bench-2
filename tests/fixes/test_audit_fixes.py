@@ -225,31 +225,29 @@ def test_chandra_serializes_nested_ordered_and_unordered_lists() -> None:
         "<li>Next</li></ul>Summary</li>\n<li>Conclusion</li></ol>"
     )
     assert chandra_markdown(raw) == (
-        "3. **Overview**\n"
-        "   - *Value* $x^2$ <u>check</u> ~~old~~ `run()` [guide](/guide)\n"
-        "     1. Detail\n"
-        "   - Next\n"
-        "   Summary\n"
-        "4. Conclusion"
+        "- **Overview**\n"
+        "  - *Value* $x^2$ <u>check</u> ~~old~~ `run()` [guide](/guide)\n"
+        "    - Detail\n"
+        "  - Next\n"
+        "Summary\n"
+        "- Conclusion"
     )
 
 
-def test_chandra_does_not_duplicate_explicit_decimal_list_markers() -> None:
+def test_chandra_does_not_invent_synthetic_numbers_for_ordered_lists() -> None:
     from docparse.models.adapters.vlm_specialists import chandra_markdown
 
-    raw = "<p>Before</p><ol start='4'><li>4. First</li><li>5. Second</li><li>2024. Year</li></ol><p>After</p>"
-    assert chandra_markdown(raw) == "Before\n\n4. First\n5. Second\n6. 2024. Year\n\nAfter"
+    raw = "<p>Before</p><ol><li>4. First</li><li>5. Second</li></ol><p>After</p>"
+    assert chandra_markdown(raw) == "Before\n\n- 4. First\n- 5. Second\n\nAfter"
 
 
-def test_chandra_keeps_ordered_list_numbering_that_markdown_cannot_express() -> None:
+def test_chandra_converts_styled_ordered_lists_without_leaking_raw_html() -> None:
     from docparse.models.adapters.vlm_specialists import chandra_markdown
 
     roman = '<ol type="i"><li>Read the <i>guide</i>.</li><li>Complete the form.</li></ol>'
-    nested = f"<ul><li>Instructions{roman}</li></ul>"
-    reversed_list = "<ol reversed><li>Last</li><li>First</li></ol>"
-    assert chandra_markdown(f"<p>Before</p>{roman}<p>After</p>") == f"Before\n\n{roman}\n\nAfter"
-    assert chandra_markdown(nested) == nested
-    assert chandra_markdown(reversed_list) == reversed_list
+    assert chandra_markdown(f"<p>Before</p>{roman}<p>After</p>") == (
+        "Before\n\n- Read the *guide*.\n- Complete the form.\n\nAfter"
+    )
     table = f"<table><tr><td>{roman}</td></tr></table>"
     assert chandra_markdown(table) == table
 

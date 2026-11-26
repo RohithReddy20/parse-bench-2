@@ -451,8 +451,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     cand_md = f_read.markdown
                     if config.strip_furniture:
                         cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
-                    # a refinement that drops the draft's printed text is a rewrite, not a correction
-                    if _word_coverage(markdown, cand_md) >= float(f_opts.get("min_word_coverage", 0.93)):
+                    # a refinement that drops the draft's printed text or HTML tables is a rewrite, not a correction
+                    min_cov = float(f_opts.get("min_word_coverage", 0.93))
+                    keeps_tables = len(_TABLE.findall(cand_md)) >= len(_TABLE.findall(markdown))
+                    if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
                         markdown = cand_md
                         used.append(f_res)
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)

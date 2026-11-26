@@ -9,7 +9,7 @@ from __future__ import annotations
 import html
 import re
 from collections import ChainMap
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -230,11 +230,7 @@ _INVENTED = re.compile(r"(?:grand )?total|sum|average|avg\.?|mean", re.IGNORECAS
 _BR_TAG = r"<br(?=[\s/>])[^>]*>"
 _HEADING_BREAKS = re.compile(rf"[ \t]*(?:(?:{_BR_TAG}|[\r\n]|&(?:NewLine|#0*(?:10|13)|#x0*[ad]);)[ \t]*)+", _FLAGS)
 _LIST_TAG = re.compile(r"<(/?)(ol|ul|li)(?=[\s>])([^>]*)>\s*", _FLAGS)
-_LIST_CONTAINER = re.compile(rf"{_TABLE.pattern}|<(/?)(ol|ul)(?=[\s>])([^>]*)>", _FLAGS)
-_HTML_ONLY_NUMBERING = re.compile(r"""\s(?:type\s*=\s*(?:"[ai]"|'[ai]'|[ai](?=\s|$))|reversed(?=[\s=]|$))""", re.I)
-_LIST_START = re.compile(r"""\sstart\s*=\s*(["']?)\s*([+-]?[0-9]+)\s*\1(?=\s|$)""", re.I)
 _LIST_BULLET = re.compile(r"[•▪‣◦●]\s*")
-_LIST_NUMBER = re.compile(r"([0-9]+)[.)](?=\s|$)\s*")
 _LIST_ITEM_BREAK = re.compile(rf"{_BR_TAG}|</?p\b[^>]*>", _FLAGS)
 _LIST_CODE = re.compile(r"<code\b[^>]*>(.*?)</code>", _FLAGS)
 _LIST_LINK = re.compile(r"""<a\b[^>]*?\shref\s*=\s*(["'])(.*?)\1[^>]*>(.*?)</a>""", _FLAGS)
@@ -253,37 +249,13 @@ def _list_inline_code(match: re.Match[str]) -> str:
     return f"{delimiter}{code}{delimiter}"
 
 
-def _preserve_list_numbering(text: str, stash: Callable[[str], str]) -> str:
-    """Keep HTML for ordered list styles that Markdown cannot represent."""
-    parts: list[str] = []
-    pos = start = depth = 0
-    needs_html = False
-    for match in _LIST_CONTAINER.finditer(text):
-        closing, tag, attrs = match.groups()
-        if tag is None:
-            continue
-        if closing:
-            if not depth:
-                continue
-            depth -= 1
-            if not depth and needs_html:
-                parts.extend((text[pos:start], stash(text[start : match.end()])))
-                pos = match.end()
-        else:
-            if not depth:
-                start = match.start()
-                needs_html = False
-            depth += 1
-            if tag.lower() == "ol" and _HTML_ONLY_NUMBERING.search(attrs):
-                needs_html = True
-    parts.append(text[pos:])
-    return "".join(parts)
-
-
 def _lists_to_markdown(text: str) -> str:
+    """Convert HTML `<ul>`/`<ol>` lists to Markdown bullets.
+
+    Chandra splits long or unnumbered lists into separate `<ol>` fragments starting at 1, so emitting `- `
+    preserves nested structure without inventing phantom `1. 2. 3.` numbers that contradict the page.
+    """
     parts: list[str] = []
-    # Each list tracks its next number (None for bullets) and its current item's continuation indentation.
-    numbers: list[int | None] = [None]
     indents = [0]
     pos = 0
     for match in _LIST_TAG.finditer(text):
@@ -293,42 +265,30 @@ def _lists_to_markdown(text: str) -> str:
             body = _LIST_ITEM_BREAK.sub("\n", body).strip()
             body = _LIST_CODE.sub(_list_inline_code, body)
             body = _LIST_LINK.sub(r"[\3](\2)", body)
-            body = re.sub(r"\n[ \t]*(?=\S)", "\n" + " " * item_indent, body)
         parts.append(body)
         pos = match.end()
-        closing, tag, attrs = match.groups()
+        closing, tag, _attrs = match.groups()
         tag = tag.lower()
         if tag == "li":
             if closing:
                 indents[-1] = 0
                 continue
-            number = numbers[-1]
-            marker = "- " if number is None else f"{number}. "
-            if number is not None:
-                numbers[-1] = number + 1
             indent = indents[-2] if len(indents) > 1 else 0
-            indents[-1] = indent + len(marker)
-            parts.append("\n" + " " * indent + marker)
+            indents[-1] = indent + 2
+            parts.append("\n" + " " * indent + "- ")
             bullet = _LIST_BULLET.match(text, pos)
             if bullet:
                 pos = bullet.end()
-            if number is not None and (explicit := _LIST_NUMBER.match(text, pos)):
-                if explicit[1] == str(number):
-                    pos = explicit.end()
         elif not closing:
-            start = _LIST_START.search(attrs) if tag == "ol" else None
-            number = None if tag == "ul" else 1
-            numbers.append(int(start[2]) if start else number)
             indents.append(0)
-            if len(numbers) == 2:
+            if len(indents) == 2:
                 parts.append("\n\n")
-        elif len(numbers) > 1:
-            numbers.pop()
+        elif len(indents) > 1:
             indents.pop()
-            if len(numbers) == 1:
+            if len(indents) == 1:
                 parts.append("\n\n")
             elif pos < len(text) and not _LIST_TAG.match(text, pos):
-                parts.append("\n" + " " * indents[-1])
+                parts.append("\n")
     parts.append(text[pos:])
     return "".join(parts)
 
@@ -697,7 +657,6 @@ def chandra_markdown(text: str, drop_furniture: bool = False, *, _preserve_table
         s = _FURNITURE_DIV.sub("", s)
     s = _trim_image_div_essays(s)
     s = _promote_section_headers(s)
-    s = _preserve_list_numbering(s, stash)
     s = _TABLE.sub(stash_table, s)
     s = _lists_to_markdown(s)
     for pattern, repl in _HTML_TO_MD:
