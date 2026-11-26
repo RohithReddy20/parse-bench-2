@@ -6,11 +6,13 @@ A pure function of (bytes, config, cache): model answers come from the client, w
     S0 render -> S2 OCRia-1 page read (one cached call per page) -> S3 answer parsed into the IR
     -> S4 correctors, each behind its options (layout_options, text_options, format_options) -> writers
 
-With `tier2_charts`, Chandra pages that show a chart are read once more by Qwen3.5-27B-FP8 (Tier-2) before S4.
+With `tier2_charts`, Chandra pages that show a chart are read once more by Qwen3.5-27B-FP8 (Tier-2) before S4;
+with `tier2_forms`, Chandra form pages without a Tier-2 chart read have their draft refined by it the same way.
 """
 
 from __future__ import annotations
 
+import html
 import re
 from collections import ChainMap
 from dataclasses import dataclass, field
@@ -34,6 +36,9 @@ _CHANDRA_DIV = re.compile(r"<div\b([^>]*)>(.*?)</div>", _FLAGS)
 _FIGURE_LABEL = re.compile(r"""\bdata-label\s*=\s*(["'])Figure\1""", re.IGNORECASE)
 _BBOX = re.compile(r'\bdata-bbox\s*=\s*"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"')
 _IMG_ALT = re.compile(r"""<img\b[^>]*?\salt\s*=\s*(["'])(.*?)\1""", _FLAGS)
+_MATH = re.compile(r"\$\$|\\frac|\\begin\{equation\}|<math", re.IGNORECASE)
+_FORM_LABEL = re.compile(r"""<div\b[^>]*\bdata-label\s*=\s*(["'])Form\1""", re.IGNORECASE)
+_CHECKBOX = re.compile(r"\[[ xX]\]|<input\b")
 CHART_PAD = 0.06  # share of the page width / height added around the chart boxes before cropping
 CHART_CROP_SHARE = (0.03, 0.92)  # a crop is sent only when the padded box covers this share of the page
 DUPLICATE_SHARE = 0.35  # token overlap that makes a Tier-2 table a repeat of a table Chandra already read
@@ -212,6 +217,44 @@ def _tier2_markdown(
     return "\n\n".join([markdown, *parts]) if parts else None
 
 
+def _is_form_page(raw_chandra: str, markdown: str, pdf_bytes: bytes, index: int, opts: dict) -> bool:
+    """A page without math that Chandra tagged as a `Form`, or with dense checkboxes, or with AcroForm widgets."""
+    if _MATH.search(raw_chandra):
+        return False
+    if _FORM_LABEL.search(raw_chandra) or len(_CHECKBOX.findall(markdown)) >= int(opts.get("min_checkboxes", 4)):
+        return True
+    from docparse.fixes.forms_acro import acroform_widgets
+
+    return acroform_widgets(pdf_bytes, index)[0] >= int(opts.get("min_acro_widgets", 3))
+
+
+def _word_coverage(draft: str, candidate: str) -> float:
+    """Share of the draft's words (3+ letters or digits, tags ignored) that `candidate` keeps; 1.0 without any."""
+    d_set, c_set = (set(re.findall(r"[a-z0-9]{3,}", re.sub(r"<[^>]+>", " ", s).lower())) for s in (draft, candidate))
+    return len(d_set & c_set) / len(d_set) if d_set else 1.0
+
+
+def _line_key(line: str) -> str:
+    return " ".join(re.sub(r"[#*_]", " ", html.unescape(re.sub(r"<[^>]+>", " ", line))).split()).casefold()
+
+
+def _drop_chandra_furniture(raw_chandra: str, candidate_md: str) -> str:
+    """`candidate_md` without the lines that repeat Chandra's Page-Header / Page-Footer text (a line the page body
+    shows too is kept)."""
+    from docparse.models.adapters.vlm_specialists import _FURNITURE_DIV, chandra_markdown
+
+    def keys(md: str) -> set[str]:
+        return {_line_key(line) for line in md.splitlines()}
+
+    blocks = [chandra_markdown(m[0]) for m in _FURNITURE_DIV.finditer(raw_chandra)]
+    furniture = keys("\n".join(blocks)) | {_line_key(b) for b in blocks}
+    furniture -= keys(chandra_markdown(raw_chandra, drop_furniture=True)) | {""}
+    if not furniture:
+        return candidate_md
+    kept = [line for line in candidate_md.splitlines() if _line_key(line) not in furniture]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
     decorations = styles = False
@@ -381,6 +424,37 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         markdown = t2_markdown
                         used.append(t2_res)
                         tier2_chart_used = True
+            f_opts = config.tier2_form_options
+            if (
+                config.tier2_forms
+                and not tier2_chart_used  # a chart page is never escalated twice
+                and _is_form_page(ch_read.raw_answer, markdown, pdf_bytes, index, f_opts)
+            ):
+                from docparse.models.adapters import qwen_tier2
+
+                f_call, f_blobs = qwen_tier2.build_form_refine_call(
+                    rp.image,
+                    markdown,
+                    enable_thinking=bool(f_opts.get("enable_thinking", False)),
+                    temperature=float(f_opts.get("temperature", 0.1)),
+                    top_p=float(f_opts.get("top_p", 0.95)),
+                    top_k=int(f_opts["top_k"]) if "top_k" in f_opts else None,
+                    presence_penalty=float(f_opts.get("presence_penalty", 1.0)),
+                    max_tokens=int(f_opts.get("max_tokens", 8192)),
+                )
+                f_res = client.get(f_call, f_blobs, meta)
+                if isinstance(f_res, Pending):
+                    pending.append(f_res.key)
+                    continue
+                f_read = qwen_tier2.read_tier2_result(f_res)
+                if f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
+                    cand_md = f_read.markdown
+                    if config.strip_furniture:
+                        cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
+                    # a refinement that drops the draft's printed text is a rewrite, not a correction
+                    if _word_coverage(markdown, cand_md) >= float(f_opts.get("min_word_coverage", 0.93)):
+                        markdown = cand_md
+                        used.append(f_res)
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
             if config.form_options:
                 from docparse.fixes.forms import repair

@@ -92,6 +92,13 @@ TIER2_CHART_OPTIONS = frozenset(
         "use_ppdoclayout", "pp_chart_score",
     }
 )  # fmt: skip
+# Tier-2 draft-guided form refinement with Qwen3.5-27B-FP8 (pipeline.py, models/adapters/qwen_tier2.py)
+TIER2_FORM_OPTIONS = frozenset(
+    {
+        "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
+        "min_word_coverage", "min_checkboxes", "min_acro_widgets",
+    }
+)  # fmt: skip
 
 
 class Config(BaseModel):
@@ -113,6 +120,12 @@ class Config(BaseModel):
     tier2_charts: bool = False
     # sampling and trigger settings of that read (TIER2_CHART_OPTIONS); empty = the defaults in pipeline.py
     tier2_chart_options: dict[str, Any] = Field(default_factory=dict)
+    # Chandra readers: a form page (no math; a Chandra `Form` block, dense checkboxes or AcroForm widgets) that took
+    # no Tier-2 chart read has its draft checked against the page by Qwen3.5-27B-FP8; the refined copy replaces it
+    # only when it keeps `min_word_coverage` of the draft's words
+    tier2_forms: bool = False
+    # sampling and trigger settings of that read (TIER2_FORM_OPTIONS); empty = the defaults in pipeline.py
+    tier2_form_options: dict[str, Any] = Field(default_factory=dict)
     dpi: int = 300
     # where layout items come from: carried by the page read (published stand-ins); built here from detector
     # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all
@@ -145,7 +158,8 @@ class Config(BaseModel):
 
     def config_hash(self) -> str:
         # the Tier-2 fields enter the hash only when set, so configs that predate them keep their hash
-        unset = {name for name in ("tier2_charts", "tier2_chart_options") if not getattr(self, name)}
+        tier2 = ("tier2_charts", "tier2_chart_options", "tier2_forms", "tier2_form_options")
+        unset = {name for name in tier2 if not getattr(self, name)}
         return sha256_hex(canonical_json(self.model_dump(mode="json", exclude=unset)))[:16]
 
     @classmethod
@@ -182,6 +196,9 @@ class Config(BaseModel):
         unknown = set(data.get("tier2_chart_options") or {}) - TIER2_CHART_OPTIONS
         if unknown:
             raise ValueError(f"unknown tier2 chart option(s): {sorted(unknown)}")
+        unknown = set(data.get("tier2_form_options") or {}) - TIER2_FORM_OPTIONS
+        if unknown:
+            raise ValueError(f"unknown tier2 form option(s): {sorted(unknown)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")

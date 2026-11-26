@@ -1,6 +1,9 @@
 # hybrid_v2 + Tier-2 frontier chart reading: pages with a chart (a Chandra chart Figure, or a PP-DocLayoutV3
 # "chart" box) are read once more by Qwen/Qwen3.5-27B-FP8 (zoomed chart crop, PDF vector hint, draft tables), and
 # its chart tables replace the OCRia-1 chart fusion. An unusable Tier-2 answer leaves the hybrid_v2 page.
+# Form pages (no math; a Chandra Form block, >= 4 checkboxes or >= 3 AcroForm widgets) without a Tier-2 chart read
+# send Chandra's draft to the same model for checkbox / comb-field correction; the refined copy is kept only when it
+# keeps >= 93% of the draft's words, and the PDF-grounded form repairs still run after it.
 reader: chandra_hybrid
 strip_furniture: false
 verify_pdf: true
@@ -67,3 +70,11 @@ tier2_chart_options:
   max_tokens: 10240
   use_ppdoclayout: true
   pp_chart_score: 0.40
+tier2_forms: true
+tier2_form_options:
+  enable_thinking: false
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 8192
+  min_word_coverage: 0.93

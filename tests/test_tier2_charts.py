@@ -1,4 +1,5 @@
-"""Tier-2 chart reads (Qwen3.5-27B-FP8) wired into the Chandra pipeline, against a scripted model client."""
+"""Tier-2 chart reads and form refinement (Qwen3.5-27B-FP8) wired into the Chandra pipeline, against a scripted
+model client."""
 
 import io
 
@@ -12,16 +13,20 @@ from docparse.models.calls import ModelResult, Pending
 from docparse.pipeline import parse
 from docparse.write.markdown import write_document
 
-CHANDRA, OCRIA, PP, TIER2 = (
+CHANDRA, OCRIA, PP, TIER2, FORM = (
     vlm_specialists.CHANDRA_PROMPT_ID,
     ocria.PROMPT_ID,
     ppdoclayout.PROMPT_ID,
     qwen_tier2.CHART_PROMPT_ID,
+    qwen_tier2.FORM_REFINE_PROMPT_ID,
 )
-GPU_SECONDS = {CHANDRA: 1.0, OCRIA: 2.0, PP: 0.0, TIER2: 4.0}
+GPU_SECONDS = {CHANDRA: 1.0, OCRIA: 2.0, PP: 0.0, TIER2: 4.0, FORM: 3.0}
 BASE = Config(page_model=ocria.OWN, page_runtime="vllm-0.34.0", prompt_sha="t", reader="chandra_hybrid", layout="none")
 FRONTIER = BASE.model_copy(
     update={"tier2_charts": True, "tier2_chart_options": Config.load("configs/frontier_v3.yaml").tier2_chart_options}
+)
+FORMS = BASE.model_copy(
+    update={"tier2_forms": True, "tier2_form_options": Config.load("configs/frontier_v3.yaml").tier2_form_options}
 )
 
 PROSE_TOP = "Quarterly revenue grew strongly across all regions this year."
@@ -46,6 +51,19 @@ MISSED_CHART_PAGE = (  # Chandra sees no chart; PP-DocLayoutV3 does
     '<div data-bbox="100 300 900 700" data-label="Image"><img alt="Company logo"/></div>'
     f'<div data-bbox="100 750 900 900" data-label="Table">{SALES_TABLE}</div>'
 )
+FORM_PAGE = (  # Chandra tags the form (two checkboxes) and the page furniture around it
+    '<div data-bbox="50 20 950 60" data-label="Page-Header"><p>ACME Insurance Ltd</p></div>'
+    '<div data-bbox="50 80 950 600" data-label="Form"><p>Applicant name: Jane Doe</p>'
+    '<p><input type="checkbox"/> Married <input type="checkbox" checked/> Single</p>'
+    "<p>Policy number: 4471-0093</p><p>Date of birth: 1984-07-15</p></div>"
+    '<div data-bbox="50 940 950 980" data-label="Page-Footer"><p>Form AC-12 page 1 of 2</p></div>'
+)
+CHECKBOX_PAGE = (  # no Form block, but four checkboxes
+    '<div data-bbox="50 80 950 400" data-label="Text"><p>Applicant name: Jane Doe</p>'
+    '<p><input type="checkbox"/> Married <input type="checkbox" checked/> Single '
+    '<input type="checkbox"/> Divorced <input type="checkbox"/> Widowed</p></div>'
+)
+FLIP = ("[ ] Married [x] Single", "[x] Married [ ] Single")  # Chandra's misread boxes, and Qwen's correction
 
 
 def _png(size=(850, 1100)) -> bytes:
@@ -60,12 +78,13 @@ PAGE = _png()
 class ScriptedClient:
     """Answers each model by prompt id; prompt ids in `pending` are not in the cache yet."""
 
-    def __init__(self, chandra, tier2="", pp=(), pending=(), finish="stop"):
+    def __init__(self, chandra, tier2="", pp=(), pending=(), finish="stop", form=""):
         self.answers = {
             CHANDRA: {"answer": chandra, "finish_reason": "stop"},
             OCRIA: {"markdown": f"{PROSE_TOP}\n\n{OCRIA_TABLE}"},
             PP: {"detections": list(pp)},
             TIER2: {"answer": tier2, "finish_reason": finish},
+            FORM: {"answer": form, "finish_reason": "stop"},
         }
         self.pending, self.calls, self.blobs = set(pending), [], {}
 
@@ -91,7 +110,8 @@ def test_off_by_default_never_asks_for_tier2_and_keeps_the_config_hash():
     assert not hybrid.tier2_charts and hybrid.config_hash() == sha256_hex(canonical_json(dump))[:16]
     frontier = Config.load("configs/frontier_v3.yaml")
     assert frontier.tier2_charts and frontier.config_hash() != hybrid.config_hash()
-    assert frontier.model_copy(update={"tier2_charts": False, "tier2_chart_options": {}}) == hybrid
+    off = {"tier2_charts": False, "tier2_chart_options": {}, "tier2_forms": False, "tier2_form_options": {}}
+    assert frontier.model_copy(update=off) == hybrid
 
 
 def test_a_chandra_chart_figure_takes_the_tier2_tables_and_keeps_the_prose():
@@ -159,3 +179,72 @@ def test_pending_calls_plan_the_tier2_read_after_its_inputs():
     second = parse(PAGE, FRONTIER, client)
     (call,) = client.of(TIER2)
     assert second.document is None and second.pending == [call.key()]
+
+
+@pytest.mark.parametrize("page", [FORM_PAGE, CHECKBOX_PAGE], ids=["form-block", "four-checkboxes"])
+def test_a_form_page_sends_its_chandra_draft_and_takes_the_refined_copy(page):
+    draft = vlm_specialists.chandra_markdown(page)
+    refined = f"{draft.replace(*FLIP)}\n\nSignature: [___]"
+    client = ScriptedClient(page, form=refined)
+    doc = parse(PAGE, FORMS, client).document
+    md = write_document(doc)
+    (call,) = client.of(FORM)
+    assert not client.of(TIER2) and not client.of(OCRIA)
+    assert call.params["n_images"] == 1 and call.params["enable_thinking"] is False and "top_k" not in call.params
+    assert (call.params["temperature"], call.params["presence_penalty"], call.params["max_tokens"]) == (0.1, 1.0, 8192)
+    assert f"<draft>\n{draft}\n</draft>" in client.blobs[call.key()][call.inputs[-1]].decode()
+    assert FLIP[1] in md and FLIP[0] not in md and "Signature: [___]" in md
+    assert (doc.pages[0].cost.calls, doc.pages[0].cost.gpu_seconds) == (2, 4.0)
+    client = ScriptedClient(page, form=refined, pending={FORM})
+    waiting = parse(PAGE, FORMS, client)
+    assert waiting.document is None and waiting.pending == [client.of(FORM)[0].key()]
+
+
+@pytest.mark.parametrize(
+    ("drop", "taken"),
+    [("Date of birth: 1984-07-15", False), (" Ltd", True)],  # 3 of the draft's 18 words lost (17%), or 1 (6%)
+)
+def test_a_refined_copy_must_keep_the_drafts_words(drop, taken):
+    draft = vlm_specialists.chandra_markdown(FORM_PAGE)
+    client = ScriptedClient(FORM_PAGE, form=draft.replace(*FLIP).replace(drop, ""))
+    doc = parse(PAGE, FORMS, client).document
+    assert len(client.of(FORM)) == 1 and (FLIP[1] in write_document(doc)) is taken
+    if not taken:  # Chandra's page, as if Tier-2 forms were off
+        assert doc.pages == parse(PAGE, BASE, ScriptedClient(FORM_PAGE)).document.pages
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        FORM_PAGE.replace("<p>Date of birth: 1984-07-15</p>", '<p><math display="block">x^2 + y^2 = r^2</math></p>'),
+        CHECKBOX_PAGE + '<div data-bbox="50 500 950 560" data-label="Text"><p>$$E = mc^2$$</p></div>',
+        CHECKBOX_PAGE.replace('<input type="checkbox"/> Divorced <input type="checkbox"/> Widowed', ""),
+    ],
+    ids=["math-tag", "display-math", "two-checkboxes"],
+)
+def test_math_pages_and_pages_that_are_not_forms_are_never_refined(page):
+    client = ScriptedClient(page, form=vlm_specialists.chandra_markdown(page))
+    assert parse(PAGE, FORMS, client).document is not None and not client.of(FORM)
+
+
+def test_strip_furniture_drops_the_page_header_and_footer_the_refined_copy_repeats():
+    draft = vlm_specialists.chandra_markdown(FORM_PAGE, drop_furniture=True)
+    answer = f"**ACME Insurance Ltd**\n\n{draft.replace(*FLIP)}\n\nForm AC-12 page 1 of 2"
+    client = ScriptedClient(FORM_PAGE, form=answer)
+    md = write_document(parse(PAGE, FORMS.model_copy(update={"strip_furniture": True}), client).document)
+    (call,) = client.of(FORM)
+    assert "ACME" not in client.blobs[call.key()][call.inputs[-1]].decode()  # the draft has no furniture either
+    assert md.startswith("Applicant name: Jane Doe") and md.rstrip().endswith("Date of birth: 1984-07-15")
+    assert FLIP[1] in md and "ACME" not in md and "AC-12" not in md
+
+
+def test_tier2_forms_off_keeps_the_hybrid_v2_hash_and_unknown_options_fail():
+    hybrid = Config.load("configs/hybrid_v2.yaml")
+    old = {k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_")}
+    assert not hybrid.tier2_forms and not hybrid.tier2_form_options
+    assert hybrid.config_hash() == sha256_hex(canonical_json(old))[:16]
+    assert hybrid.model_copy(update={"tier2_forms": True}).config_hash() != hybrid.config_hash()
+    frontier = Config.load("configs/frontier_v3.yaml")
+    assert frontier.tier2_forms and frontier.tier2_form_options["min_word_coverage"] == 0.93
+    with pytest.raises(ValueError, match="unknown tier2 form option"):
+        Config.load("configs/hybrid_v2.yaml", ["tier2_form_options.min_coverage=0.9"])
