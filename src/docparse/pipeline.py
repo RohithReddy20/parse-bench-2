@@ -300,6 +300,7 @@ def _is_form_page(raw_chandra: str, markdown: str, pdf_bytes: bytes, index: int,
     return acroform_widgets(pdf_bytes, index)[0] >= int(opts.get("min_acro_widgets", 3))
 
 
+_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", _FLAGS)
 _ROW = re.compile(r"<tr\b", re.IGNORECASE)
 _BLANK_RUN = re.compile(r"_{4,}|\.{6,}")
 
@@ -313,9 +314,15 @@ def _looks_like_form(markdown: str) -> bool:
 
 
 def _grid_table_count(markdown: str) -> int:
-    """Tables a form rewrite must keep: three or more rows and no checkbox (boxed fields drawn as one- or two-row
-    tables may become `caption: value` lines)."""
-    return sum(1 for t in _TABLE.findall(markdown) if len(_ROW.findall(t)) >= 3 and not _CHECKBOX.search(t))
+    """Data tables a form rewrite must keep: a header, three or more rows, no checkbox, and mostly filled cells
+    (boxed fields and half-empty form grids drawn as tables may become `caption: value` lines)."""
+    n = 0
+    for t in _TABLE.findall(markdown):
+        cells = _CELL.findall(t)
+        empty = sum(1 for c in cells if not re.sub(r"<[^>]+>|&nbsp;|\s", "", c))
+        grid = "<th" in t.lower() and len(_ROW.findall(t)) >= 3 and not _CHECKBOX.search(t)
+        n += grid and empty < 0.25 * max(1, len(cells))
+    return n
 
 
 def _data_table_count(markdown: str) -> int:
