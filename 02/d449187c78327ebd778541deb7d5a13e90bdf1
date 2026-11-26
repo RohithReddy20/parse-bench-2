@@ -1,0 +1,18 @@
+src/docparse/models/adapters/qwen_tier2.py
+  h_4802a42b335f3b 31,62-67,98-105,115-116,122,125,141,147-149,157-159,185-232
+src/docparse/pipeline.py
+  h_4802a42b335f3b 173-174,180,183,357,383,408-412
+tests/models/test_qwen_tier2.py
+  h_4802a42b335f3b 15,18,22,78-81,141,147-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "02d449187c78327ebd778541deb7d5a13e90bdf1",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
