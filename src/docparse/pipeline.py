@@ -655,24 +655,49 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         and 2 <= len(pp_boxes) <= int(opts.get("per_chart_max_boxes", 6))
                         and _union_share(rp, pp_boxes) >= float(opts.get("per_chart_min_union", 0.32))
                     )
-                    if per_chart:  # several large charts: one zoomed read of each, all asked for at once
-                        draft = "\n\n".join(ocria_tables or _TABLE.findall(ch_read.raw_answer))
-                        t2_calls = [
-                            _tier2_single_chart_call(pdf_bytes, index, rp, turn, bx, draft, opts, chart_model)
-                            for bx in pp_boxes
+                    draft = "\n\n".join(ocria_tables or _TABLE.findall(ch_read.raw_answer))
+
+                    def chart_calls(  # the page's chart reads under sampling options `o`
+                        o: dict,
+                        per_chart=per_chart,
+                        index=index,
+                        rp=rp,
+                        turn=turn,
+                        draft=draft,
+                        chart_model=chart_model,
+                        raw=ch_read.raw_answer,
+                        pp_boxes=pp_boxes,
+                        ocria_tables=ocria_tables,
+                    ) -> list:
+                        if per_chart:  # several large charts: one zoomed read of each, all asked for at once
+                            return [
+                                _tier2_single_chart_call(pdf_bytes, index, rp, turn, bx, draft, o, chart_model)
+                                for bx in pp_boxes
+                            ]
+                        return [
+                            _tier2_chart_call(pdf_bytes, index, rp, turn, raw, pp_boxes, ocria_tables, o, chart_model)
                         ]
-                    else:
-                        t2_call = _tier2_chart_call(
-                            pdf_bytes, index, rp, turn, ch_read.raw_answer, pp_boxes, ocria_tables, opts, chart_model
-                        )
-                        t2_calls = [t2_call]
-                    t2_results = [client.get(c, b, meta) for c, b in t2_calls]
+
+                    t2_results = [client.get(c, b, meta) for c, b in chart_calls(opts)]
                     t2_done = [r for r in t2_results if not isinstance(r, Pending)]
                     if len(t2_done) < len(t2_results):
                         pending += list(dict.fromkeys(r.key for r in t2_results if isinstance(r, Pending)))
                         continue
-                    # a cut-off or looping answer, or one without a table, leaves the page as read without it
                     t2_reads = [(r, qwen_tier2.read_tier2_result(r)) for r in t2_done]
+                    if opts.get("fallback_plain") and opts.get("enable_thinking"):
+                        # a thinking read that ran out of tokens, looped or wrote no table is read again plainly
+                        bad = [i for i, (_, x) in enumerate(t2_reads) if not (x.usable and _TABLE.search(x.markdown))]
+                        if bad:
+                            plain = {**opts, "enable_thinking": False, "temperature": 0.1, "max_tokens": 10240}
+                            plain.pop("top_k", None)
+                            again = chart_calls(plain)
+                            retried = [client.get(*again[i], meta) for i in bad]
+                            if any(isinstance(r, Pending) for r in retried):
+                                pending += list(dict.fromkeys(r.key for r in retried if isinstance(r, Pending)))
+                                continue
+                            for i, r in zip(bad, retried, strict=True):
+                                t2_reads[i] = (r, qwen_tier2.read_tier2_result(r))
+                    # a cut-off or looping answer, or one without a table, leaves the page as read without it
                     t2_good = [(r, x) for r, x in t2_reads if x.usable and _TABLE.search(x.markdown)]
                     t2_markdown = None
                     if t2_good:

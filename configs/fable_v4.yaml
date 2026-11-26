@@ -80,6 +80,7 @@ tier2_chart_options:
   prompt: v2b
   crop_zoom_to: 2048
   hint_chars: 10000
+  fallback_plain: true
   enable_thinking: true
   temperature: 0.6
   top_p: 0.95
