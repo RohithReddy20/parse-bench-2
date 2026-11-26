@@ -1,0 +1,24 @@
+src/docparse/models/adapters/qwen_tier2.py
+  s_5081373e580f82::t_ab094da095c517 94-100
+  s_5081373e580f82::t_6785a5d4aa3220 236
+  s_5081373e580f82::t_8bce1ce5b3c22a 1-93,101-235,237-332,334-348
+  s_5081373e580f82::t_6202d56650678f 333
+tests/models/test_qwen_tier2.py
+  s_5081373e580f82::t_d33b5c1dca595e 1-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1bd6985a41d02af510c9483d1939c876a68929b9",
+  "prompts": {},
+  "sessions": {
+    "s_5081373e580f82": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95a9eb11-16d2-4be7-b144-d2e908af0756",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
