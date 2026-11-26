@@ -1,0 +1,20 @@
+configs/frontier_v3.yaml
+  h_4802a42b335f3b 46
+src/docparse/core/config.py
+  h_4802a42b335f3b 50
+src/docparse/fixes/forms.py
+  h_4802a42b335f3b 329,334-338,340-386
+tests/test_tier2_charts.py
+  h_4802a42b335f3b 113-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e343863efdd98db651865765c866c279df59a410",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
