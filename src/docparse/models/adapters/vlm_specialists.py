@@ -272,12 +272,30 @@ _FURNITURE_DIV = re.compile(
     _FLAGS,
 )
 _IMAGE_DIV = re.compile(r'<div\b[^>]*data-label="Image"[^>]*>(.*?)</div>', _FLAGS)
+_SEC_HDR_DIV = re.compile(r'<div\b[^>]*data-label="Section-Header"[^>]*>(.*?)</div>', _FLAGS)
 _IMG_TAG = re.compile(r"<img\b[^>]*>", _FLAGS)
+_HEADING_OR_BLOCK = re.compile(r"<(?:h[1-6]|table|ul|ol|img|pre)\b", _FLAGS)
 _FIGURE_DIV = re.compile(r'<div\b[^>]*data-label="Figure"[^>]*>(.*?)</div>', _FLAGS)
 _CHART_ALT = re.compile(
     r'<img\b[^>]*alt="[^"]*\b(?:chart|graph|plot|bar|line|pie|histogram|scatter|series|axis|axes)\b',
     _FLAGS,
 )
+
+
+def _promote_section_headers(raw_html: str) -> str:
+    """Honor Chandra's `<div data-label="Section-Header">` when it omitted `<h1..h6>` tags."""
+
+    def _repl(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        if not inner or _HEADING_OR_BLOCK.search(inner):
+            return m.group(0)
+        # Strip outer <p>...</p> wrapper and bold wrapper when promoting to a Markdown heading
+        body = re.sub(r"^\s*<p\b[^>]*>(.*?)</p>\s*$", r"\1", inner, flags=_FLAGS).strip()
+        if not body or "\n" in body or "<br" in body.lower():
+            return m.group(0)
+        return f'<div data-label="Section-Header"><h2>{body}</h2></div>'
+
+    return _SEC_HDR_DIV.sub(_repl, raw_html)
 
 
 def _trim_image_div_essays(raw_html: str) -> str:
@@ -507,6 +525,7 @@ def chandra_markdown(text: str, drop_furniture: bool = False) -> str:
     if drop_furniture:
         s = _FURNITURE_DIV.sub("", s)
     s = _trim_image_div_essays(s)
+    s = _promote_section_headers(s)
     s = _TABLE.sub(stash, s)
     for pattern, repl in _HTML_TO_MD:
         s = pattern.sub(repl, s)

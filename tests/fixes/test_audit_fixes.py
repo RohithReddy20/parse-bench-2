@@ -168,3 +168,27 @@ def test_pdf_self_verification_flags_low_recall_and_flattened_table() -> None:
     assert need2 and reason2.startswith("missing_table:")
     need3, _ = needs_pdf_verification(f"<table><tr><td>{flat_all}</td></tr></table>", rp)
     assert not need3
+
+
+def test_chandra_promotes_section_header_and_unwraps_overwide_strike() -> None:
+    from types import SimpleNamespace
+
+    from docparse.base.ocria_parse import parse_page
+    from docparse.fixes.formatting import refine_format
+    from docparse.models.adapters.vlm_specialists import chandra_markdown
+
+    raw = '<div data-label="Section-Header"><p><b>PART I. FINANCIAL INFORMATION</b></p></div>'
+    assert chandra_markdown(raw) == "## **PART I. FINANCIAL INFORMATION**"
+
+    pg = parse_page("~~Old clause stays and new clause added~~", index=0, call_key="k")
+    words = [
+        SimpleNamespace(text="Old", marks="sss"),
+        SimpleNamespace(text="clause", marks="ssssss"),
+        SimpleNamespace(text="stays", marks="....."),
+        SimpleNamespace(text="and", marks="..."),
+        SimpleNamespace(text="new", marks="..."),
+        SimpleNamespace(text="clause", marks="......"),
+        SimpleNamespace(text="added", marks="....."),
+    ]
+    refine_format(pg, SimpleNamespace(text_words=words), {"strike": True})
+    assert pg.regions[0].chosen().raw == "~~Old clause~~ stays and new clause added"

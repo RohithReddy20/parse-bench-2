@@ -29,7 +29,7 @@ READER = "fix.formatting"
 PROSE = frozenset({"paragraph", "list", "heading"})
 MIN_STRUCK = 0.5  # share of a PDF token's characters a line must cross
 _TILDE_STRIKE = re.compile(r"~~(?=[^\s~])(.+?)(?<=[^\s~])~~", re.S)
-_STRIKE_SPAN = re.compile(r"~~(?=[^\s~]).+?(?<=[^\s~])~~|<(s|del|strike)\b[^>]*>.*?</\1\s*>", re.S | re.I)
+_STRIKE_SPAN = re.compile(r"~~(?=[^\s~])(.+?)(?<=[^\s~])~~|<(s|del|strike)\b[^>]*>(.*?)</\1\s*>", re.S | re.I)
 _RUN_BREAK = frozenset("\n<>|~*_[]()`$")  # a struck run never crosses a line, a tag, a cell or other markup
 _BOLD_SPAN = re.compile(r"(?<!\*)\*\*(?=[^\s*])(.+?)(?<=[^\s*])\*\*(?!\*)", re.S)
 _MARKER = r"(?:[-*+•◦▪●○■‣∙–—·]|[0-9]{1,3}[.)]|\([0-9]{1,3}\)|\([a-z]{1,4}\)|\([A-Z]\)|[a-z][.)]|[ivx]{1,4}[.)])"
@@ -174,12 +174,43 @@ def _struck_runs(raw: str, toks: list[tuple[int, int, str]], struck: list[bool |
     return runs
 
 
+def _unwrap_overwide_strikes(
+    raw: str,
+    toks: list[tuple[int, int, str]],
+    struck: list[bool | None],
+) -> str:
+    """When a PDF explicitly draws strikethrough lines, unwrap any VLM strikeout span that covers aligned
+    non-struck words so exact PDF-grounded strikethrough can be re-applied cleanly."""
+    new = raw
+    for m in reversed(list(_STRIKE_SPAN.finditer(raw))):
+        inner = m.group(1) if m.group(1) is not None else m.group(3)
+        inside = [i for i, t in enumerate(toks) if m.start() <= t[0] and t[1] <= m.end()]
+        aligned = [struck[i] for i in inside if struck[i] is not None]
+        if inside and len(aligned) >= ALIGNED_SHARE * len(inside) and any(s is False for s in aligned):
+            new = new[: m.start()] + inner + new[m.end() :]
+    return new
+
+
 def _strikes(page: Page, raws: list[str], words) -> list[str]:
     pdf_keys, pdf_struck = _pdf_tokens(words, "s")
     if not any(pdf_struck):
         return raws
     per_region = [_visible_tokens(raw) for raw in raws]
     by_region = _align_with_reordered_recovery(per_region, pdf_keys, pdf_struck)
+    cleaned = list(raws)
+    unwrapped = False
+    for r, (region, raw, toks, mine) in enumerate(zip(page.regions, raws, per_region, by_region, strict=True)):
+        if region.kind not in PROSE and region.kind != "table":
+            continue
+        struck = [None if j < 0 else pdf_struck[j] for j in mine]
+        fixed = _unwrap_overwide_strikes(raw, toks, struck)
+        if fixed != raw:
+            cleaned[r] = fixed
+            unwrapped = True
+    if unwrapped:
+        raws = cleaned
+        per_region = [_visible_tokens(raw) for raw in raws]
+        by_region = _align_with_reordered_recovery(per_region, pdf_keys, pdf_struck)
     out = list(raws)
     for r, (region, raw, toks, mine) in enumerate(zip(page.regions, raws, per_region, by_region, strict=True)):
         if region.kind not in PROSE and region.kind != "table":
