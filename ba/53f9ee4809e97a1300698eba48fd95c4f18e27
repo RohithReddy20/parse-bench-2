@@ -1,0 +1,23 @@
+src/docparse/pdf/render.py
+  s_6e78563db01caf::t_6346c7006293b7 15
+  s_6e78563db01caf::t_ed8f358dbebba2 333-351,357-360
+  s_6e78563db01caf::t_612dea923dbdf1 361-362
+src/evalkit/pixel_alias.py
+  s_6e78563db01caf::t_02811ab67d1743 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ba53f9ee4809e97a1300698eba48fd95c4f18e27",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
