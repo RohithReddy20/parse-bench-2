@@ -28,6 +28,7 @@ QWEN35_27B_FP8 = ModelRef(
 
 CHART_PROMPT_ID = "qwen3.5/chart-v2"
 FORM_PROMPT_ID = "qwen3.5/form-v2"
+FORM_REFINE_PROMPT_ID = "qwen3.5/form-refine-v1"
 HARD_HTML_PROMPT_ID = "qwen3.5/hard-html-v2"
 
 CHART_SYSTEM = (
@@ -58,8 +59,12 @@ printed units and signs). Read the image for any values, labels, titles, units, 
 placeholders like "Series 1" or "Value" when an axis label or legend name is printed.
 4. Do NOT invent Total, Average, or Sum rows/columns that are not actually plotted in the chart.
 5. Output ONLY the exact chart title line(s) and clean HTML <table>...</table> (using <table>, <tr>, <th>, <td>, \
-colspan/rowspan as needed). No markdown code fences or commentary.
-6. Keep your internal reasoning concise (under 400 words), then immediately output the final HTML table(s)."""
+colspan/rowspan as needed). When a chart has multiple panels or subplots, emit one separate <table> per panel/subplot. \
+No markdown code fences or commentary."""
+CHART_THINK_RULE = (
+    "\n6. Keep your internal reasoning concise (under 400 words), then immediately output the final HTML table(s)."
+)
+MAX_IMAGE_SIDE = 2048  # keeps visual token count in Qwen3.5's optimal regime (~3-4k tokens) and 4x smaller manifests
 
 FORM_PROMPT = """\
 Transcribe this document form page completely and accurately into clean Markdown.
@@ -90,6 +95,14 @@ Strict rules:
 4. Output only the faithful document transcription with no code fences or commentary."""
 
 
+def _cap_image(image: Image.Image, max_side: int = MAX_IMAGE_SIDE) -> Image.Image:
+    w, h = image.size
+    if max(w, h) <= max_side:
+        return image
+    scale = max_side / max(w, h)
+    return image.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.Resampling.LANCZOS)
+
+
 def _call(
     images: list[Image.Image],
     prompt_id: str,
@@ -99,16 +112,17 @@ def _call(
     runtime: str,
     params: dict[str, Any],
 ) -> tuple[ModelCall, dict[str, bytes]]:
-    names, text = [pixel_hash(im) for im in images], user.encode("utf-8")
+    capped = [_cap_image(im) for im in images]
+    names, text = [pixel_hash(im) for im in capped], user.encode("utf-8")
     call = ModelCall(
         model=model,
         runtime=runtime,
         prompt_id=prompt_id,
         prompt_sha=sha256_hex(template.encode("utf-8")),
-        params={"n_images": len(images), **params},
+        params={"n_images": len(capped), **params},
         inputs=[*names, sha256_hex(text)],
     )
-    blobs = {name: png_bytes(im) for name, im in zip(names, images, strict=True)}
+    blobs = {name: png_bytes(im) for name, im in zip(names, capped, strict=True)}
     blobs[call.inputs[-1]] = text
     return call, blobs
 
@@ -124,23 +138,25 @@ def build_chart_call(
     enable_thinking: bool = True,
     temperature: float = 0.6,
     top_p: float = 0.95,
-    top_k: int = 20,
+    top_k: int | None = 20,
     presence_penalty: float = 1.5,
     max_tokens: int = 10240,
 ) -> tuple[ModelCall, dict[str, bytes]]:
     """Full page (plus an optional zoomed chart crop) with vector measurements and the draft tables to verify."""
     images = [page_image] if crop_image is None else [page_image, crop_image]
-    user = CHART_PROMPT.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
-    params = {
+    template = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT
+    user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
+    params: dict[str, Any] = {
         "system_prompt": CHART_SYSTEM,
         "enable_thinking": enable_thinking,
         "temperature": temperature,
         "top_p": top_p,
-        "top_k": top_k,
         "presence_penalty": presence_penalty,
         "max_tokens": max_tokens,
     }
-    return _call(images, CHART_PROMPT_ID, CHART_PROMPT, user, model, runtime, params)
+    if top_k is not None:
+        params["top_k"] = top_k
+    return _call(images, CHART_PROMPT_ID, template, user, model, runtime, params)
 
 
 def build_form_call(
@@ -164,6 +180,54 @@ def build_form_call(
         "max_tokens": max_tokens,
     }
     return _call([page_image], FORM_PROMPT_ID, FORM_PROMPT, FORM_PROMPT, model, runtime, params)
+
+
+FORM_REFINE_PROMPT = """\
+Verify and correct this document form page transcription against the page image.
+
+Current draft transcription from an initial parser (may have flipped or missed checkboxes, split character-box \
+digits, or omitted blank/handwritten fields — keep all accurate printed text and headings intact):
+<draft>
+{draft}
+</draft>
+
+Strict rules:
+1. Keep ALL accurate printed headings, field numbers, labels, instructions, and values from `<draft>` — NEVER drop \
+printed text or omit sections.
+2. Visually inspect EVERY checkbox and radio button on the image: mark `[x]` ONLY if visibly checked/ticked/crossed, \
+and `[ ]` if unchecked/empty. Fix every misread checkbox from `<draft>`.
+3. For comb / character-box fields (dates, postal codes, ID numbers written one character per box), assemble the \
+complete value cleanly (e.g. `2025-04-12`, `M2 9YT`) without mixing printed box numbers into the value.
+4. Keep genuinely blank/unfilled fields marked `[___]` (never invent values and never shift a value into a neighbor).
+5. Output ONLY the clean, corrected Markdown transcription (HTML `<table>` only for true tabular grids). No code \
+fences, commentary, or repeated `<br>` tags."""
+
+
+def build_form_refine_call(
+    page_image: Image.Image,
+    draft_markdown: str,
+    *,
+    model: ModelRef = QWEN35_27B_FP8,
+    runtime: str = RUNTIME,
+    enable_thinking: bool = False,
+    temperature: float = 0.1,
+    top_p: float = 0.95,
+    top_k: int | None = None,
+    presence_penalty: float = 1.0,
+    max_tokens: int = 8192,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """Verify and correct an initial form transcription against the page image."""
+    user = FORM_REFINE_PROMPT.format(draft=draft_markdown.strip() or "(none)")
+    params: dict[str, Any] = {
+        "enable_thinking": enable_thinking,
+        "temperature": temperature,
+        "top_p": top_p,
+        "presence_penalty": presence_penalty,
+        "max_tokens": max_tokens,
+    }
+    if top_k is not None:
+        params["top_k"] = top_k
+    return _call([page_image], FORM_REFINE_PROMPT_ID, FORM_REFINE_PROMPT, user, model, runtime, params)
 
 
 def build_hard_table_call(

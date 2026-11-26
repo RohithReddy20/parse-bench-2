@@ -170,15 +170,17 @@ def _tier2_chart_call(
     boxes = pp_boxes or [(b[0] * w / 1000, b[1] * h / 1000, b[2] * w / 1000, b[3] * h / 1000) for b in figures]
     crop, box_pt = _chart_crop(rp, boxes)
     hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)  # vector paths follow the page as stored
+    enable_thinking = bool(opts.get("enable_thinking", False))
+    top_k = int(opts["top_k"]) if "top_k" in opts else (20 if enable_thinking else None)
     return qwen_tier2.build_chart_call(
         rp.image,
         crop_image=crop,
         vector_hint=hint,
         draft_tables="\n\n".join(drafts or _TABLE.findall(raw_chandra)),
-        enable_thinking=bool(opts.get("enable_thinking", False)),
+        enable_thinking=enable_thinking,
         temperature=float(opts.get("temperature", 0.1)),
         top_p=float(opts.get("top_p", 0.95)),
-        top_k=int(opts.get("top_k", 20)),
+        top_k=top_k,
         presence_penalty=float(opts.get("presence_penalty", 1.0)),
         max_tokens=int(opts.get("max_tokens", 10240)),
     )
@@ -352,6 +354,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 )
                 if fused:
                     used.append(result)
+            tier2_chart_used = False
             if config.tier2_charts:
                 from docparse.models.adapters import qwen_tier2
 
@@ -377,6 +380,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if t2_markdown is not None:
                         markdown = t2_markdown
                         used.append(t2_res)
+                        tier2_chart_used = True
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
             if config.form_options:
                 from docparse.fixes.forms import repair
@@ -401,7 +405,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 from docparse.fixes.tables import fix_tables
 
                 fix_tables(page, rp, config.table_options)
-            if config.chart_options.get("measure") and any(r.kind == "table" for r in page.regions):
+            if (
+                config.chart_options.get("measure")
+                and not tier2_chart_used
+                and any(r.kind == "table" for r in page.regions)
+            ):
                 from docparse.fixes.charts import correct_tables
                 from docparse.fixes.layout_refine import words_in_points
                 from docparse.pdf.graphics import load_shapes

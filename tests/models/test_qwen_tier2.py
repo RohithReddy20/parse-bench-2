@@ -12,11 +12,14 @@ from docparse.core.hashing import sha256_hex
 from docparse.models.adapters.qwen_tier2 import (
     CHART_PROMPT,
     CHART_SYSTEM,
+    CHART_THINK_RULE,
     FORM_PROMPT,
     HARD_HTML_PROMPT,
+    MAX_IMAGE_SIDE,
     QWEN35_27B_FP8,
     build_chart_call,
     build_form_call,
+    build_form_refine_call,
     build_hard_table_call,
     make_horizontal_strips,
     merge_strip_tables,
@@ -72,7 +75,10 @@ def test_chart_call_keys_page_crop_and_prompt_by_content() -> None:
     prompt = blobs[prompt_sha].decode("utf-8")
     assert "bar A = 12.5" in prompt and "<td>A</td>" in prompt and "{hint}" not in prompt
     assert call.model == QWEN35_27B_FP8 and call.runtime == RUNTIME
-    assert call.prompt_sha == sha256_hex(CHART_PROMPT.encode("utf-8"))
+    assert call.prompt_sha == sha256_hex((CHART_PROMPT + CHART_THINK_RULE).encode("utf-8"))
+    nt_call, nt_blobs = build_chart_call(page, crop, "bar A = 12.5", "", enable_thinking=False, top_k=None)
+    assert nt_call.prompt_sha == sha256_hex(CHART_PROMPT.encode("utf-8"))
+    assert "under 400 words" not in nt_blobs[nt_call.inputs[-1]].decode("utf-8") and "top_k" not in nt_call.params
     assert call.params == {
         "n_images": 2,
         "system_prompt": CHART_SYSTEM,
@@ -132,10 +138,19 @@ def test_hard_table_call_is_html_only_and_non_thinking() -> None:
     assert "NEVER output LaTeX `\\begin{tabular}`" in HARD_HTML_PROMPT and "pipe tables" in HARD_HTML_PROMPT
 
 
-@pytest.mark.parametrize("prompt", [CHART_PROMPT, FORM_PROMPT])
+@pytest.mark.parametrize("prompt", [CHART_PROMPT + CHART_THINK_RULE, FORM_PROMPT])
 def test_thinking_prompts_cap_reasoning_at_400_words(prompt: str) -> None:
     (words,) = re.findall(r"under (\d+) words", prompt)
     assert int(words) <= 400
+
+
+def test_large_images_are_capped_to_max_side() -> None:
+    big = _img(size=(2480, 3508))
+    call, blobs = build_form_refine_call(big, "Name: [___]")
+    stored = Image.open(io.BytesIO(blobs[call.inputs[0]]))
+    assert max(stored.size) == MAX_IMAGE_SIDE
+    assert "Name: [___]" in blobs[call.inputs[1]].decode("utf-8")
+    assert call.params["enable_thinking"] is False and "top_k" not in call.params
 
 
 # ── strips ──
