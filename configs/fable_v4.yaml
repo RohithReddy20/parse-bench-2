@@ -95,11 +95,13 @@ tier2_form_options:
   model: q38
   prompt: kv
   wide: true
-  enable_thinking: false
-  temperature: 0.1
+  enable_thinking: true
+  fallback_plain: true
+  temperature: 0.6
+  top_k: 20
   top_p: 0.95
   presence_penalty: 1.0
-  max_tokens: 8192
+  max_tokens: 12000
   min_word_coverage: 0.93
 tier2_tables: true
 tier2_table_options:

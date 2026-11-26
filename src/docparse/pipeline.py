@@ -697,26 +697,36 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     from functools import partial
 
                     build_form = partial(qwen_tier2.build_form_kv_call, layer_lines=_layer_lines(rp, f_opts))
-                f_call, f_blobs = build_form(
-                    rp.image,
-                    markdown,
-                    model=qwen_tier2.resolve_tier2_model(f_opts.get("model")),
-                    enable_thinking=bool(f_opts.get("enable_thinking", False)),
-                    temperature=float(f_opts.get("temperature", 0.1)),
-                    top_p=float(f_opts.get("top_p", 0.95)),
-                    top_k=int(f_opts["top_k"]) if "top_k" in f_opts else None,
-                    presence_penalty=float(f_opts.get("presence_penalty", 1.0)),
-                    max_tokens=int(f_opts.get("max_tokens", 8192)),
-                )
-                f_res = client.get(f_call, f_blobs, meta)
-                if isinstance(f_res, Pending):
-                    pending.append(f_res.key)
-                    continue
-                f_read = qwen_tier2.read_tier2_result(f_res)
                 kv = f_opts.get("prompt") == "kv"
-                if kv and f_read.markdown.strip().strip("`") == qwen_tier2.NOT_A_FORM:
-                    pass  # the model looked and saw no form: the draft stands
-                elif f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
+                samplings = [
+                    {
+                        "enable_thinking": bool(f_opts.get("enable_thinking", False)),
+                        "temperature": float(f_opts.get("temperature", 0.1)),
+                        "top_p": float(f_opts.get("top_p", 0.95)),
+                        "top_k": int(f_opts["top_k"]) if "top_k" in f_opts else None,
+                        "presence_penalty": float(f_opts.get("presence_penalty", 1.0)),
+                        "max_tokens": int(f_opts.get("max_tokens", 8192)),
+                    }
+                ]
+                if samplings[0]["enable_thinking"] and f_opts.get("fallback_plain"):
+                    # a thinking read that runs out of tokens or fails the guards falls back to a plain read
+                    samplings.append({"enable_thinking": False, "temperature": 0.1, "top_p": 0.95, "top_k": None,
+                                      "presence_penalty": 1.0, "max_tokens": 8192})  # fmt: skip
+                f_wait = False
+                for sampling in samplings:
+                    f_call, f_blobs = build_form(
+                        rp.image, markdown, model=qwen_tier2.resolve_tier2_model(f_opts.get("model")), **sampling
+                    )
+                    f_res = client.get(f_call, f_blobs, meta)
+                    if isinstance(f_res, Pending):
+                        pending.append(f_res.key)
+                        f_wait = True
+                        break
+                    f_read = qwen_tier2.read_tier2_result(f_res)
+                    if kv and f_read.markdown.strip().strip("`") == qwen_tier2.NOT_A_FORM:
+                        break  # the model looked and saw no form: the draft stands
+                    if not f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
+                        continue
                     cand_md = f_read.markdown
                     if config.strip_furniture:
                         cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
@@ -730,6 +740,9 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         markdown = cand_md
                         used.append(f_res)
                         tier2_form_used = True
+                        break
+                if f_wait:
+                    continue
             if not tier2_chart_used and not tier2_form_used:  # a page a Tier-2 read already changed is left alone
                 markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
                 if t_wait:
