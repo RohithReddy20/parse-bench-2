@@ -85,18 +85,26 @@ CHART_OPTIONS = frozenset(
         "panel_override",  # round two: ... and a binding to another panel than the titled one moves to it
     }
 )
-# Tier-2 chart reads with Qwen3.5-27B-FP8 (pipeline.py, models/adapters/qwen_tier2.py)
+# Tier-2 reads with Qwen3.5 (pipeline.py, models/adapters/qwen_tier2.py); `model` is a `TIER2_MODELS` alias
+# ("27b", "122b") or repo id, Qwen3.5-27B-FP8 when unset
 TIER2_CHART_OPTIONS = frozenset(
     {
-        "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
-        "use_ppdoclayout", "pp_chart_score",
+        "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
+        "use_ppdoclayout", "pp_chart_score", "per_chart_crops", "per_chart_min_union", "per_chart_max_boxes",
     }
 )  # fmt: skip
-# Tier-2 draft-guided form refinement with Qwen3.5-27B-FP8 (pipeline.py, models/adapters/qwen_tier2.py)
+# Tier-2 draft-guided form refinement
 TIER2_FORM_OPTIONS = frozenset(
     {
-        "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
+        "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "min_word_coverage", "min_checkboxes", "min_acro_widgets",
+    }
+)  # fmt: skip
+# Tier-2 strip re-read of dense table pages
+TIER2_TABLE_OPTIONS = frozenset(
+    {
+        "model", "n_strips", "strip_overlap", "max_tokens", "temperature", "top_p", "presence_penalty",
+        "min_recall_trigger", "min_recall_gain",
     }
 )  # fmt: skip
 
@@ -116,16 +124,25 @@ class Config(BaseModel):
     # Verify Chandra reads against a healthy PDF text layer (low word recall or flattened table -> secondary check)
     verify_pdf: bool = False
     # Chandra readers: a page with a chart (a Chandra chart Figure, or a PP-DocLayoutV3 chart box) is read once more
-    # by Qwen3.5-27B-FP8, whose chart tables replace Chandra's (or are added when only PP-DocLayoutV3 saw the chart)
+    # by Qwen3.5, whose chart tables replace Chandra's (or are added when only PP-DocLayoutV3 saw the chart); with
+    # `per_chart_crops`, a page whose 2..`per_chart_max_boxes` chart boxes cover `per_chart_min_union` of it is
+    # read once per chart, each with its own zoomed crop
     tier2_charts: bool = False
     # sampling and trigger settings of that read (TIER2_CHART_OPTIONS); empty = the defaults in pipeline.py
     tier2_chart_options: dict[str, Any] = Field(default_factory=dict)
     # Chandra readers: a form page (no math; a Chandra `Form` block, dense checkboxes or AcroForm widgets) that took
-    # no Tier-2 chart read has its draft checked against the page by Qwen3.5-27B-FP8; the refined copy replaces it
+    # no Tier-2 chart read has its draft checked against the page by Qwen3.5; the refined copy replaces it
     # only when it keeps `min_word_coverage` of the draft's words
     tier2_forms: bool = False
     # sampling and trigger settings of that read (TIER2_FORM_OPTIONS); empty = the defaults in pipeline.py
     tier2_form_options: dict[str, Any] = Field(default_factory=dict)
+    # a tabular page without math whose read hit the token limit, or (healthy text layer) holds under
+    # `min_recall_trigger` of its PDF words, is re-read by Qwen3.5 as `n_strips` overlapping horizontal strips; the
+    # stitched copy is taken only when it recovers PDF words (a scan: only in place of a cut-off read). Chandra
+    # pages already escalated for a chart or form are never re-read
+    tier2_tables: bool = False
+    # model, sampling, strip and gate settings of that read (TIER2_TABLE_OPTIONS); empty = the defaults in pipeline.py
+    tier2_table_options: dict[str, Any] = Field(default_factory=dict)
     dpi: int = 300
     # where layout items come from: carried by the page read (published stand-ins); built here from detector
     # regions and PDF words with OCRia-1's grounding code ("ground"); or none at all
@@ -158,7 +175,10 @@ class Config(BaseModel):
 
     def config_hash(self) -> str:
         # the Tier-2 fields enter the hash only when set, so configs that predate them keep their hash
-        tier2 = ("tier2_charts", "tier2_chart_options", "tier2_forms", "tier2_form_options")
+        tier2 = (
+            "tier2_charts", "tier2_chart_options", "tier2_forms", "tier2_form_options",
+            "tier2_tables", "tier2_table_options",
+        )  # fmt: skip
         unset = {name for name in tier2 if not getattr(self, name)}
         return sha256_hex(canonical_json(self.model_dump(mode="json", exclude=unset)))[:16]
 
@@ -199,6 +219,9 @@ class Config(BaseModel):
         unknown = set(data.get("tier2_form_options") or {}) - TIER2_FORM_OPTIONS
         if unknown:
             raise ValueError(f"unknown tier2 form option(s): {sorted(unknown)}")
+        unknown = set(data.get("tier2_table_options") or {}) - TIER2_TABLE_OPTIONS
+        if unknown:
+            raise ValueError(f"unknown tier2 table option(s): {sorted(unknown)}")
         unknown = set(data.get("fixes") or {}) - set(FIXES)
         if unknown:
             raise ValueError(f"unknown fix flag(s): {sorted(unknown)}")

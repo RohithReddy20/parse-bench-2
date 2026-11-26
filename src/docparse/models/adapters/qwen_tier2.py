@@ -1,8 +1,10 @@
-"""Tier-2 frontier reads with Qwen3.5-27B-FP8: keyed chart, form and hard-table calls, and reading their answers.
+"""Tier-2 frontier reads with Qwen3.5 (27B-FP8 or 122B-A10B-FP8): keyed chart, form and hard-table calls, and
+reading their answers.
 
 Request shape: input blobs 0..n-1 are the images (the page, then an optional zoomed crop), each keyed by its pixels;
 the last blob is the UTF-8 user prompt. Sampling and the system prompt live in `params`, so they enter the key too.
-Dense pages that run out of tokens are re-read as two overlapping strips and stitched by `merge_strip_tables`.
+Dense pages that run out of tokens are re-read as overlapping horizontal strips and stitched by `merge_strip_tables`
+(two strips) or `merge_n_strip_tables` (any number).
 """
 
 from __future__ import annotations
@@ -10,7 +12,9 @@ from __future__ import annotations
 import html
 import re
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import reduce
 from typing import Any
 
 from PIL import Image
@@ -25,8 +29,26 @@ QWEN35_27B_FP8 = ModelRef(
     revision="97f5941bf617e31c5e237364a8602ce3f03a551a",
     dtype="fp8",
 )
+QWEN35_122B_A10B_FP8 = ModelRef(
+    repo="Qwen/Qwen3.5-122B-A10B-FP8",
+    revision="a099dee70ccfcd8d5dda56aaa0b60cb8ecadabc9",
+    dtype="fp8",
+)
+TIER2_MODELS = {"27b": QWEN35_27B_FP8, "122b": QWEN35_122B_A10B_FP8}
+
+
+def resolve_tier2_model(spec: str | None) -> ModelRef:
+    """The Tier-2 model a config names: a `TIER2_MODELS` alias or a repo id; Qwen3.5-27B-FP8 when unset."""
+    if not spec:
+        return QWEN35_27B_FP8
+    for alias, model in TIER2_MODELS.items():
+        if spec.lower() == alias or spec == model.repo:
+            return model
+    raise ValueError(f"unknown tier2 model {spec!r}: use one of {sorted(TIER2_MODELS)} or their repo ids")
+
 
 CHART_PROMPT_ID = "qwen3.5/chart-v2"
+SINGLE_CHART_PROMPT_ID = "qwen3.5/chart-single-v1"
 FORM_PROMPT_ID = "qwen3.5/form-v2"
 FORM_REFINE_PROMPT_ID = "qwen3.5/form-refine-v1"
 HARD_HTML_PROMPT_ID = "qwen3.5/hard-html-v2"
@@ -64,6 +86,32 @@ No markdown code fences or commentary."""
 CHART_THINK_RULE = (
     "\n6. Keep your internal reasoning concise (under 400 words), then immediately output the final HTML table(s)."
 )
+SINGLE_CHART_PROMPT = """\
+Focus ONLY on the single chart/plot shown in the second (zoomed crop) image (use the first image only for \
+surrounding title, caption, units, and legend context).
+
+PDF vector measurements for this chart region (exact axis tick labels, bar/line coordinates, and printed \
+data labels; empty if raster):
+<vector_hint>
+{hint}
+</vector_hint>
+
+Initial draft tables from the page (may mix panels or misread values — verify every label and value against \
+the zoomed chart crop):
+<draft>
+{draft}
+</draft>
+
+Strict rules:
+1. Transcribe ONLY the chart shown in the second (zoomed) image into a clean HTML `<table>` preceded by its short \
+chart/panel title line. If the zoomed box itself contains stacked/side-by-side subplots with distinct axes, output \
+one separate `<table>` per subplot.
+2. NEVER invent summary/Total/Average rows or columns not drawn on the chart.
+3. Prefer exact printed numbers on bars/points/slices first; for unlabelled bars/points/lines, use `<vector_hint>` \
+axis measurements verified visually against the zoomed crop.
+4. Keep exact units, signs (negative `-` values), percentages, and decimal precision. Preserve \
+full category/legend names.
+5. Output ONLY the short title line and HTML `<table>...</table>` (no code fences, prose paragraphs, or commentary)."""
 MAX_IMAGE_SIDE = 2048  # keeps visual token count in Qwen3.5's optimal regime (~3-4k tokens) and 4x smaller manifests
 
 FORM_PROMPT = """\
@@ -146,6 +194,40 @@ def build_chart_call(
     images = [page_image] if crop_image is None else [page_image, crop_image]
     template = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
+    params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
+    return _call(images, CHART_PROMPT_ID, template, user, model, runtime, params)
+
+
+def build_single_chart_call(
+    page_image: Image.Image,
+    crop_image: Image.Image,
+    *,
+    vector_hint: str = "",
+    draft_tables: str = "",
+    model: ModelRef = QWEN35_122B_A10B_FP8,
+    runtime: str = RUNTIME,
+    enable_thinking: bool = False,
+    temperature: float = 0.1,
+    top_p: float = 0.95,
+    top_k: int | None = None,
+    presence_penalty: float = 1.0,
+    max_tokens: int = 10240,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """One chart of a page with several: the page for context, the chart's zoomed crop, and its vector hint."""
+    template = SINGLE_CHART_PROMPT + CHART_THINK_RULE if enable_thinking else SINGLE_CHART_PROMPT
+    user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
+    params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
+    return _call([page_image, crop_image], SINGLE_CHART_PROMPT_ID, template, user, model, runtime, params)
+
+
+def _chart_params(
+    enable_thinking: bool,
+    temperature: float,
+    top_p: float,
+    top_k: int | None,
+    presence_penalty: float,
+    max_tokens: int,
+) -> dict[str, Any]:
     params: dict[str, Any] = {
         "system_prompt": CHART_SYSTEM,
         "enable_thinking": enable_thinking,
@@ -156,7 +238,7 @@ def build_chart_call(
     }
     if top_k is not None:
         params["top_k"] = top_k
-    return _call(images, CHART_PROMPT_ID, template, user, model, runtime, params)
+    return params
 
 
 def build_form_call(
@@ -260,6 +342,23 @@ def make_horizontal_strips(page_image: Image.Image, overlap: float = 0.12) -> tu
     cut_top = min(h, max(1, round(h * (0.5 + overlap / 2))))
     cut_bot = max(0, min(h - 1, round(h * (0.5 - overlap / 2))))
     return image.crop((0, 0, w, cut_top)), image.crop((0, cut_bot, w, h))
+
+
+def make_n_horizontal_strips(page_image: Image.Image, n: int = 3, overlap: float = 0.14) -> list[Image.Image]:
+    """`n` equal bands of a page, top to bottom, each extended by `overlap / 2` of the page height across every
+    interior boundary (n = 2 gives `make_horizontal_strips`)."""
+    if n < 2:
+        raise ValueError(f"n must be at least 2, got {n}")
+    if not 0.0 <= overlap <= 1.0:
+        raise ValueError(f"overlap must be within [0, 1], got {overlap}")
+    image = page_image.convert("RGB")
+    w, h = image.size
+    strips = []
+    for i in range(n):
+        top = 0 if i == 0 else max(0, min(h - 1, round(h * (i / n - overlap / 2))))
+        bot = h if i == n - 1 else min(h, max(top + 1, round(h * ((i + 1) / n + overlap / 2))))
+        strips.append(image.crop((0, top, w, bot)))
+    return strips
 
 
 _FLAGS = re.DOTALL | re.IGNORECASE
@@ -369,6 +468,12 @@ def merge_strip_tables(top_md: str, bot_md: str) -> str:
             tail = _join_text(top_md[t.end() :], bot_md[b.end() :])
             return "\n\n".join(p for p in (head, merged, tail) if p)
     return _join_text(top_md, bot_md)
+
+
+def merge_n_strip_tables(strips: Sequence[str]) -> str:
+    """Stitch transcriptions of a page's strips, top to bottom (see `make_n_horizontal_strips`), pairwise with
+    `merge_strip_tables`; empty strips are skipped."""
+    return reduce(merge_strip_tables, (s for s in strips if s.strip()), "")
 
 
 @dataclass

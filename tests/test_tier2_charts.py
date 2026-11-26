@@ -1,7 +1,8 @@
-"""Tier-2 chart reads and form refinement (Qwen3.5-27B-FP8) wired into the Chandra pipeline, against a scripted
-model client."""
+"""Tier-2 chart reads, form refinement and table strip re-reads (Qwen3.5) wired into the pipeline, against a
+scripted model client."""
 
 import io
+import re
 
 import pytest
 from PIL import Image
@@ -10,24 +11,26 @@ from docparse.core.config import Config
 from docparse.core.hashing import canonical_json, sha256_hex
 from docparse.models.adapters import ocria, ppdoclayout, qwen_tier2, vlm_specialists
 from docparse.models.calls import ModelResult, Pending
-from docparse.pipeline import parse
+from docparse.pdf.render import RenderedPage
+from docparse.pipeline import _dedup_chart_boxes, _union_share, parse
 from docparse.write.markdown import write_document
 
-CHANDRA, OCRIA, PP, TIER2, FORM = (
+CHANDRA, OCRIA, PP, TIER2, FORM, SINGLE, STRIP = (
     vlm_specialists.CHANDRA_PROMPT_ID,
     ocria.PROMPT_ID,
     ppdoclayout.PROMPT_ID,
     qwen_tier2.CHART_PROMPT_ID,
     qwen_tier2.FORM_REFINE_PROMPT_ID,
+    qwen_tier2.SINGLE_CHART_PROMPT_ID,
+    qwen_tier2.HARD_HTML_PROMPT_ID,
 )
-GPU_SECONDS = {CHANDRA: 1.0, OCRIA: 2.0, PP: 0.0, TIER2: 4.0, FORM: 3.0}
+GPU_SECONDS = {CHANDRA: 1.0, OCRIA: 2.0, PP: 0.0, TIER2: 4.0, FORM: 3.0, SINGLE: 4.0, STRIP: 5.0}
 BASE = Config(page_model=ocria.OWN, page_runtime="vllm-0.34.0", prompt_sha="t", reader="chandra_hybrid", layout="none")
-FRONTIER = BASE.model_copy(
-    update={"tier2_charts": True, "tier2_chart_options": Config.load("configs/frontier_v3.yaml").tier2_chart_options}
-)
-FORMS = BASE.model_copy(
-    update={"tier2_forms": True, "tier2_form_options": Config.load("configs/frontier_v3.yaml").tier2_form_options}
-)
+V3 = Config.load("configs/frontier_v3.yaml")
+FRONTIER = BASE.model_copy(update={"tier2_charts": True, "tier2_chart_options": V3.tier2_chart_options})
+FORMS = BASE.model_copy(update={"tier2_forms": True, "tier2_form_options": V3.tier2_form_options})
+TABLES = BASE.model_copy(update={"tier2_tables": True, "tier2_table_options": V3.tier2_table_options})
+OCRIA_TABLES = TABLES.model_copy(update={"reader": "ocria"})
 
 PROSE_TOP = "Quarterly revenue grew strongly across all regions this year."
 PROSE_END = "Margins held steady through the final quarter."
@@ -64,28 +67,48 @@ CHECKBOX_PAGE = (  # no Form block, but four checkboxes
     '<input type="checkbox"/> Divorced <input type="checkbox"/> Widowed</p></div>'
 )
 FLIP = ("[ ] Married [x] Single", "[x] Married [ ] Single")  # Chandra's misread boxes, and Qwen's correction
+UNITS_TABLE = "<table><tr><th>Market</th><th>Units</th></tr><tr><td>East</td><td>7.5</td></tr></table>"
+TWO_CHARTS = [  # two large charts (59% of the page), listed bottom first, and a repeat inside the top one
+    {"label": "chart", "score": 0.9, "box": [60, 560, 790, 940]},
+    {"label": "chart", "score": 0.9, "box": [60, 150, 790, 520]},
+    {"label": "chart", "score": 0.8, "box": [70, 160, 780, 510]},
+]
 
 
-def _png(size=(850, 1100)) -> bytes:
+def _ledger(lo: int, hi: int) -> str:
+    rows = "".join(f"<tr><td>Item {i}</td><td>{i * 10}</td></tr>" for i in range(lo, hi + 1))
+    return f"<table><tr><th>Item</th><th>Qty</th></tr>{rows}</table>"
+
+
+LEDGER_STRIPS = (f"{PROSE_TOP}\n\n{_ledger(1, 6)}", _ledger(5, 11), f"{_ledger(10, 15)}\n\n{PROSE_END}")
+
+
+def _png(size=(850, 1100), gradient=False) -> bytes:
     buf = io.BytesIO()
-    Image.new("RGB", size, "white").save(buf, format="PNG")
+    image = Image.linear_gradient("L").resize(size).convert("RGB") if gradient else Image.new("RGB", size, "white")
+    image.save(buf, format="PNG")
     return buf.getvalue()
 
 
 PAGE = _png()
+STRIPED = _png(gradient=True)  # every horizontal strip of it differs, and so does its call key
 
 
 class ScriptedClient:
-    """Answers each model by prompt id; prompt ids in `pending` are not in the cache yet."""
+    """Answers each model by prompt id; prompt ids in `pending` are not in the cache yet. Per-chart and strip reads
+    take `singles` and `strips` in call order."""
 
-    def __init__(self, chandra, tier2="", pp=(), pending=(), finish="stop", form=""):
+    def __init__(
+        self, chandra, tier2="", pp=(), pending=(), finish="stop", form="", singles=(), strips=(), ocria_finish=None
+    ):
         self.answers = {
             CHANDRA: {"answer": chandra, "finish_reason": "stop"},
-            OCRIA: {"markdown": f"{PROSE_TOP}\n\n{OCRIA_TABLE}"},
+            OCRIA: {"markdown": f"{PROSE_TOP}\n\n{OCRIA_TABLE}", "finish_reason": ocria_finish},
             PP: {"detections": list(pp)},
             TIER2: {"answer": tier2, "finish_reason": finish},
             FORM: {"answer": form, "finish_reason": "stop"},
         }
+        self.scripts = {SINGLE: list(singles), STRIP: list(strips)}
         self.pending, self.calls, self.blobs = set(pending), [], {}
 
     def get(self, call, blobs, meta=None):
@@ -93,7 +116,10 @@ class ScriptedClient:
         self.blobs[call.key()] = blobs
         if call.prompt_id in self.pending:
             return Pending(key=call.key())
-        output = self.answers[call.prompt_id]
+        if call.prompt_id in self.scripts:
+            output = {"answer": self.scripts[call.prompt_id][len(self.of(call.prompt_id)) - 1], "finish_reason": "stop"}
+        else:
+            output = self.answers[call.prompt_id]
         return ModelResult(key=call.key(), output=output, tokens_out=10, gpu_seconds=GPU_SECONDS[call.prompt_id])
 
     def of(self, prompt_id):
@@ -115,6 +141,8 @@ def test_off_by_default_never_asks_for_tier2_and_keeps_the_config_hash():
         "tier2_chart_options": {},
         "tier2_forms": False,
         "tier2_form_options": {},
+        "tier2_tables": False,
+        "tier2_table_options": {},
         "form_options": {k: v for k, v in frontier.form_options.items() if k != "checkbox_ink"},
     }
     assert frontier.model_copy(update=off) == hybrid
@@ -254,3 +282,108 @@ def test_tier2_forms_off_keeps_the_hybrid_v2_hash_and_unknown_options_fail():
     assert frontier.tier2_forms and frontier.tier2_form_options["min_word_coverage"] == 0.93
     with pytest.raises(ValueError, match="unknown tier2 form option"):
         Config.load("configs/hybrid_v2.yaml", ["tier2_form_options.min_coverage=0.9"])
+
+
+def test_tier2_tables_off_keeps_the_hybrid_v2_hash_and_unknown_options_fail():
+    hybrid = Config.load("configs/hybrid_v2.yaml")
+    old = {k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_")}
+    assert not hybrid.tier2_tables and hybrid.config_hash() == sha256_hex(canonical_json(old))[:16]
+    assert hybrid.model_copy(update={"tier2_tables": True}).config_hash() != hybrid.config_hash()
+    assert V3.tier2_tables and V3.tier2_table_options["n_strips"] == 3
+    assert (V3.tier2_chart_options["model"], V3.tier2_form_options["model"]) == ("122b", "27b")
+    with pytest.raises(ValueError, match="unknown tier2 table option"):
+        Config.load("configs/hybrid_v2.yaml", ["tier2_table_options.strips=4"])
+
+
+# ── per-chart crops ──
+
+
+def test_chart_boxes_are_deduplicated_in_reading_order_and_their_union_measured():
+    inner, left, right, low = (2, 12, 48, 58), (0, 10, 50, 60), (60, 0, 110, 50), (0, 300, 50, 360)
+    assert _dedup_chart_boxes([low, right, left, inner]) == [left, right, low]  # one band: left to right
+    rp = RenderedPage(image=Image.new("RGB", (100, 100)), dpi=72, width_pt=100, height_pt=100)
+    assert _union_share(rp, [(0, 0, 50, 50), (25, 25, 75, 75)]) == pytest.approx(0.5625)
+    assert _union_share(rp, [(10, 10, 30, 30), (90, 90, 150, 150)]) == pytest.approx(0.81)
+
+
+def test_several_large_charts_are_read_one_zoomed_crop_each():
+    answers = (f"Revenue by quarter\n{QWEN_TABLE}", f"Units by market\n{UNITS_TABLE}")
+    client = ScriptedClient(MISSED_CHART_PAGE, pp=TWO_CHARTS, singles=answers)
+    doc = parse(PAGE, FRONTIER, client).document
+    calls = client.of(SINGLE)
+    assert not client.of(TIER2) and len(calls) == 2
+    assert all(c.model == qwen_tier2.QWEN35_122B_A10B_FP8 and c.params["n_images"] == 2 for c in calls)
+    sizes = [Image.open(io.BytesIO(client.blobs[c.key()][c.inputs[1]])).size for c in calls]
+    assert sizes == [(832, 502), (832, 512)]  # each box padded by 6%, the top chart first; the repeat is not read
+    assert SALES_TABLE in client.blobs[calls[0].key()][calls[0].inputs[-1]].decode()  # the page's draft tables
+    assert write_document(doc).endswith(f"Revenue by quarter\n{QWEN_TABLE}\n\nUnits by market\n{UNITS_TABLE}")
+    assert doc.pages[0].cost.calls == 3
+    client = ScriptedClient(MISSED_CHART_PAGE, pp=TWO_CHARTS, pending={SINGLE})
+    waiting = parse(PAGE, FRONTIER, client)
+    assert waiting.document is None and waiting.pending == [c.key() for c in client.of(SINGLE)]
+    assert len(waiting.pending) == 2  # all charts are asked for in one batch
+
+
+def test_charts_covering_little_of_the_page_keep_one_read_of_their_union():
+    pp = [{"label": "chart", "score": 0.9, "box": [100, 200, 400, 400]}, {"label": "chart", "score": 0.9, "box": [450, 200, 750, 400]}]
+    client = ScriptedClient(MISSED_CHART_PAGE, tier2=f"Revenue by quarter\n{QWEN_TABLE}", pp=pp)
+    md = write_document(parse(PAGE, FRONTIER, client).document)
+    (call,) = client.of(TIER2)
+    assert not client.of(SINGLE) and call.model == qwen_tier2.QWEN35_122B_A10B_FP8
+    assert Image.open(io.BytesIO(client.blobs[call.key()][call.inputs[1]])).size == (752, 332)  # both boxes: 13%
+    assert md.endswith(f"Revenue by quarter\n{QWEN_TABLE}")
+
+
+# ── table strips ──
+
+
+def test_a_cut_off_table_read_is_re_read_in_three_strips_and_stitched():
+    client = ScriptedClient("", strips=LEDGER_STRIPS, ocria_finish="length")
+    doc = parse(STRIPED, OCRIA_TABLES, client).document
+    md = write_document(doc)
+    calls = client.of(STRIP)
+    assert len(calls) == 3 and all(c.model == qwen_tier2.QWEN35_122B_A10B_FP8 for c in calls)
+    assert all(c.params["max_tokens"] == 16384 and c.params["enable_thinking"] is False for c in calls)
+    heights = [Image.open(io.BytesIO(client.blobs[c.key()][c.inputs[0]])).height for c in calls]
+    assert heights == [444, 520, 444]  # thirds of the 1100-pixel page, overlapping by 14% of it
+    assert _ledger(1, 15) in md and md.startswith(PROSE_TOP) and "31.7" not in md
+    assert (doc.pages[0].cost.calls, doc.pages[0].cost.gpu_seconds) == (4, 17.0)
+    client = ScriptedClient("", strips=LEDGER_STRIPS, ocria_finish="length", pending={STRIP})
+    waiting = parse(STRIPED, OCRIA_TABLES, client)
+    assert waiting.document is None and waiting.pending == [c.key() for c in client.of(STRIP)]
+    assert len(waiting.pending) == 3  # all strips are asked for in one batch
+    for strips, finish in [((LEDGER_STRIPS[0], "", LEDGER_STRIPS[2]), "length"), (LEDGER_STRIPS, None)]:
+        client = ScriptedClient("", strips=strips, ocria_finish=finish)  # an unusable strip; a complete scan read
+        assert "31.7" in write_document(parse(STRIPED, OCRIA_TABLES, client).document)
+        assert len(client.of(STRIP)) == (3 if finish else 0)
+
+
+def _item_recall(md, words):  # stands in for the PDF word recall of a ledger whose text layer holds Items 1-15
+    return sum(bool(re.search(rf"\bItem {i}\b", md)) for i in range(1, 16)) / 15
+
+
+@pytest.mark.parametrize(
+    ("healthy", "page_hi", "last_strip", "taken"),
+    [
+        (True, 10, _ledger(10, 15), True),  # recall 0.67 -> 1.0
+        (True, 10, _ledger(9, 10), False),  # 0.67 -> 0.67: under min_recall_gain
+        (True, 12, _ledger(10, 15), None),  # 0.80: over min_recall_trigger, never re-read
+        (False, 10, _ledger(10, 15), None),  # no healthy text layer and a complete read: never re-read
+    ],
+)
+def test_a_low_recall_table_page_takes_the_strips_only_when_they_recover_pdf_words(
+    monkeypatch, healthy, page_hi, last_strip, taken
+):
+    from docparse.fixes import verify
+
+    monkeypatch.setattr(verify, "has_healthy_text_layer", lambda rp: healthy)
+    monkeypatch.setattr(verify, "pdf_word_recall", _item_recall)
+    page = f'<div data-bbox="50 80 950 900" data-label="Table">{_ledger(1, page_hi)}</div>'
+    client = ScriptedClient(page, strips=(_ledger(1, 6), _ledger(5, 10), last_strip))
+    doc = parse(STRIPED, TABLES, client).document
+    assert len(client.of(STRIP)) == (0 if taken is None else 3)
+    assert ("Item 15" in write_document(doc)) is bool(taken)
+    if taken:
+        assert doc.pages[0].cost.calls == 4  # Chandra and the three strips
+    else:  # Chandra's page, as if Tier-2 tables were off
+        assert doc.pages == parse(STRIPED, BASE, ScriptedClient(page)).document.pages

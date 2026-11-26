@@ -1,4 +1,4 @@
-"""Unit tests for the Qwen3.5-27B-FP8 tier-2 call builders, strip tiling and stitching, and answer reader."""
+"""Unit tests for the Qwen3.5 tier-2 call builders, strip tiling and stitching, and answer reader."""
 
 from __future__ import annotations
 
@@ -17,13 +17,20 @@ from docparse.models.adapters.qwen_tier2 import (
     HARD_HTML_PROMPT,
     MAX_IMAGE_SIDE,
     QWEN35_27B_FP8,
+    QWEN35_122B_A10B_FP8,
+    SINGLE_CHART_PROMPT,
+    SINGLE_CHART_PROMPT_ID,
     build_chart_call,
     build_form_call,
     build_form_refine_call,
     build_hard_table_call,
+    build_single_chart_call,
     make_horizontal_strips,
+    make_n_horizontal_strips,
+    merge_n_strip_tables,
     merge_strip_tables,
     read_tier2_result,
+    resolve_tier2_model,
 )
 from docparse.models.adapters.vlm_specialists import RUNTIME
 from docparse.models.calls import ModelResult
@@ -63,6 +70,38 @@ def test_model_is_pinned_fp8_revision() -> None:
     assert QWEN35_27B_FP8.repo == "Qwen/Qwen3.5-27B-FP8"
     assert QWEN35_27B_FP8.revision == "97f5941bf617e31c5e237364a8602ce3f03a551a"
     assert QWEN35_27B_FP8.dtype == "fp8"
+    assert QWEN35_122B_A10B_FP8.repo == "Qwen/Qwen3.5-122B-A10B-FP8"
+    assert QWEN35_122B_A10B_FP8.revision == "a099dee70ccfcd8d5dda56aaa0b60cb8ecadabc9"
+    assert QWEN35_122B_A10B_FP8.dtype == "fp8"
+
+
+def test_resolve_tier2_model_by_alias_or_repo() -> None:
+    assert resolve_tier2_model(None) == resolve_tier2_model("") == resolve_tier2_model("27b") == QWEN35_27B_FP8
+    assert resolve_tier2_model("122B") == resolve_tier2_model("Qwen/Qwen3.5-122B-A10B-FP8") == QWEN35_122B_A10B_FP8
+    with pytest.raises(ValueError, match="unknown tier2 model"):
+        resolve_tier2_model("235b")
+
+
+def test_single_chart_call_sends_page_and_crop_with_hint_and_draft() -> None:
+    page, crop = _img(), _img((10, 20, 30), (32, 32))
+    call, blobs = build_single_chart_call(page, crop, vector_hint="bar A = 12.5", draft_tables="<table></table>")
+    assert call.prompt_id == SINGLE_CHART_PROMPT_ID and call.model == QWEN35_122B_A10B_FP8
+    assert call.inputs[:2] == [pixel_hash(page), pixel_hash(crop)]
+    assert call.prompt_sha == sha256_hex(SINGLE_CHART_PROMPT.encode("utf-8"))
+    prompt = blobs[call.inputs[-1]].decode("utf-8")
+    assert "<vector_hint>\nbar A = 12.5\n</vector_hint>" in prompt and "<draft>\n<table></table>\n</draft>" in prompt
+    assert call.params == {
+        "n_images": 2,
+        "system_prompt": CHART_SYSTEM,
+        "enable_thinking": False,
+        "temperature": 0.1,
+        "top_p": 0.95,
+        "presence_penalty": 1.0,
+        "max_tokens": 10240,
+    }
+    empty_call, empty_blobs = build_single_chart_call(page, crop)
+    assert "(none)" in empty_blobs[empty_call.inputs[-1]].decode("utf-8")
+    assert build_single_chart_call(page, crop, model=QWEN35_27B_FP8)[0].key() != call.key()
 
 
 def test_chart_call_keys_page_crop_and_prompt_by_content() -> None:
@@ -174,6 +213,22 @@ def test_strips_without_overlap_and_invalid_overlap() -> None:
         make_horizontal_strips(_img(), overlap=1.5)
 
 
+def test_n_strips_overlap_across_every_interior_boundary() -> None:
+    page = Image.new("L", (40, 1000))
+    page.putdata([y % 256 for y in range(1000) for _ in range(40)])
+    strips = make_n_horizontal_strips(page)  # 3 strips, 14% overlap: cuts at 263/403 and 597/737
+    assert [s.size for s in strips] == [(40, 403), (40, 474), (40, 403)] and {s.mode for s in strips} == {"RGB"}
+    assert strips[0].crop((0, 263, 40, 403)).tobytes() == strips[1].crop((0, 0, 40, 140)).tobytes()
+    assert strips[1].crop((0, 334, 40, 474)).tobytes() == strips[2].crop((0, 0, 40, 140)).tobytes()
+    assert strips[2].getpixel((0, 402)) == (999 % 256,) * 3
+    two = make_n_horizontal_strips(page, n=2, overlap=0.12)
+    assert [s.tobytes() for s in two] == [s.tobytes() for s in make_horizontal_strips(page)]
+    with pytest.raises(ValueError):
+        make_n_horizontal_strips(page, n=1)
+    with pytest.raises(ValueError):
+        make_n_horizontal_strips(page, overlap=-0.1)
+
+
 # ── stitching ──
 
 
@@ -251,6 +306,22 @@ def test_merge_plain_text_drops_repeated_lines_once() -> None:
     assert merge_strip_tables(top, bot) == "Para one.\n\nPara two line a\nPara two line b\n\nPara three."
     assert merge_strip_tables("Alpha", "Beta") == "Alpha\n\nBeta"
     assert merge_strip_tables("", "Beta") == "Beta"
+
+
+def test_merge_n_strips_folds_top_to_bottom_and_skips_empty_strips() -> None:
+    header = ["Item", "Qty", "Cost"]
+    strips = [
+        "# Ledger\n\n" + _table(_items(1, 6), header),
+        "",
+        _table(_items(5, 11), header),
+        _table(_items(10, 15), header) + "\n\nNote.",
+    ]
+    merged = merge_n_strip_tables(strips)
+    assert merged.startswith("# Ledger\n\n<table>") and merged.endswith("</table>\n\nNote.")
+    assert merged.count("<table") == 1
+    assert _rows(merged) == [header, *_items(1, 15)]
+    assert merge_n_strip_tables(strips[:3]) == merge_strip_tables(strips[0], strips[2])
+    assert merge_n_strip_tables(["", "  ", "Alpha "]) == "Alpha" and merge_n_strip_tables([]) == ""
 
 
 # ── reading answers ──

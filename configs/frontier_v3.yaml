@@ -1,9 +1,13 @@
 # hybrid_v2 + Tier-2 frontier chart reading: pages with a chart (a Chandra chart Figure, or a PP-DocLayoutV3
-# "chart" box) are read once more by Qwen/Qwen3.5-27B-FP8 (zoomed chart crop, PDF vector hint, draft tables), and
-# its chart tables replace the OCRia-1 chart fusion. An unusable Tier-2 answer leaves the hybrid_v2 page.
+# "chart" box) are read once more by Qwen/Qwen3.5-122B-A10B-FP8 (zoomed chart crop, PDF vector hint, draft tables),
+# and its chart tables replace the OCRia-1 chart fusion. 2-6 distinct PP-DocLayoutV3 chart boxes covering >= 32% of
+# the page are read one zoomed crop each. An unusable Tier-2 answer leaves the hybrid_v2 page.
 # Form pages (no math; a Chandra Form block, >= 4 checkboxes or >= 3 AcroForm widgets) without a Tier-2 chart read
-# send Chandra's draft to the same model for checkbox / comb-field correction; the refined copy is kept only when it
-# keeps >= 93% of the draft's words, and the PDF-grounded form repairs still run after it.
+# send Chandra's draft to Qwen/Qwen3.5-27B-FP8 for checkbox / comb-field correction; the refined copy is kept only
+# when it keeps >= 93% of the draft's words, and the PDF-grounded form repairs still run after it.
+# Tabular pages (no math) whose read hit the token limit, or recalls < 78% of a healthy PDF text layer, are re-read
+# by the 122B model as 3 overlapping strips; the stitched copy is kept only when it recovers PDF words (+5 points, or
+# any gain on a cut-off read; a scan only in place of a cut-off read).
 reader: chandra_hybrid
 strip_furniture: false
 verify_pdf: true
@@ -64,6 +68,7 @@ text_options:
   empty_read: true
 tier2_charts: true
 tier2_chart_options:
+  model: 122b
   enable_thinking: false
   temperature: 0.1
   top_p: 0.95
@@ -71,11 +76,26 @@ tier2_chart_options:
   max_tokens: 10240
   use_ppdoclayout: true
   pp_chart_score: 0.40
+  per_chart_crops: true
+  per_chart_min_union: 0.32
+  per_chart_max_boxes: 6
 tier2_forms: true
 tier2_form_options:
+  model: 27b
   enable_thinking: false
   temperature: 0.1
   top_p: 0.95
   presence_penalty: 1.0
   max_tokens: 8192
   min_word_coverage: 0.93
+tier2_tables: true
+tier2_table_options:
+  model: 122b
+  n_strips: 3
+  strip_overlap: 0.14
+  max_tokens: 16384
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  min_recall_trigger: 0.78
+  min_recall_gain: 0.05

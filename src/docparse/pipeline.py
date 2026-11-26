@@ -6,8 +6,10 @@ A pure function of (bytes, config, cache): model answers come from the client, w
     S0 render -> S2 OCRia-1 page read (one cached call per page) -> S3 answer parsed into the IR
     -> S4 correctors, each behind its options (layout_options, text_options, format_options) -> writers
 
-With `tier2_charts`, Chandra pages that show a chart are read once more by Qwen3.5-27B-FP8 (Tier-2) before S4;
-with `tier2_forms`, Chandra form pages without a Tier-2 chart read have their draft refined by it the same way.
+With `tier2_charts`, Chandra pages that show a chart are read once more by Qwen3.5 (Tier-2) before S4 (once per
+chart when `per_chart_crops` finds several large ones); with `tier2_forms`, Chandra form pages without a Tier-2 chart
+read have their draft refined by it the same way; with `tier2_tables`, cut-off or low-recall table pages are re-read
+by it in overlapping horizontal strips.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from docparse.fixes.layout_kdl import KDL_OPTIONS
 from docparse.models.adapters import heron, kdl, ppdoclayout
 from docparse.models.adapters.attention import attention_call, read_attention
 from docparse.models.adapters.ocria import build_page_call, read_page_result
-from docparse.models.calls import ModelCall, ModelClient, ModelResult, Pending
+from docparse.models.calls import ModelCall, ModelClient, ModelRef, ModelResult, Pending
 from docparse.pdf.render import RenderedPage, render_pages
 from docparse.write.layout_items import items_from_layout_page
 
@@ -42,6 +44,8 @@ _CHECKBOX = re.compile(r"\[[ xX]\]|<input\b")
 CHART_PAD = 0.06  # share of the page width / height added around the chart boxes before cropping
 CHART_CROP_SHARE = (0.03, 0.92)  # a crop is sent only when the padded box covers this share of the page
 DUPLICATE_SHARE = 0.35  # token overlap that makes a Tier-2 table a repeat of a table Chandra already read
+CHART_DUP_IOU, CHART_DUP_INNER = 0.50, 0.80  # chart boxes this alike (IoU, or share of the smaller inside) repeat
+CHART_ROW_BAND = 120  # page pixels: chart boxes whose tops share a band are read left to right
 
 
 @dataclass
@@ -156,6 +160,50 @@ def _chart_hint(pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[fl
         return ""
 
 
+def _box_area(b: tuple[float, ...]) -> float:
+    return max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+
+
+def _repeats(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    """Two boxes of positive area that show one chart: IoU >= CHART_DUP_IOU, or the smaller mostly inside."""
+    inter = _box_area((max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])))
+    union = _box_area(a) + _box_area(b) - inter
+    return inter >= CHART_DUP_IOU * union or inter >= CHART_DUP_INNER * min(_box_area(a), _box_area(b))
+
+
+def _dedup_chart_boxes(boxes: list[tuple[float, ...]]) -> list[tuple[float, ...]]:
+    """Chart `boxes` without repeats (the larger of two is kept), in reading order: top to bottom in bands of
+    CHART_ROW_BAND pixels, then left to right."""
+    kept: list[tuple[float, ...]] = []
+    for box in sorted((b for b in boxes if _box_area(b) > 0), key=_box_area, reverse=True):
+        if not any(_repeats(box, k) for k in kept):
+            kept.append(box)
+    return sorted(kept, key=lambda b: (round(b[1] / CHART_ROW_BAND), b[0]))
+
+
+def _union_share(rp: RenderedPage, boxes: list[tuple[float, ...]]) -> float:
+    """Share of the page the enclosing bounding box of `boxes` (clipped to the page) covers — matching `_chart_crop`."""
+    if not boxes:
+        return 0.0
+    w, h = rp.image.size
+    x0, y0 = max(0.0, min(b[0] for b in boxes)), max(0.0, min(b[1] for b in boxes))
+    x1, y1 = min(w, max(b[2] for b in boxes)), min(h, max(b[3] for b in boxes))
+    return _box_area((x0, y0, x1, y1)) / (w * h)
+
+
+def _chart_sampling(opts: dict) -> dict:
+    """Sampling of a Tier-2 chart read (TIER2_CHART_OPTIONS); a thinking read defaults to top_k 20."""
+    thinking = bool(opts.get("enable_thinking", False))
+    return {
+        "enable_thinking": thinking,
+        "temperature": float(opts.get("temperature", 0.1)),
+        "top_p": float(opts.get("top_p", 0.95)),
+        "top_k": int(opts["top_k"]) if "top_k" in opts else (20 if thinking else None),
+        "presence_penalty": float(opts.get("presence_penalty", 1.0)),
+        "max_tokens": int(opts.get("max_tokens", 10240)),
+    }
+
+
 def _tier2_chart_call(
     pdf_bytes: bytes,
     index: int,
@@ -165,6 +213,7 @@ def _tier2_chart_call(
     pp_boxes: list[tuple[float, ...]],
     drafts: list[str],
     opts: dict,
+    model: ModelRef | None = None,
 ) -> tuple[ModelCall, dict[str, bytes]]:
     """Tier-2 chart read: the page, a zoomed crop of its charts, their vector hint, and the draft tables to verify."""
     from docparse.models.adapters import qwen_tier2
@@ -175,19 +224,39 @@ def _tier2_chart_call(
     boxes = pp_boxes or [(b[0] * w / 1000, b[1] * h / 1000, b[2] * w / 1000, b[3] * h / 1000) for b in figures]
     crop, box_pt = _chart_crop(rp, boxes)
     hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)  # vector paths follow the page as stored
-    enable_thinking = bool(opts.get("enable_thinking", False))
-    top_k = int(opts["top_k"]) if "top_k" in opts else (20 if enable_thinking else None)
     return qwen_tier2.build_chart_call(
         rp.image,
         crop_image=crop,
         vector_hint=hint,
         draft_tables="\n\n".join(drafts or _TABLE.findall(raw_chandra)),
-        enable_thinking=enable_thinking,
-        temperature=float(opts.get("temperature", 0.1)),
-        top_p=float(opts.get("top_p", 0.95)),
-        top_k=top_k,
-        presence_penalty=float(opts.get("presence_penalty", 1.0)),
-        max_tokens=int(opts.get("max_tokens", 10240)),
+        model=model or qwen_tier2.resolve_tier2_model(opts.get("model")),
+        **_chart_sampling(opts),
+    )
+
+
+def _tier2_single_chart_call(
+    pdf_bytes: bytes,
+    index: int,
+    rp: RenderedPage,
+    turn: int,
+    box: tuple[float, ...],
+    draft: str,
+    opts: dict,
+    model: ModelRef,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """Tier-2 read of one chart `box` (page pixels): the page for context, the chart's zoomed crop (the exact box when
+    the padded one covers too little or too much of the page), its vector hint, and the page's draft tables."""
+    from docparse.models.adapters import qwen_tier2
+
+    crop, box_pt = _chart_crop(rp, [box])
+    if crop is None:
+        w, h = rp.image.size
+        x0, y0, x1, y1 = max(0.0, box[0]), max(0.0, box[1]), min(w, box[2]), min(h, box[3])
+        crop = rp.image.crop((round(x0), round(y0), round(x1), round(y1)))
+        box_pt = (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
+    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)
+    return qwen_tier2.build_single_chart_call(
+        rp.image, crop, vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
     )
 
 
@@ -260,6 +329,60 @@ def _drop_chandra_furniture(raw_chandra: str, candidate_md: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
+def _run_tier2_tables(
+    markdown: str, rp: RenderedPage, truncated: bool, config: Config, client: ModelClient, meta: dict
+) -> tuple[str, list[ModelResult], list[str]]:
+    """`(markdown, results used, pending keys)` after the Tier-2 strip re-read of a dense table page.
+
+    A tabular page without math is re-read as `n_strips` overlapping horizontal strips when its read was cut off
+    (`truncated`) or, on a healthy text layer, holds under `min_recall_trigger` of the PDF's words. The stitched copy
+    replaces it only when every strip is usable and it recovers PDF words: as many (a cut-off read) or
+    `min_recall_gain` more; without a healthy text layer to check against, only in place of a cut-off read."""
+    if not config.tier2_tables or _MATH.search(markdown):
+        return markdown, [], []
+    from docparse.fixes.layout_refine import words_in_points
+    from docparse.fixes.verify import has_healthy_text_layer, pdf_looks_tabular, pdf_word_recall
+    from docparse.models.adapters import qwen_tier2
+
+    t_opts = config.tier2_table_options
+    words = words_in_points(rp)  # the text layer in points: `pdf_looks_tabular` needs word geometry
+    is_tabular = bool(_TABLE.search(markdown)) or (bool(words) and pdf_looks_tabular(words))
+    healthy = has_healthy_text_layer(rp)
+    rec_old = pdf_word_recall(markdown, words) if healthy else None
+    low_recall = rec_old is not None and rec_old < float(t_opts.get("min_recall_trigger", 0.78))
+    if not (is_tabular and (truncated or low_recall)):
+        return markdown, [], []
+    model = qwen_tier2.resolve_tier2_model(t_opts.get("model"))
+    n_strips, overlap = int(t_opts.get("n_strips", 3)), float(t_opts.get("strip_overlap", 0.14))
+    calls = [
+        qwen_tier2.build_hard_table_call(
+            strip,
+            model=model,
+            max_tokens=int(t_opts.get("max_tokens", 16384)),
+            temperature=float(t_opts.get("temperature", 0.1)),
+            top_p=float(t_opts.get("top_p", 0.95)),
+            presence_penalty=float(t_opts.get("presence_penalty", 1.0)),
+        )
+        for strip in qwen_tier2.make_n_horizontal_strips(rp.image, n=n_strips, overlap=overlap)
+    ]
+    results = [client.get(call, blobs, meta) for call, blobs in calls]
+    done = [r for r in results if not isinstance(r, Pending)]
+    if len(done) < len(results):  # every strip is asked for in the same batch
+        return markdown, [], list(dict.fromkeys(r.key for r in results if isinstance(r, Pending)))
+    reads = [qwen_tier2.read_tier2_result(r) for r in done]
+    if not all(x.usable for x in reads):
+        return markdown, [], []
+    merged = qwen_tier2.merge_n_strip_tables([x.markdown for x in reads])
+    if not merged.strip():
+        return markdown, [], []
+    if rec_old is not None:
+        rec_new = pdf_word_recall(merged, words)
+        taken = (truncated and rec_new >= rec_old) or rec_new >= rec_old + float(t_opts.get("min_recall_gain", 0.05))
+    else:
+        taken = truncated
+    return (merged, done, []) if taken else (markdown, [], [])
+
+
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
     decorations = styles = False
@@ -267,7 +390,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         from docparse.fixes.formatting import needs_decorations, needs_styles
 
         decorations, styles = needs_decorations(config.format_options), needs_styles(config.format_options)
-    layer = bool(config.verify_pdf)
+    layer = bool(config.verify_pdf or config.tier2_tables)  # the Tier-2 table gate checks the text layer's health
     if config.text_options:
         from docparse.fixes.text import needs_layer
 
@@ -402,7 +525,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 )
                 if fused:
                     used.append(result)
-            tier2_chart_used = False
+            tier2_chart_used = tier2_form_used = False
             if config.tier2_charts:
                 from docparse.models.adapters import qwen_tier2
 
@@ -410,24 +533,44 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 pp_boxes: list[tuple[float, ...]] = []
                 if pp_chart is not None:
                     pp_min = float(opts.get("pp_chart_score", 0.40))
-                    pp_boxes = [d.box for d in ppdoclayout.read_raw_detections(pp_chart, pp_min) if d.label == "chart"]
-                if ch_has_chart or pp_boxes:  # a chart Chandra drew as a Figure, or one only PP-DocLayoutV3 saw
-                    t2_call, t2_blobs = _tier2_chart_call(
-                        pdf_bytes, index, rp, turn, ch_read.raw_answer, pp_boxes, ocria_tables, opts
+                    pp_boxes = _dedup_chart_boxes(
+                        [d.box for d in ppdoclayout.read_raw_detections(pp_chart, pp_min) if d.label == "chart"]
                     )
-                    t2_res = client.get(t2_call, t2_blobs, meta)
-                    if isinstance(t2_res, Pending):
-                        pending.append(t2_res.key)
+                if ch_has_chart or pp_boxes:  # a chart Chandra drew as a Figure, or one only PP-DocLayoutV3 saw
+                    chart_model = qwen_tier2.resolve_tier2_model(opts.get("model"))
+                    per_chart = (
+                        bool(opts.get("per_chart_crops"))
+                        and 2 <= len(pp_boxes) <= int(opts.get("per_chart_max_boxes", 6))
+                        and _union_share(rp, pp_boxes) >= float(opts.get("per_chart_min_union", 0.32))
+                    )
+                    if per_chart:  # several large charts: one zoomed read of each, all asked for at once
+                        draft = "\n\n".join(ocria_tables or _TABLE.findall(ch_read.raw_answer))
+                        t2_calls = [
+                            _tier2_single_chart_call(pdf_bytes, index, rp, turn, bx, draft, opts, chart_model)
+                            for bx in pp_boxes
+                        ]
+                    else:
+                        t2_call = _tier2_chart_call(
+                            pdf_bytes, index, rp, turn, ch_read.raw_answer, pp_boxes, ocria_tables, opts, chart_model
+                        )
+                        t2_calls = [t2_call]
+                    t2_results = [client.get(c, b, meta) for c, b in t2_calls]
+                    t2_done = [r for r in t2_results if not isinstance(r, Pending)]
+                    if len(t2_done) < len(t2_results):
+                        pending += list(dict.fromkeys(r.key for r in t2_results if isinstance(r, Pending)))
                         continue
-                    t2_read = qwen_tier2.read_tier2_result(t2_res)
+                    # a cut-off or looping answer, or one without a table, leaves the page as read without it
+                    t2_reads = [(r, qwen_tier2.read_tier2_result(r)) for r in t2_done]
+                    t2_good = [(r, x) for r, x in t2_reads if x.usable and _TABLE.search(x.markdown)]
                     t2_markdown = None
-                    if t2_read.usable:  # a cut-off or looping answer leaves the page as read without Tier-2
+                    if t2_good:
+                        answer = "\n\n".join(x.markdown for _, x in t2_good)
                         t2_markdown = _tier2_markdown(
-                            ch_read.raw_answer, markdown, t2_read.markdown, ch_has_chart, config.strip_furniture
+                            ch_read.raw_answer, markdown, answer, ch_has_chart, config.strip_furniture
                         )
                     if t2_markdown is not None:
                         markdown = t2_markdown
-                        used.append(t2_res)
+                        used += [r for r, _ in t2_good]
                         tier2_chart_used = True
             f_opts = config.tier2_form_options
             if (
@@ -440,6 +583,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 f_call, f_blobs = qwen_tier2.build_form_refine_call(
                     rp.image,
                     markdown,
+                    model=qwen_tier2.resolve_tier2_model(f_opts.get("model")),
                     enable_thinking=bool(f_opts.get("enable_thinking", False)),
                     temperature=float(f_opts.get("temperature", 0.1)),
                     top_p=float(f_opts.get("top_p", 0.95)),
@@ -462,6 +606,15 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
                         markdown = cand_md
                         used.append(f_res)
+                        tier2_form_used = True
+            if not tier2_chart_used and not tier2_form_used:  # a page a Tier-2 read already changed is left alone
+                markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
+                if t_wait:
+                    pending += t_wait
+                    continue
+                if t_used and config.strip_furniture:
+                    markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
+                used += t_used
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
             if config.form_options:
                 from docparse.fixes.forms import repair
@@ -510,7 +663,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         else:
             assert read is not None and result is not None
             markdown = read.markdown
-            if config.fallback_below > 0:
+            # Run Tier-2 strip recovery BEFORE plain-text fallback so a cut-off table keeps HTML structure
+            markdown, t_used, t_wait = _run_tier2_tables(
+                markdown, rp, read.finish_reason == "length", config, client, meta
+            )
+            if t_wait:
+                pending += t_wait
+                continue
+            if not t_used and config.fallback_below > 0:
                 from docparse.fixes.fallback import (
                     MIN_TOKENS,
                     has_math,
@@ -564,11 +724,12 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     for region in page.regions:
                         region.selected = region.candidates[0].id
                     page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
+            billed = [result, *t_used]
             page.cost = CostRecord(
-                calls=1,
-                gpu_seconds=result.gpu_seconds or 0.0,
-                tokens_in=result.tokens_in or 0,
-                tokens_out=result.tokens_out or 0,
+                calls=len(billed),
+                gpu_seconds=sum(r.gpu_seconds or 0.0 for r in billed),
+                tokens_in=sum(r.tokens_in or 0 for r in billed),
+                tokens_out=sum(r.tokens_out or 0 for r in billed),
             )
         if config.layout == "from_page_read" and read is not None and read.layout_page is not None:
             page.layout = items_from_layout_page(read.layout_page)
