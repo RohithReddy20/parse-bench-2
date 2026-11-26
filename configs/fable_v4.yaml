@@ -1,6 +1,6 @@
 # frontier_v3 + (fable-push90, 2026-11-27):
 # - select_options: on a page with a healthy PDF text layer, the OCRia-1 reading replaces Chandra's when it agrees
-#   with the layer clearly better (word F1 + number F1, margin 0.03).
+#   with the layer better (mean of word F1 and number F1; a 0-0.06 margin sweep on the dev fold favoured no margin).
 # - format_options.underline: PDF-drawn underlines (lines that overrun their text, span three columns or are dashed
 #   are rules, not underlines).
 # - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking, the v2b prompt (v2 plus: always
@@ -116,4 +116,4 @@ tier2_table_options:
   min_recall_trigger: 0.78
   min_recall_gain: 0.05
 select_options:
-  layer_margin: 0.03
+  layer_margin: 0.0
