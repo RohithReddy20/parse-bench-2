@@ -1,0 +1,35 @@
+tests/fixes/test_audit_fixes.py
+  s_5eebbbadd1ac7f::t_517b2a1945e9e8 195-237
+configs/hybrid_v2.yaml
+  s_41fce1c61d71e2::t_2b33963f05f2fd 27-29
+serve/local_detector.py
+  s_5eebbbadd1ac7f::t_26db4d582a01a4 118-167
+src/docparse/fixes/verify.py
+  s_5eebbbadd1ac7f::t_5736505dd99242 61-88,97-103,114,142-147
+src/docparse/pipeline.py
+  s_41fce1c61d71e2::t_179f023d70dc12 21,170,175-177,367-378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f620ac4ceff8fe2a1625b94ff3280f1a4c1a732",
+  "prompts": {},
+  "sessions": {
+    "s_41fce1c61d71e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac7b3a4de98ec75a0",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    },
+    "s_5eebbbadd1ac7f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8466d660-1752-4d02-acc3-87ecfc2dbcfe",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
