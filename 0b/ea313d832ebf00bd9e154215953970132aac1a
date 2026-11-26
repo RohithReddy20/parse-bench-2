@@ -1,0 +1,29 @@
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_1470c600d13060 528,540,579,582,611
+tests/test_tier2_charts.py
+  s_39faa663d23079::t_b74e7b9daa80e3 390-406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0bea313d832ebf00bd9e154215953970132aac1a",
+  "prompts": {},
+  "sessions": {
+    "s_39faa663d23079": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a92ed957ec65e1468",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    },
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
