@@ -1,0 +1,20 @@
+src/evalkit/ext_eval.py
+  s_6e78563db01caf::t_8c85b0d7656580 5
+  s_6e78563db01caf::t_004a32d6d4a221 1-4,6-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21f703b479fe396f0ebfa14445caaea40d32b7d3",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
