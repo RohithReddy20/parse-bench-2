@@ -1,0 +1,28 @@
+src/docparse/fixes/forms_ink.py
+  s_d8a440b53abe3d::t_b08e180e2d745e 19,30-39,56-58,60,145-152,157-162,180,184-190,192-193,196-223,237-238,246,248,260-264,266,269-281
+  s_d8a440b53abe3d::t_2a0652cd35b53e 239-243
+  s_d8a440b53abe3d::t_b742d38ee29296 255-256
+  s_d8a440b53abe3d::t_c64e5882c7114d 59
+  s_d8a440b53abe3d::t_d68ab01a2dbddd 3-12
+tests/fixes/test_forms_ink.py
+  s_d8a440b53abe3d::t_a3e22d9d50c0af 8,23,25-26,59-69,73-74,79-89,98-101,115-116,138-139,142-143,145,149-151,155-178,220
+  s_d8a440b53abe3d::t_760c6a7d4c9b32 140-141,144,146-147,152-154
+  s_d8a440b53abe3d::t_1c073d72769063 95-97
+  s_d8a440b53abe3d::t_46929417350af9 148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80625d92895913451c1028595b8317d54b37e7d6",
+  "prompts": {},
+  "sessions": {
+    "s_d8a440b53abe3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee0e7592-29c4-422b-bf31-b45b0a7293db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
