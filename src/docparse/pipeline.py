@@ -300,42 +300,22 @@ def _is_form_page(raw_chandra: str, markdown: str, pdf_bytes: bytes, index: int,
     return acroform_widgets(pdf_bytes, index)[0] >= int(opts.get("min_acro_widgets", 3))
 
 
-_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", _FLAGS)
 _ROW = re.compile(r"<tr\b", re.IGNORECASE)
 _BLANK_RUN = re.compile(r"_{4,}|\.{6,}")
 
 
-def _empty_cells(table: str) -> tuple[int, int]:
-    """`(empty cells, cells)` of an HTML table."""
-    cells = _CELL.findall(table)
-    return sum(1 for c in cells if not re.sub(r"<[^>]+>|&nbsp;|\s", "", c)), len(cells)
-
-
 def _looks_like_form(markdown: str) -> bool:
-    """Signs of a form in a reading that carries no `Form` block: a checkbox, runs of blanks to write on, several
-    one- or two-row tables (boxed fields), or tables that are largely empty cells (slots to fill)."""
+    """Signs of a form in a reading that carries no `Form` block: a checkbox, runs of blanks to write on, or several
+    one- or two-row tables (boxed fields)."""
     if _CHECKBOX.search(markdown) or len(_BLANK_RUN.findall(markdown)) >= 3:
         return True
-    tables = _TABLE.findall(markdown)
-    if sum(1 for t in tables if len(_ROW.findall(t)) <= 2) >= 3:
-        return True
-    empty, cells = map(sum, zip(*(_empty_cells(t) for t in tables), strict=True)) if tables else (0, 0)
-    return empty >= 5 and empty >= 0.25 * cells
+    return sum(1 for t in _TABLE.findall(markdown) if len(_ROW.findall(t)) <= 2) >= 3
 
 
 def _grid_table_count(markdown: str) -> int:
-    """Data tables that a form rewrite must keep: a header, three or more rows, no checkbox, mostly filled."""
-    n = 0
-    for t in _TABLE.findall(markdown):
-        empty, cells = _empty_cells(t)
-        if (
-            "<th" in t.lower()
-            and len(_ROW.findall(t)) >= 3
-            and not _CHECKBOX.search(t)
-            and empty < 0.25 * max(1, cells)
-        ):
-            n += 1
-    return n
+    """Tables a form rewrite must keep: three or more rows and no checkbox (boxed fields drawn as one- or two-row
+    tables may become `caption: value` lines)."""
+    return sum(1 for t in _TABLE.findall(markdown) if len(_ROW.findall(t)) >= 3 and not _CHECKBOX.search(t))
 
 
 def _data_table_count(markdown: str) -> int:
