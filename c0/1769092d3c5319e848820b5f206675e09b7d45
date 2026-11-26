@@ -1,0 +1,38 @@
+configs/chandra_v2.yaml
+  h_4802a42b335f3b 1-47
+configs/hybrid_v2.yaml
+  h_4802a42b335f3b 1-55
+serve/colab_boot.py
+  h_4802a42b335f3b 1-56
+serve/colab_hf_chandra.py
+  h_4802a42b335f3b 1-384
+serve/colab_pilot150.ipynb
+  h_4802a42b335f3b 1-73
+serve/modal_vlm.py
+  h_4802a42b335f3b 1-242
+serve/run_colab_pilot.py
+  h_4802a42b335f3b 1-405
+src/docparse/core/config.py
+  h_4802a42b335f3b 92-99
+src/docparse/pipeline.py
+  h_4802a42b335f3b 35-97,113,123-152,162-164,175,177,190-283,285,294
+src/evalkit/full_validate.py
+  h_4802a42b335f3b 1-351
+src/evalkit/pilot150.py
+  h_4802a42b335f3b 1-475
+src/evalkit/pilot_experiments.py
+  h_4802a42b335f3b 1-749
+src/evalkit/splits_data/pilot150.json
+  h_4802a42b335f3b 1-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c01769092d3c5319e848820b5f206675e09b7d45",
+  "prompts": {},
+  "humans": {
+    "h_4802a42b335f3b": {
+      "author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
