@@ -11,6 +11,7 @@ Usage (via `colab exec --env HF_REPO=... --env HF_REV=... --env HF_PATTERN=... -
 from __future__ import annotations
 
 import base64
+import glob
 import gzip
 import io
 import json
@@ -18,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -94,6 +96,21 @@ def _install_deps() -> None:
 
 def _download_datasets(jobs: list[dict[str, Any]], data_root: Path) -> dict[tuple[str, str], Path]:
     from huggingface_hub import snapshot_download
+
+    chunks = sorted(glob.glob("/content/data_part_*"))
+    local_dir = Path("/content/local_data")
+    if chunks:
+        tar_path = Path("/content/local_data.tar")
+        if not local_dir.exists():
+            print(f"=== Reassembling {len(chunks)} uploaded data chunks -> {tar_path} ===", flush=True)
+            with tar_path.open("wb") as out:
+                for c in chunks:
+                    out.write(Path(c).read_bytes())
+            local_dir.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(tar_path, "r") as tf:
+                tf.extractall(local_dir)
+            print(f"Extracted local data ({tar_path.stat().st_size / 1e6:.1f} MB) -> {local_dir}", flush=True)
+        return {(j["hf_repo"], j["hf_rev"]): local_dir for j in jobs}
 
     repos = sorted({(j["hf_repo"], j["hf_rev"], j.get("hf_pattern", "*")) for j in jobs})
     roots: dict[tuple[str, str], Path] = {}

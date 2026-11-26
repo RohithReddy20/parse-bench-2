@@ -282,7 +282,7 @@ def cmd_score(bench: str, workers: int) -> int:
         return ob.score(
             data,
             bench_dir,
-            ("docparse_plain", "docparse_corrected", "docparse_hybrid_v2", "docparse_hybrid_v2_nofurn"),
+            ("docparse_hybrid_v2", "docparse_hybrid_v2_nofurn"),
             math=True,
         )
 

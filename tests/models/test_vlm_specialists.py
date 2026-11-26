@@ -90,6 +90,12 @@ def test_chandra_call_converts_html_keeping_tables() -> None:
     assert "Page 1" not in stripped
     assert "# Report" in stripped
 
+    tbl_math = "<table><tr><th>Mean <math>\\pm</math> SD</th><td><math>6.21 \\pm 0.14</math></td></tr></table>"
+    cleaned_tbl = chandra_markdown(tbl_math)
+    assert "<math>" not in cleaned_tbl
+    assert "Mean ± SD" in cleaned_tbl
+    assert "6.21 ± 0.14" in cleaned_tbl
+
 
 def test_chart_verify_call_and_table_extraction() -> None:
     draft = "<table><tr><th>Year</th><th>A</th></tr><tr><td>2020</td><td>10</td></tr></table>"

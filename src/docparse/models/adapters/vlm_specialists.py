@@ -332,12 +332,92 @@ def fuse_figure_charts(
     return chandra_markdown(replaced, drop_furniture=drop_furniture), True
 
 
+_MATH_TAG = re.compile(r"<math\b[^>]*>(.*?)</math>", _FLAGS)
+_LATEX_CMD_WRAP = re.compile(r"\\(?:text|mathrm|mathbf|mathit|operatorname)\{([^{}]*)\}")
+_LATEX_SYMBOLS = [
+    (r"\pm", "±"),
+    (r"\mp", "∓"),
+    (r"\times", "×"),
+    (r"\cdot", "·"),
+    (r"\div", "÷"),
+    (r"\leq", "≤"),
+    (r"\le", "≤"),
+    (r"\geq", "≥"),
+    (r"\ge", "≥"),
+    (r"\neq", "≠"),
+    (r"\ne", "≠"),
+    (r"\approx", "≈"),
+    (r"\sim", "~"),
+    (r"\infty", "∞"),
+    (r"\degree", "°"),
+    (r"^\circ", "°"),
+    (r"^{\circ}", "°"),
+    (r"\circ", "°"),
+    (r"\Delta", "Δ"),
+    (r"\delta", "δ"),
+    (r"\alpha", "α"),
+    (r"\beta", "β"),
+    (r"\gamma", "γ"),
+    (r"\Gamma", "Γ"),
+    (r"\mu", "μ"),
+    (r"\sigma", "σ"),
+    (r"\Sigma", "Σ"),
+    (r"\pi", "π"),
+    (r"\theta", "θ"),
+    (r"\lambda", "λ"),
+    (r"\rho", "ρ"),
+    (r"\chi", "χ"),
+    (r"\omega", "ω"),
+    (r"\Omega", "Ω"),
+    (r"\phi", "φ"),
+    (r"\psi", "ψ"),
+    (r"\eta", "η"),
+    (r"\tau", "τ"),
+    (r"\%", "%"),
+    (r"\$", "$"),
+    (r"\&", "&"),
+    (r"\_", "_"),
+]
+_LATEX_SYM_RE = re.compile(
+    "|".join(
+        re.escape(k) + (r"(?![A-Za-z])" if k[-1].isalpha() else "")
+        for k, _ in sorted(_LATEX_SYMBOLS, key=lambda kv: -len(kv[0]))
+    )
+)
+_LATEX_SYM_MAP = dict(_LATEX_SYMBOLS)
+
+
+def _clean_table_math(table_html: str) -> str:
+    """Convert Chandra's custom `<math>...</math>` tags inside HTML tables into readable HTML/Unicode."""
+    if "<math" not in table_html.lower():
+        return table_html
+
+    def _repl(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        for _ in range(3):
+            nxt = _LATEX_CMD_WRAP.sub(r"\1", inner)
+            if nxt == inner:
+                break
+            inner = nxt
+        inner = _LATEX_SYM_RE.sub(lambda sm: _LATEX_SYM_MAP[sm.group(0)], inner)
+        # Clean trivial spacing commands (`\,`, `\;`, `\ `) and simple `^{x}` / `_{x}` inside tables
+        inner = re.sub(r"\\[,;:! ]", " ", inner)
+        inner = re.sub(r"\^\{([^{}]+)\}", r"<sup>\1</sup>", inner)
+        inner = re.sub(r"_\{([^{}]+)\}", r"<sub>\1</sub>", inner)
+        # If no complex LaTeX commands remain, return clean inline HTML; otherwise wrap as $...$
+        if "\\" not in inner and "{" not in inner and "}" not in inner:
+            return re.sub(r"\s+", " ", inner).strip()
+        return f"${m.group(1).strip()}$"
+
+    return _MATH_TAG.sub(_repl, table_html)
+
+
 def chandra_markdown(text: str, drop_furniture: bool = False) -> str:
-    """Chandra's layout-HTML answer as markdown; tables stay HTML, untouched."""
+    """Chandra's layout-HTML answer as markdown; tables stay valid HTML with `<math>` normalized."""
     tables: list[str] = []
 
     def stash(m: re.Match) -> str:
-        tables.append(m[0])
+        tables.append(_clean_table_math(m[0]))
         return f"\n\n\x00{len(tables) - 1}\x00\n\n"
 
     s = re.sub(r"^\s*```\w*\n|\n```\s*$", "", text)
