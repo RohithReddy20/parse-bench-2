@@ -7,6 +7,8 @@
 #   the axis, one column per series, labelled ticks for dense lines); forms rewritten as `caption: value` lines from
 #   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
 #   must stay tables).
+# - table_options round three: duplicate/split column squeeze, currency-sign columns, missing header leaves and
+#   last columns from the text layer, stricter and wider table merging (all PDF-grounded, fail closed).
 reader: chandra_hybrid
 strip_furniture: false
 verify_pdf: true
@@ -44,6 +46,12 @@ table_options:
   leaf_mode: 3
   dedupe: true
   complete_extent: true
+  squeeze: true
+  sign: true
+  head_fill: true
+  last_column: true
+  merge_apart: true
+  merge_strict: true
 form_options:
   acroform: true
   checkbox_ink: true

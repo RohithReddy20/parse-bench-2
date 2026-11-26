@@ -38,6 +38,13 @@ TABLE_OPTIONS = frozenset(
         "leaf",
         "leaf_mode",
         "complete_extent",
+        # round three (PDF-grounded column and merge repairs)
+        "squeeze",
+        "sign",
+        "head_fill",
+        "last_column",
+        "merge_apart",
+        "merge_strict",
     }
 )  # fixes/tables.py
 FORM_OPTIONS = frozenset(
