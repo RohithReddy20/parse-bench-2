@@ -1,0 +1,106 @@
+# frontier_v3 + (fable-push90, 2026-11-27):
+# - select_options: on a page with a healthy PDF text layer, the OCRia-1 reading replaces Chandra's when it agrees
+#   with the layer clearly better (word F1 + number F1, margin 0.03).
+# - format_options.underline: PDF-drawn underlines (lines that overrun their text, span three columns or are dashed
+#   are rules, not underlines).
+# - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking and the v3 prompt (estimate off
+#   the axis, one column per series, labelled ticks for dense lines); forms rewritten as `caption: value` lines from
+#   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
+#   must stay tables).
+reader: chandra_hybrid
+strip_furniture: false
+verify_pdf: true
+chandra_model:
+  repo: datalab-to/chandra-ocr-2
+  revision: af93b47dba1b47b6640c86ccf487ed2260ab9a09
+  dtype: bf16
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: dae83aa51ecd0a8574d415d929a4d9e79348fd2a
+  dtype: bf16
+page_runtime: vllm-0.34.0
+prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38
+dpi: 300
+fallback_below: 0.5
+upright_read: true
+layout: ground
+layout_attention: always
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+  pp_arbiter: true
+  pp_keep_pictures: true
+  pp_add: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+  leaf: true
+  leaf_mode: 3
+  dedupe: true
+  complete_extent: true
+form_options:
+  acroform: true
+  checkbox_ink: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
+  lost: true
+  legend: true
+  titles: true
+  legend_min: 2
+  legend_override: true
+  panel_override: true
+format_options:
+  cell_strike: true
+  strike: true
+  underline: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true
+tier2_charts: true
+tier2_chart_options:
+  model: q38
+  prompt: v3
+  enable_thinking: true
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 20000
+  use_ppdoclayout: true
+  pp_chart_score: 0.40
+  per_chart_crops: true
+  per_chart_min_union: 0.32
+  per_chart_max_boxes: 6
+tier2_forms: true
+tier2_form_options:
+  model: q38
+  prompt: kv
+  wide: true
+  enable_thinking: false
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 8192
+  min_word_coverage: 0.93
+tier2_tables: true
+tier2_table_options:
+  model: q38
+  n_strips: 3
+  strip_overlap: 0.14
+  max_tokens: 16384
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  min_recall_trigger: 0.78
+  min_recall_gain: 0.05
+select_options:
+  layer_margin: 0.03
