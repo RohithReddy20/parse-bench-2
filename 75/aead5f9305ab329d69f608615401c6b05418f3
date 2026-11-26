@@ -1,0 +1,26 @@
+src/docparse/models/adapters/qwen_tier2.py
+  s_6e78563db01caf::t_b21e3efbe80677 37-42
+  s_6e78563db01caf::t_8b183e558aea85 523-571
+src/docparse/core/config.py
+  s_6e78563db01caf::t_36d3280d46c157 120-124,186
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_36d3280d46c157 386-403,474-478,500-501
+serve/vm_run.py
+  s_6e78563db01caf::t_35cad22ff54a1c 128-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "75aead5f9305ab329d69f608615401c6b05418f3",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
