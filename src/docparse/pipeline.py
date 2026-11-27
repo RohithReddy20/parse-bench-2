@@ -670,6 +670,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             sec_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
             if secondary_improves(ch_read.markdown, sec_md, rp, verify_reason):
                 ch_ok = False
+        scan_md, scan_res = None, None  # a scan reader's page, when the judge preferred it
         if (
             use_chandra
             and ch_ok
@@ -706,8 +707,28 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         continue
                     q_md = _qwen_page_read(q_res).markdown
                     margin = float(config.select_options.get("judge_margin", 0.0))
-                    if q_md.strip() and agreement(alt_md, q_md) > agreement(ch_read.markdown, q_md) + margin:
-                        ch_ok = False
+                    others = [("ocria", alt_md, None)]
+                    if config.select_options.get("scan_reader") == "lighton":  # a third small reader for scans
+                        from docparse.models.adapters import lighton
+
+                        l_call, l_blobs = lighton.build_page_call(rp.image)
+                        l_res = client.get(l_call, l_blobs, meta)
+                        if isinstance(l_res, Pending):
+                            pending.append(l_res.key)
+                            continue
+                        l_md, l_ok = lighton.read_page(l_res)
+                        if l_ok:
+                            others.append(("lighton", l_md, l_res))
+                    if q_md.strip():
+                        best, best_agree = None, agreement(ch_read.markdown, q_md) + margin
+                        for name, md, res in others:
+                            a = agreement(md, q_md)
+                            if a > best_agree:
+                                best, best_agree = (name, md, res), a
+                        if best is not None:
+                            ch_ok = False
+                            if best[0] != "ocria":
+                                scan_md, scan_res = best[1], best[2]
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
@@ -887,11 +908,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             )
         else:
             assert read is not None and result is not None
-            markdown = read.markdown
+            markdown = scan_md if scan_md is not None else read.markdown
+            read_cut = scan_md is None and read.finish_reason == "length"
             # Run Tier-2 strip recovery BEFORE plain-text fallback so a cut-off table keeps HTML structure
-            markdown, t_used, t_wait = _run_tier2_tables(
-                markdown, rp, read.finish_reason == "length", config, client, meta
-            )
+            markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, read_cut, config, client, meta)
             if t_wait:
                 pending += t_wait
                 continue
@@ -916,7 +936,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 )
                 from docparse.fixes.layout_refine import words_in_points
 
-                cut_short = read.finish_reason == "length" or looped(markdown)
+                cut_short = read_cut or looped(markdown)
                 if cut_short:
                     markdown = trim_loop_tail(markdown)
                     words = words_in_points(rp)
@@ -959,7 +979,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     for region in page.regions:
                         region.selected = region.candidates[0].id
                     page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
-            billed = [result, *t_used, *f_used]
+            billed = [scan_res if scan_res is not None else result, *t_used, *f_used]
             page.cost = CostRecord(
                 calls=len(billed),
                 gpu_seconds=sum(r.gpu_seconds or 0.0 for r in billed),
