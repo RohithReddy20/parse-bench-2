@@ -1,0 +1,30 @@
+tests/fixes/test_jury.py
+  s_6e78563db01caf::t_d18cbbd57316be 1-52
+src/evalkit/standin.py
+  s_6e78563db01caf::t_632aae59614afc 121-168
+src/docparse/fixes/select.py
+  s_6e78563db01caf::t_7218a54b6d0d5f 200-226,315-328
+  s_6e78563db01caf::t_48912b8b979eee 227-314
+src/docparse/models/adapters/jury.py
+  s_6e78563db01caf::t_c5c041d6ce364b 1-34
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_cd31cce0083550 804-822
+  s_6e78563db01caf::t_c38ce20371358d 519-525,527,538-542
+  s_6e78563db01caf::t_f57dd522c2d590 526,528-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "742727778ec268a35aef324e160e46f72a909005",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
