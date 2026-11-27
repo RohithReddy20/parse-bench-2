@@ -1,0 +1,23 @@
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_27a0843ed66067 597-604
+src/docparse/fixes/text.py
+  s_6e78563db01caf::t_27a0843ed66067 28-29
+src/docparse/models/adapters/vlm_specialists.py
+  s_6e78563db01caf::t_27a0843ed66067 351-379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb53344e8b997d07ed0c159c13dfc15115481dab",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
