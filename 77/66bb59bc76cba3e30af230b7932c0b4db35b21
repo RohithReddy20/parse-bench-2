@@ -1,0 +1,21 @@
+src/docparse/core/config.py
+  s_6e78563db01caf::t_5e3b7db1c65ab1 109
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_5e3b7db1c65ab1 476-540,793-796,798,800-801,865-875,929
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7766bb59bc76cba3e30af230b7932c0b4db35b21",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
