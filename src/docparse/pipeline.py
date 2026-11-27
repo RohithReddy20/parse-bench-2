@@ -516,6 +516,30 @@ def _layer_lines(rp: RenderedPage, opts: dict) -> str:
     return "\n".join(out)[: int(opts.get("layer_chars", 12000))]
 
 
+def _juror_readings(names: list[str], page_hash: str, client: ModelClient, blobs: dict, meta: dict) -> list[str]:
+    """The readings the named jurors have for this page (`select_options.jury`). Jurors are stand-ins, readings
+    published for the page: one that has none for this page is an absent juror, not a pending call."""
+    from docparse.models.adapters import jury
+    from docparse.models.calls import CacheMiss
+
+    out = []
+    cache = getattr(client, "cache", None)
+    for name in names:
+        call = jury.published_call(name, page_hash)
+        if cache is not None:  # looked up directly: a missing stand-in must not become a planned model call
+            res = cache.get(call.key())
+            if res is None:
+                continue
+        else:
+            try:
+                res = client.get(call, blobs, meta)
+            except CacheMiss:
+                continue
+        if not isinstance(res, Pending):
+            out.append(jury.read_juror(res))
+    return out
+
+
 def _fuse_other(markdown: str, other_md: str, rp: RenderedPage, options: dict, witness_md: str = "") -> str:
     """The kept reading with the other reading's plain words wherever a third witness sides with them
     (`select_options.fuse_words`: the witness is the text layer; with `fuse_scan`, on a page without one, the general
@@ -777,7 +801,25 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 from docparse.fixes.verify import has_healthy_text_layer
 
                 alt_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
-                if rp.hidden is not None and has_healthy_text_layer(rp):
+                healthy = rp.hidden is not None and has_healthy_text_layer(rp)
+                verdict = None  # the jury's choice between the two readings, when it is asked and decides
+                jury_names = config.select_options.get("jury") or []
+                if jury_names and alt_md.strip():
+                    scope = config.select_options.get("jury_scope", "scans")
+                    tabular = any(_TABLE.search(m) for m in (ch_read.markdown, alt_md))
+                    if (scope == "all" or not healthy) and (config.select_options.get("jury_tables") or not tabular):
+                        from docparse.fixes.select import jury_choice
+
+                        margin_key = "jury_layer_margin" if healthy else "jury_margin"
+                        verdict = jury_choice(
+                            ch_read.markdown,
+                            alt_md,
+                            _juror_readings(jury_names, call.inputs[0], client, blobs, meta),
+                            float(config.select_options.get(margin_key, 0.0)),
+                        )
+                if verdict is not None:
+                    ch_ok = not verdict
+                elif healthy:
                     if prefer_alternative(ch_read.markdown, alt_md, rp, config.select_options):
                         ch_ok = False
                 elif (

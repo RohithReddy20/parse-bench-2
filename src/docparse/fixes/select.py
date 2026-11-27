@@ -197,3 +197,132 @@ def fuse_layer_words(kept_md: str, other_md: str, rendered: RenderedPage) -> tup
     if rendered.hidden is None or not has_healthy_text_layer(rendered):
         return kept_md, 0
     return fuse_witness_words(kept_md, other_md, Counter(layer_tokens(words_in_points(rendered))))
+
+
+# --------------------------------------------------------------------------- a jury of other readers
+
+
+def _counter_f1(a: Counter, b: Counter) -> float | None:
+    na, nb = sum(a.values()), sum(b.values())
+    if not na and not nb:
+        return None
+    if not na or not nb:
+        return 0.0
+    return 2 * _overlap(a, b) / (na + nb)
+
+
+def reading_similarity(a: str, b: str) -> float:
+    """How alike two readings of a page are, in [0, 1]: the mean of the F1 of their words, of their tokens with a
+    digit, and of their neighbouring word pairs (a part neither reading has is left out)."""
+    ta, tb = reading_tokens(a), reading_tokens(b)
+    parts = [
+        _counter_f1(Counter(ta), Counter(tb)),
+        _counter_f1(Counter(t for t in ta if _DIGIT.search(t)), Counter(t for t in tb if _DIGIT.search(t))),
+        _counter_f1(Counter(zip(ta, ta[1:], strict=False)), Counter(zip(tb, tb[1:], strict=False))),
+    ]
+    known = [p for p in parts if p is not None]
+    return sum(known) / len(known) if known else 1.0
+
+
+_PIPE_ROW = re.compile(r"^[ \t]*\|(.+)\|[ \t]*$", re.MULTILINE)
+_PIPE_RULE = re.compile(r"^[\s|:\-]+$")
+
+
+def _norm_cell(text: str) -> str:
+    return " ".join(reading_tokens(text))
+
+
+def _grids(markdown: str) -> list[tuple[list[list[str]], int]]:
+    """Every table of the reading as (rows of cell texts with spans filled in, number of header rows)."""
+    from docparse.fixes.tables_html import parse_table
+
+    out: list[tuple[list[list[str]], int]] = []
+    for raw in _TABLE.findall(markdown):
+        table = parse_table(raw)
+        if table is None:
+            continue
+        cells: dict[tuple[int, int], str] = {}
+        for row in table.rows:
+            for cell in row.cells:
+                text = _norm_cell(cell.text)
+                for i in range(cell.row, min(cell.row + cell.rowspan, len(table.rows))):
+                    for j in range(cell.col, cell.col + cell.colspan):
+                        cells.setdefault((i, j), text)
+        width = max((c for _, c in cells), default=-1) + 1
+        grid = [[cells.get((r, c), "") for c in range(width)] for r in range(len(table.rows))]
+        head = 0
+        for row in table.rows:
+            if row.cells and all(c.tag == "th" for c in row.cells):
+                head += 1
+            else:
+                break
+        out.append((grid, max(1, head) if len(grid) > 1 else 0))
+    rest = _TABLE.sub("\n", markdown)
+    block: list[list[str]] = []
+    for line in [*rest.splitlines(), ""]:  # Markdown pipe tables
+        m = _PIPE_ROW.match(line)
+        if m:
+            if not _PIPE_RULE.match(line):
+                block.append([_norm_cell(c) for c in m.group(1).split("|")])
+            continue
+        if len(block) > 1:
+            width = max(len(r) for r in block)
+            out.append(([r + [""] * (width - len(r)) for r in block], 1))
+        block = []
+    return out
+
+
+def table_records(markdown: str) -> tuple[Counter, Counter, Counter]:
+    """What the reading's tables say: every filled body cell as (row label, column heading, value), and the same
+    cells as (row label, value) and (column heading, value). A value under the wrong heading or beside the wrong
+    label changes its records; a table split, merged or read as text loses them."""
+    full: Counter = Counter()
+    by_row: Counter = Counter()
+    by_col: Counter = Counter()
+    for grid, head in _grids(markdown):
+        width = len(grid[0]) if grid else 0
+        heads = []
+        for c in range(width):
+            parts = list(dict.fromkeys(grid[r][c] for r in range(head) if grid[r][c]))
+            heads.append(" / ".join(parts))
+        for row in grid[head:]:
+            label = row[0] if row else ""
+            for c in range(1, width):
+                if not row[c]:
+                    continue
+                full[(label, heads[c], row[c])] += 1
+                by_row[(label, row[c])] += 1
+                by_col[(heads[c], row[c])] += 1
+    return full, by_row, by_col
+
+
+def table_similarity(a: str, b: str) -> float | None:
+    """How alike the tables of two readings are, in [0, 1] (None when neither has a table): the mean F1 of their
+    cell records, with partial credit for a value that keeps its row label or its column heading."""
+    ra, rb = table_records(a), table_records(b)
+    parts = [_counter_f1(x, y) for x, y in zip(ra, rb, strict=True)]
+    known = [p for p in parts if p is not None]
+    return sum(known) / len(known) if known else None
+
+
+def page_similarity(a: str, b: str) -> float:
+    """`reading_similarity`, averaged with `table_similarity` when either reading has a table."""
+    words = reading_similarity(a, b)
+    tables = table_similarity(a, b)
+    return words if tables is None else 0.5 * (words + tables)
+
+
+def jury_choice(primary_md: str, alt_md: str, jurors: list[str], margin: float = 0.0) -> bool | None:
+    """Which of the two readings the other readers' readings resemble more: True for the alternative, False for
+    the primary, None when there is no juror or the difference is within `margin`. The reading that stands apart
+    from independent readers of the same page is the one more likely to have dropped, invented or misread text."""
+    jurors = [j for j in jurors if j.strip()]
+    if not jurors or not alt_md.strip() or not primary_md.strip():
+        return None
+    a = sum(reading_similarity(primary_md, j) for j in jurors) / len(jurors)
+    b = sum(reading_similarity(alt_md, j) for j in jurors) / len(jurors)
+    if b > a + margin:
+        return True
+    if a > b + margin:
+        return False
+    return None

@@ -118,3 +118,51 @@ def import_published(published_dir: Path, gt_dir: Path, cache: Cache, workers: i
 
 def report_json(report: StandinReport) -> str:
     return json.dumps(report.__dict__, indent=2)
+
+
+def _juror_pages(record: dict, n_pages: int) -> list[str]:
+    """A published record's reading per page (records differ: `pages[].markdown`, `layout_pages[].md`, `markdown`)."""
+    output = record.get("output") or {}
+    whole = output.get("markdown")
+    pages = output.get("pages") or output.get("layout_pages") or []
+    per_page = [str(p.get("markdown") or p.get("md") or "") for p in pages]
+    if n_pages == 1:
+        return [str(whole) if whole else "\n\n".join(per_page)]
+    return [per_page[i] if i < len(per_page) else "" for i in range(n_pages)]
+
+
+def import_juror(name: str, published_dir: Path, gt_dir: Path, cache: Cache, workers: int = 8) -> StandinReport:
+    """Store the readings another parser published for the benchmark pages as that juror's stand-in calls
+    (`docparse.models.adapters.jury`), keyed by each page's pixel hash. `published_dir` holds `<subset>.jsonl`."""
+    from docparse.models.adapters import jury
+
+    report = StandinReport()
+    jobs: list[tuple[str, Path, dict]] = []
+    for subset in SUBSETS:
+        path = published_dir / f"{subset}.jsonl"
+        if not path.exists():
+            continue
+        for _number, _subset, stem, record in read_records(path):
+            src = source_file(gt_dir, subset, stem)
+            if src is None:
+                report.missing_source.append(f"{subset}/{stem}")
+            else:
+                jobs.append((f"{subset}/{stem}", src, record))
+    paths = [str(src) for _id, src, _rec in jobs]
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        hashes = list(pool.map(_hash_pages, paths, chunksize=8))
+    for (example_id, _src, record), page_hashes in zip(jobs, hashes, strict=True):
+        if page_hashes is None:
+            report.unreadable.append(example_id)
+            continue
+        readings = _juror_pages(record, len(page_hashes))
+        for i, (page_hash, markdown) in enumerate(zip(page_hashes, readings, strict=True)):
+            if not markdown.strip():
+                continue
+            call = jury.published_call(name, page_hash)
+            body = {"markdown": markdown, "source": "published"}
+            if cache.put(ModelResult(key=call.key(), output=body), call, {"example_id": example_id, "page": i}):
+                report.imported += 1
+            else:
+                report.cached += 1
+    return report
