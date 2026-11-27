@@ -398,9 +398,13 @@ def _line_key(line: str) -> str:
     return " ".join(re.sub(r"[#*_]", " ", html.unescape(re.sub(r"<[^>]+>", " ", line))).split()).casefold()
 
 
-def _drop_chandra_furniture(raw_chandra: str, candidate_md: str) -> str:
+EDGE_LINES = 4  # lines at the top and at the bottom of a page where a running header or footer can stand
+
+
+def _drop_chandra_furniture(raw_chandra: str, candidate_md: str, edges: bool = False) -> str:
     """`candidate_md` without the lines that repeat Chandra's Page-Header / Page-Footer text (a line the page body
-    shows too is kept)."""
+    shows too is kept). With `edges`, one of the first or last `EDGE_LINES` lines also goes when its words are the
+    furniture's words (85% of them) and cover most of one furniture block (60%)."""
     from docparse.models.adapters.vlm_specialists import _FURNITURE_DIV, chandra_markdown
 
     def keys(md: str) -> set[str]:
@@ -411,7 +415,23 @@ def _drop_chandra_furniture(raw_chandra: str, candidate_md: str) -> str:
     furniture -= keys(chandra_markdown(raw_chandra, drop_furniture=True)) | {""}
     if not furniture:
         return candidate_md
-    kept = [line for line in candidate_md.splitlines() if _line_key(line) not in furniture]
+    lines = candidate_md.splitlines()
+    drop = {i for i, line in enumerate(lines) if _line_key(line) in furniture}
+    if edges:  # another reader words a running header a little differently: match the page's edge lines loosely
+        body = keys(chandra_markdown(raw_chandra, drop_furniture=True))
+        blocks_tok = [t for t in (set(re.findall(r"[a-z0-9]+", k)) for k in furniture) if t]
+        union = set().union(*blocks_tok) if blocks_tok else set()
+        filled = [i for i, line in enumerate(lines) if line.strip()]
+        for i in [*filled[:EDGE_LINES], *filled[-EDGE_LINES:]]:
+            k = _line_key(lines[i])
+            toks = set(re.findall(r"[a-z0-9]+", k))
+            if i in drop or not toks or len(toks) > 30 or k in body:
+                continue
+            inside = len(toks & union) >= 0.85 * len(toks)
+            covers = any(len(toks & b) >= 0.6 * len(b) for b in blocks_tok)
+            if inside and covers:
+                drop.add(i)
+    kept = [line for i, line in enumerate(lines) if i not in drop]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
@@ -725,6 +745,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             and read is not None
             and config.select_options
             and read.finish_reason != "length"
+            and not (config.select_options.get("skip_math") and _MATH.search(ch_read.raw_answer + read.markdown))
         ):
             from docparse.fixes.select import prefer_alternative
             from docparse.models.adapters import vlm_specialists
@@ -968,7 +989,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             markdown = scan_md if scan_md is not None else read.markdown
             if config.strip_furniture and ch_read is not None and ch_read.finish_reason != "length":
                 # the running headers and footers Chandra labelled are dropped from whichever reading is kept
-                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
+                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown, edges=True)
             if picture_md:
                 markdown = f"{markdown}\n\n{picture_md}"
             read_cut = scan_md is None and read.finish_reason == "length"
