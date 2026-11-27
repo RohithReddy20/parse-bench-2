@@ -4,7 +4,8 @@
 # - format_options.underline: PDF-drawn underlines (lines that overrun their text, span three columns or are dashed
 #   are rules, not underlines).
 # - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking, the v2b prompt (v2 plus: always
-#   estimate off the axis, one column per series), small crops enlarged to 2048 px and the full vector measurements; forms rewritten as `caption: value` lines from
+#   estimate off the axis, one column per series), small crops enlarged to 2048 px, the full vector measurements,
+#   and three independent reads voted cell by cell (median); forms rewritten as `caption: value` lines from
 #   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
 #   must stay tables); the form step also runs when the selector kept OCRia-1's reading.
 # - select_options.judge: on a prose page without a text layer, a Qwen3.8 transcription decides which of the two
@@ -83,6 +84,7 @@ tier2_chart_options:
   crop_zoom_to: 2048
   hint_chars: 10000
   fallback_plain: true
+  samples: 3
   enable_thinking: true
   temperature: 0.6
   top_p: 0.95
