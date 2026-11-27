@@ -1,0 +1,19 @@
+docs/results/2026-11-27-fable-v4.md
+  s_6e78563db01caf::t_2d7ba642597a56 25-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6234238b9747d12ad593388c892631bdf23e2bd8",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
