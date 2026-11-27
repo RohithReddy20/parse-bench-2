@@ -1,0 +1,23 @@
+src/docparse/models/adapters/qwen_tier2.py
+  s_6e78563db01caf::t_1ef1ccce3eadb0 54,88-90,291-323,336-337,339-346,356-357
+src/docparse/models/adapters/vlm_specialists.py
+  s_6e78563db01caf::t_1fd690af686cbf 521,526-527,530-534
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_6b3e87f4452d2b 44,153-161,167-170,238-240,271-273,289-290,292-296,422,479-491,495,504,553-554,558,561,567-593,650-651,671-679,690-691,765-769
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e7e312e1c639c6c3a355d063b831c14075d0856",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "unknown"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
