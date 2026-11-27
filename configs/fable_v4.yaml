@@ -8,9 +8,10 @@
 #   and three independent reads voted cell by cell (median); forms rewritten as `caption: value` lines from
 #   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
 #   must stay tables); the form step also runs when the selector kept OCRia-1's reading.
-# - select_options.judge: on a prose page without a text layer, a Qwen3.8 transcription decides which of the two
-#   readings to keep (it is never used as the page itself). When OCRia-1's reading is kept, what Chandra transcribed
-#   from the page's pictures (25 words or more) is carried over as image alt text.
+# - The selector never acts on a page with formulas, and when OCRia-1's reading is kept, what Chandra transcribed
+#   from the page's pictures (25 words or more) is carried over as image alt text. A Qwen3.8 "judge" for pages
+#   without a text layer (select_options.judge) is implemented but off: +0.6 on ParseBench text, -0.2 on both
+#   outside benchmarks.
 # - table_options round three: duplicate/split column squeeze, currency-sign columns, missing header leaves and
 #   last columns from the text layer, stricter and wider table merging (all PDF-grounded, fail closed).
 reader: chandra_hybrid
@@ -123,6 +124,5 @@ tier2_table_options:
   min_recall_gain: 0.05
 select_options:
   layer_margin: 0.0
-  judge: true
-  judge_prose_only: true
+  skip_math: true
   keep_pictures: 25
