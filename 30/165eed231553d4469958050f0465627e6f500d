@@ -1,0 +1,26 @@
+src/docparse/core/config.py
+  s_6e78563db01caf::t_f6cd88c058ac02 102
+src/docparse/fixes/chart_vote.py
+  s_6e78563db01caf::t_420c2b990fd8ee 1-87,92-98
+  s_6e78563db01caf::t_f6cd88c058ac02 88-91
+src/docparse/models/adapters/qwen_tier2.py
+  s_6e78563db01caf::t_f6cd88c058ac02 268,270-271,282-283,302,316-317
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_f6cd88c058ac02 222,789-802,804-815
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30165eed231553d4469958050f0465627e6f500d",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
