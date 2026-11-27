@@ -126,3 +126,4 @@ select_options:
   layer_margin: 0.0
   skip_math: true
   keep_pictures: 25
+  fuse_words: true  # the other reader's plain words where the text layer sides with them (text +0.1 on dev and check)
