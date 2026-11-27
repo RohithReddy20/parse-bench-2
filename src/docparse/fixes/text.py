@@ -25,7 +25,8 @@ from difflib import SequenceMatcher
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align_text import TOKEN, key, opcodes
 
-TEXT_OPTIONS = frozenset({"respell", "empty_read"})
+# `picture_alt` is applied where the page is read (pipeline.py): a picture's description goes into its alt text
+TEXT_OPTIONS = frozenset({"respell", "empty_read", "picture_alt"})
 READER = "fix.text"
 LAYER_SUPPORT = 0.8  # share of the layer's tokens the reading must hold
 MAX_HIDDEN = 0.5

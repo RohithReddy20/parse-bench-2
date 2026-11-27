@@ -594,6 +594,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.fallback import looped
 
             ch_read = vlm_specialists.read_chandra_result(chandra_res, drop_furniture=config.strip_furniture)
+            if config.text_options.get("picture_alt"):
+                folded = vlm_specialists.fold_picture_text(ch_read.raw_answer)
+                if folded != ch_read.raw_answer:  # what Chandra wrote about a picture belongs in its alt text
+                    ch_read = vlm_specialists.SpecialistRead(
+                        vlm_specialists.chandra_markdown(folded, drop_furniture=config.strip_furniture),
+                        folded,
+                        ch_read.finish_reason,
+                    )
             ch_ok = (
                 ch_read.finish_reason != "length" and bool(ch_read.markdown.strip()) and not looped(ch_read.markdown)
             )

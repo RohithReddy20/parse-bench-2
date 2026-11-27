@@ -348,6 +348,35 @@ _TABLE_HEADER = re.compile(r"<th\b", re.I)
 _CHART_ALT = re.compile(r"\b(?:chart|graph|plot|bar|line|pie|histogram|scatter|series|axis|axes)\b", re.I)
 
 
+_PICTURE_DIV = re.compile(r"""(<div\b[^>]*data-label=(["'])(?:Figure|Diagram)\2[^>]*>)(.*?)</div>""", _FLAGS)
+PICTURE_ALT_MAX = 1500  # characters of description kept in a picture's alt text
+
+
+def fold_picture_text(raw_html: str) -> str:
+    """Chandra's layout HTML with what it wrote about a picture moved into the picture's alt text.
+
+    A `Figure` / `Diagram` block that holds an `<img>`, no table, and is not a data chart keeps one `<img>` whose alt
+    is Chandra's alt followed by its description of the picture (or the text of the diagram). The words stay in the
+    page (`![...]()`), marked as a description of the image instead of standing in the page as if printed there."""
+
+    def _repl(m: re.Match) -> str:
+        inner = m.group(3)
+        if "<table" in inner.lower() or not _IMG_TAG.search(inner):
+            return m.group(0)
+        alt = " ".join(a[2] for a in _IMG_ALT_TEXT.finditer(inner)).strip()
+        if _CHART_ALT.search(alt):
+            return m.group(0)
+        rest = html.unescape(re.sub(r"<[^>]+>", " ", _IMG_TAG.sub(" ", inner)))
+        rest = " ".join(rest.split())
+        if not rest:
+            return m.group(0)
+        text = f"{html.unescape(alt)} {rest}".strip()[:PICTURE_ALT_MAX]
+        text = text.replace('"', "'").replace("[", "(").replace("]", ")").replace("<", " ").replace(">", " ")
+        return f'{m.group(1)}<img alt="{html.escape(text, quote=False)}"></div>'
+
+    return _PICTURE_DIV.sub(_repl, raw_html)
+
+
 def _promote_section_headers(raw_html: str) -> str:
     """Honor Chandra's `<div data-label="Section-Header">` when it omitted `<h1..h6>` tags."""
 
