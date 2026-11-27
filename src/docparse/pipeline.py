@@ -219,6 +219,7 @@ def _chart_sampling(opts: dict) -> dict:
         "presence_penalty": float(opts.get("presence_penalty", 1.0)),
         "max_tokens": int(opts.get("max_tokens", 10240)),
         "prompt": str(opts.get("prompt", "v2")),
+        "seed": int(opts["seed"]) if opts.get("seed") is not None else None,
     }
 
 
@@ -785,8 +786,33 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                                 continue
                             for i, r in zip(bad, retried, strict=True):
                                 t2_reads[i] = (r, qwen_tier2.read_tier2_result(r))
+                    extra_reads: list[list] = [[] for _ in t2_reads]
+                    n_samples = int(opts.get("samples", 1))
+                    if n_samples > 1:  # more independent reads of each chart: the numbers are voted cell by cell
+                        waiting_more = False
+                        for seed in range(2, n_samples + 1):
+                            more = [client.get(c, b, meta) for c, b in chart_calls({**opts, "seed": seed})]
+                            if any(isinstance(r, Pending) for r in more):
+                                pending += list(dict.fromkeys(r.key for r in more if isinstance(r, Pending)))
+                                waiting_more = True
+                                continue
+                            for slot, r in zip(extra_reads, more, strict=True):
+                                slot.append(qwen_tier2.read_tier2_result(r))
+                        if waiting_more:
+                            continue
                     # a cut-off or looping answer, or one without a table, leaves the page as read without it
-                    t2_good = [(r, x) for r, x in t2_reads if x.usable and _TABLE.search(x.markdown)]
+                    t2_good = []
+                    for (r, x), others in zip(t2_reads, extra_reads, strict=True):
+                        if not (x.usable and _TABLE.search(x.markdown)):
+                            continue
+                        peers = [o.markdown for o in others if o.usable and _TABLE.search(o.markdown)]
+                        if peers:
+                            from dataclasses import replace
+
+                            from docparse.fixes.chart_vote import fuse_reads
+
+                            x = replace(x, markdown=fuse_reads([x.markdown, *peers]))
+                        t2_good.append((r, x))
                     t2_markdown = None
                     if t2_good:
                         answer = "\n\n".join(x.markdown for _, x in t2_good)

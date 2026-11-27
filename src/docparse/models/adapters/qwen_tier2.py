@@ -265,8 +265,10 @@ def build_chart_call(
     presence_penalty: float = 1.5,
     max_tokens: int = 10240,
     prompt: str = "v2",
+    seed: int | None = None,
 ) -> tuple[ModelCall, dict[str, bytes]]:
-    """Full page (plus an optional zoomed chart crop) with vector measurements and the draft tables to verify."""
+    """Full page (plus an optional zoomed chart crop) with vector measurements and the draft tables to verify.
+    `seed` asks for another independent read of the same chart."""
     images = [page_image] if crop_image is None else [page_image, crop_image]
     if prompt == "v3":
         template, prompt_id = CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else ""), CHART_V3_PROMPT_ID
@@ -277,6 +279,8 @@ def build_chart_call(
         template, prompt_id = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT, CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
     params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
+    if seed is not None:
+        params["seed"] = seed
     return _call(images, prompt_id, template, user, model, runtime, params)
 
 
@@ -295,6 +299,7 @@ def build_single_chart_call(
     presence_penalty: float = 1.0,
     max_tokens: int = 10240,
     prompt: str = "v2",
+    seed: int | None = None,
 ) -> tuple[ModelCall, dict[str, bytes]]:
     """One chart of a page with several: the page for context, the chart's zoomed crop, and its vector hint."""
     if prompt == "v3":
@@ -308,6 +313,8 @@ def build_single_chart_call(
         prompt_id = SINGLE_CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
     params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
+    if seed is not None:
+        params["seed"] = seed
     return _call([page_image, crop_image], prompt_id, template, user, model, runtime, params)
 
 
