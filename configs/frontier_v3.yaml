@@ -52,6 +52,7 @@ form_options:
   acroform: true
   acro_clean: true
   checkbox_ink: true
+  route_blanks: true
 chart_options:
   measure: true
   labels: true

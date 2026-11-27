@@ -207,7 +207,7 @@ def needs_pdf_verification(
             return True, f"missing_table:{recall:.3f}"
         return False, ""
     n_tbl, matched, total, found = table_alignment_stats(markdown, rendered)
-    if n_tbl >= 1 and total >= 10 and found < min_table_found:
+    if not is_math and n_tbl >= 1 and total >= 10 and found < min_table_found:
         return True, f"weak_table:{found:.3f}:{matched}"
     if not is_math and n_tbl >= 1 and total >= TABLE_GEO_MIN_CELLS:
         return True, f"table_geo:{found:.3f}:{matched}"

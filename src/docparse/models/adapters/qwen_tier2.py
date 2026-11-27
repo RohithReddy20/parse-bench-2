@@ -51,6 +51,7 @@ CHART_PROMPT_ID = "qwen3.5/chart-v2"
 SINGLE_CHART_PROMPT_ID = "qwen3.5/chart-single-v1"
 FORM_PROMPT_ID = "qwen3.5/form-v2"
 FORM_REFINE_PROMPT_ID = "qwen3.5/form-refine-v1"
+FORM_REFINE_V2_PROMPT_ID = "qwen3.5/form-refine-v2"
 HARD_HTML_PROMPT_ID = "qwen3.5/hard-html-v2"
 
 CHART_SYSTEM = (
@@ -84,7 +85,9 @@ placeholders like "Series 1" or "Value" when an axis label or legend name is pri
 colspan/rowspan as needed). When a chart has multiple panels or subplots, emit one separate <table> per panel/subplot. \
 No markdown code fences or commentary."""
 CHART_THINK_RULE = (
-    "\n6. Keep your internal reasoning concise (under 400 words), then immediately output the final HTML table(s)."
+    "\n6. Keep your internal reasoning concise (under 400 words): verify the axis scale/units, match each legend "
+    "label/color to its exact vector series, compute stacked bar segment values (`top - base`) if needed, and "
+    "confirm every panel/category is included; then immediately output ONLY the final HTML table(s)."
 )
 SINGLE_CHART_PROMPT = """\
 Focus ONLY on the single chart/plot shown in the second (zoomed crop) image (use the first image only for \
@@ -285,6 +288,39 @@ complete value cleanly (e.g. `2025-04-12`, `M2 9YT`) without mixing printed box 
 fences, commentary, or repeated `<br>` tags."""
 
 
+FORM_REFINE_V2_PROMPT = """\
+Verify and correct this document form page transcription against the page image(s).
+(When two images are provided, they are overlapping top and bottom halves of the same page — read both seamlessly as \
+one complete page without duplicating the overlap.)
+
+Current draft transcription from an initial parser (often omits blank input fields, drops unchecked checkbox/radio \
+options, misreads tiny checkmarks, or splits character-box/comb digits — keep all accurate printed text and headings \
+intact):
+<draft>
+{draft}
+</draft>
+
+Strict rules:
+1. Keep ALL accurate printed headings, section numbers, field codes/box numbers, instructions, and filled-in values \
+from `<draft>` — NEVER drop printed text or omit sections.
+2. Explicitly mark EVERY blank/unfilled input field with `[___]` (including empty write-in lines, blank answer boxes, \
+empty comb/character-box rows, and unfilled value cells in form tables that `<draft>` left empty `<td></td>` or \
+omitted). Keep currency/unit symbols beside `[___]` (e.g. `£ [___]`). NEVER invent values or shift a filled value into \
+a neighboring field.
+3. Visually inspect EVERY checkbox and radio button on the page image(s): mark `[x]` ONLY if visibly \
+checked/ticked/crossed/filled, and `[ ]` if unchecked/empty. Actively INSERT `[ ]` (or `[x]`) for every checkbox or \
+radio option that `<draft>` dropped or left unmarked, and fix every misread state.
+4. For comb / character-box fields (dates, tax IDs, postal codes, account numbers written one character per box), \
+assemble the complete value cleanly without extra spaces between characters (e.g. `2025-04-12`, `27298400386`, \
+`M2 9YT`) and without mixing printed box numbers into the value.
+5. Output ONLY the clean, corrected Markdown transcription (HTML `<table>` only for true tabular grids). No code \
+fences, commentary, or repeated `<br>` tags."""
+FORM_THINK_RULE = (
+    "\n6. Keep your internal reasoning concise (under 350 words): scan every checkbox/radio state, every blank "
+    "input box/line/cell needing `[___]`, and every comb field; then immediately output ONLY the final transcription."
+)
+
+
 def build_form_refine_call(
     page_image: Image.Image,
     draft_markdown: str,
@@ -297,9 +333,17 @@ def build_form_refine_call(
     top_k: int | None = None,
     presence_penalty: float = 1.0,
     max_tokens: int = 8192,
+    prompt_version: str = "v1",
+    images: Sequence[Image.Image] | None = None,
 ) -> tuple[ModelCall, dict[str, bytes]]:
-    """Verify and correct an initial form transcription against the page image."""
-    user = FORM_REFINE_PROMPT.format(draft=draft_markdown.strip() or "(none)")
+    """Verify and correct an initial form transcription against the page image (or overlapping high-res strips)."""
+    if prompt_version == "v2":
+        prompt_id = FORM_REFINE_V2_PROMPT_ID
+        template = FORM_REFINE_V2_PROMPT + FORM_THINK_RULE if enable_thinking else FORM_REFINE_V2_PROMPT
+    else:
+        prompt_id = FORM_REFINE_PROMPT_ID
+        template = FORM_REFINE_PROMPT
+    user = template.format(draft=draft_markdown.strip() or "(none)")
     params: dict[str, Any] = {
         "enable_thinking": enable_thinking,
         "temperature": temperature,
@@ -309,7 +353,8 @@ def build_form_refine_call(
     }
     if top_k is not None:
         params["top_k"] = top_k
-    return _call([page_image], FORM_REFINE_PROMPT_ID, FORM_REFINE_PROMPT, user, model, runtime, params)
+    call_images = list(images) if images is not None else [page_image]
+    return _call(call_images, prompt_id, template, user, model, runtime, params)
 
 
 def build_hard_table_call(

@@ -48,7 +48,7 @@ FORM_OPTIONS = frozenset(
     | {
         "mini_tables", "table_rows", "box_grids", "bare_ticks", "field_lines", "table_clean", "acroform",
         "comb_noise", "field_notes", "field_slots", "table_grids", "field_clean", "acro_clean", "blank_hints",
-        "n_blank_forms", "checkbox_ink",
+        "n_blank_forms", "checkbox_ink", "route_blanks",
     }
 )  # fmt: skip
 # chart tables corrected from the PDF's vector drawing (fixes/charts.py)
@@ -92,6 +92,7 @@ TIER2_CHART_OPTIONS = frozenset(
     {
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "use_ppdoclayout", "pp_chart_score", "per_chart_crops", "per_chart_min_union", "per_chart_max_boxes",
+        "hint_max_chars", "hint_max_series",
     }
 )  # fmt: skip
 # Tier-2 draft-guided form refinement
@@ -99,6 +100,7 @@ TIER2_FORM_OPTIONS = frozenset(
     {
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "min_word_coverage", "min_checkboxes", "min_acro_widgets",
+        "prompt_version", "two_strips", "strip_overlap",
     }
 )  # fmt: skip
 # Tier-2 strip re-read of dense table pages

@@ -149,3 +149,101 @@ def test_hybrid_v2_config_hash_unchanged_with_new_optional_fields():
     assert f3.table_options["table_geo"] is True
     assert f3.format_options["underline_missing"] is True
     assert f3.form_options["acro_clean"] is True
+    assert f3.form_options["route_blanks"] is True
+
+
+def test_weak_table_skips_math_pages():
+    words = [Word(f"w{i}", (10 + (i % 5) * 60, 10 + (i // 5) * 20, 50 + (i % 5) * 60, 22 + (i // 5) * 20)) for i in range(30)]
+    rp = _page_with_words(words)
+    math_md = "$$E = mc^2$$\n\n<table><tr><th>A</th><th>B</th></tr>" + "".join(
+        f"<tr><td>x{i}</td><td>y{i}</td></tr>" for i in range(6)
+    ) + "</table>"
+    need, _ = needs_pdf_verification(math_md, rp, table_geo=True)
+    assert not need
+
+
+def test_allow_table_figures_replaces_figure_table_without_chart_alt():
+    raw = (
+        '<div data-bbox="50 40 950 100" data-label="Text"><p>Intro text.</p></div>'
+        '<div data-bbox="50 120 950 600" data-label="Figure">'
+        '<img alt="Figure 1.18: Trade patterns are evolving"/>'
+        "<table><tr><th>Year</th><th>Val</th></tr><tr><td>2024</td><td>99</td></tr></table></div>"
+    )
+    new_tbl = "<table><tr><th>Year</th><th>Val</th></tr><tr><td>2024</td><td>42</td></tr></table>"
+    md_old, ok_old = vlm_specialists.fuse_figure_charts(raw, [new_tbl], ocria_vector_measured=True)
+    assert not ok_old and "99" in md_old
+    md_new, ok_new = vlm_specialists.fuse_figure_charts(
+        raw, [new_tbl], ocria_vector_measured=True, allow_table_figures=True
+    )
+    assert ok_new and "42" in md_new and "99" not in md_new
+
+
+def test_route_blanks_prefers_ocria_when_chandra_omits_blank_fields():
+    import io
+
+    from docparse.models.adapters import ocria
+    from docparse.models.calls import ModelResult
+    from docparse.pipeline import parse
+    from docparse.write.markdown import write_document
+
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 800), "white").save(buf, format="PNG")
+    page_png = buf.getvalue()
+    ch_raw = '<div data-bbox="50 50 550 400" data-label="Table"><table><tr><td>Name</td><td></td></tr></table></div>'
+    oc_md = "Name: [___]\nAddress: [___]\nTax ID: [___]\nSignature: [___]"
+
+    class FakeClient:
+        def get(self, call, blobs, meta=None):
+            if call.prompt_id == vlm_specialists.CHANDRA_PROMPT_ID:
+                return ModelResult(key=call.key(), output={"answer": ch_raw, "finish_reason": "stop"})
+            return ModelResult(key=call.key(), output={"markdown": oc_md, "finish_reason": "stop"})
+
+    cfg = Config(
+        page_model=ocria.OWN,
+        page_runtime="vllm-0.34.0",
+        prompt_sha="t",
+        reader="chandra_hybrid",
+        layout="none",
+        form_options={"route_blanks": True},
+    )
+    doc = parse(page_png, cfg, FakeClient()).document
+    assert doc is not None and write_document(doc).count("[___]") == 4
+
+    # Data table with `<th>` headers must not be routed away from Chandra
+    ch_dt = '<div data-bbox="50 50 550 400" data-label="Table"><table><tr><th>Col</th><th>Val</th></tr><tr><td>A</td><td></td></tr></table></div>'
+    seen: list[str] = []
+
+    class DataTableClient:
+        def get(self, call, blobs, meta=None):
+            seen.append(call.prompt_id)
+            if call.prompt_id == vlm_specialists.CHANDRA_PROMPT_ID:
+                return ModelResult(key=call.key(), output={"answer": ch_dt, "finish_reason": "stop"})
+            return ModelResult(key=call.key(), output={"markdown": oc_md, "finish_reason": "stop"})
+
+    doc_dt = parse(page_png, cfg, DataTableClient()).document
+    assert doc_dt is not None and "<th>Col</th>" in write_document(doc_dt) and "[___]" not in write_document(doc_dt)
+
+    # Form-routed pages must not escalate to tier2_tables even when OCRia's read hit the token limit
+    seen_t2: list[str] = []
+
+    class NoT2TableClient:
+        def get(self, call, blobs, meta=None):
+            seen_t2.append(call.prompt_id)
+            if call.prompt_id == vlm_specialists.CHANDRA_PROMPT_ID:
+                return ModelResult(key=call.key(), output={"answer": ch_raw, "finish_reason": "stop"})
+            return ModelResult(
+                key=call.key(),
+                output={"markdown": f"<table><tr><td>A</td></tr></table>\n{oc_md}", "finish_reason": "length"},
+            )
+
+    cfg_t2 = Config(
+        page_model=ocria.OWN,
+        page_runtime="vllm-0.34.0",
+        prompt_sha="t",
+        reader="chandra_hybrid",
+        layout="none",
+        form_options={"route_blanks": True},
+        tier2_tables=True,
+    )
+    doc_no_t2 = parse(page_png, cfg_t2, NoT2TableClient()).document
+    assert doc_no_t2 is not None and not any("hard-html" in pid for pid in seen_t2)

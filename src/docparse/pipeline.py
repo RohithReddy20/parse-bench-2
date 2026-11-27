@@ -41,6 +41,7 @@ _IMG_ALT = re.compile(r"""<img\b[^>]*?\salt\s*=\s*(["'])(.*?)\1""", _FLAGS)
 _MATH = re.compile(r"\$\$|\\frac|\\begin\{equation\}|<math", re.IGNORECASE)
 _FORM_LABEL = re.compile(r"""<div\b[^>]*\bdata-label\s*=\s*(["'])Form\1""", re.IGNORECASE)
 _CHECKBOX = re.compile(r"\[[ xX]\]|<input\b")
+_BLANK_MARK = re.compile(r"\[[ \t]*_{2,}[ \t]*\]")
 CHART_PAD = 0.06  # share of the page width / height added around the chart boxes before cropping
 CHART_CROP_SHARE = (0.03, 0.92)  # a crop is sent only when the padded box covers this share of the page
 DUPLICATE_SHARE = 0.35  # token overlap that makes a Tier-2 table a repeat of a table Chandra already read
@@ -149,13 +150,24 @@ def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
     return crop, (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
 
 
-def _chart_hint(pdf_bytes: bytes, index: int, rp: RenderedPage, box_pt: tuple[float, ...] | None) -> str:
+def _chart_hint(
+    pdf_bytes: bytes,
+    index: int,
+    rp: RenderedPage,
+    box_pt: tuple[float, ...] | None,
+    *,
+    max_chars: int = 2500,
+    max_series: int = 12,
+) -> str:
     """The PDF's vector measurements of the chart in `box_pt` (the whole page when None); "" without any."""
     from docparse.fixes.chart_hints import extract_chart_hint, format_chart_hint
     from docparse.pdf.graphics import load_shapes
 
     try:
-        return format_chart_hint(extract_chart_hint(rp, load_shapes(pdf_bytes, index), box_pt))
+        return format_chart_hint(
+            extract_chart_hint(rp, load_shapes(pdf_bytes, index), box_pt, max_series=max_series),
+            max_chars=max_chars,
+        )
     except Exception:  # the hint is optional evidence: image uploads and odd geometry read the chart from pixels
         return ""
 
@@ -223,7 +235,9 @@ def _tier2_chart_call(
     figures = [b for _, _, alt, b in _chandra_figures(raw_chandra) if b and _CHART_ALT.search(alt)]
     boxes = pp_boxes or [(b[0] * w / 1000, b[1] * h / 1000, b[2] * w / 1000, b[3] * h / 1000) for b in figures]
     crop, box_pt = _chart_crop(rp, boxes)
-    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)  # vector paths follow the page as stored
+    h_chars = int(opts.get("hint_max_chars", 2500))
+    h_series = int(opts.get("hint_max_series", 12))
+    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt, max_chars=h_chars, max_series=h_series)
     return qwen_tier2.build_chart_call(
         rp.image,
         crop_image=crop,
@@ -254,7 +268,9 @@ def _tier2_single_chart_call(
         x0, y0, x1, y1 = max(0.0, box[0]), max(0.0, box[1]), min(w, box[2]), min(h, box[3])
         crop = rp.image.crop((round(x0), round(y0), round(x1), round(y1)))
         box_pt = (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
-    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt)
+    h_chars = int(opts.get("hint_max_chars", 2500))
+    h_series = int(opts.get("hint_max_series", 12))
+    hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt, max_chars=h_chars, max_series=h_series)
     return qwen_tier2.build_single_chart_call(
         rp.image, crop, vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
     )
@@ -270,9 +286,14 @@ def _tier2_markdown(
     tables = _TABLE.findall(answer)
     if not tables:
         return None
-    if chart_figure:
+    has_tbl_fig = any("<table" in f.body.lower() for f in vlm_specialists._figure_divs(raw_chandra))
+    if chart_figure or has_tbl_fig:
         fused_md, fused = vlm_specialists.fuse_figure_charts(
-            raw_chandra, tables, ocria_vector_measured=True, drop_furniture=drop_furniture
+            raw_chandra,
+            tables,
+            ocria_vector_measured=True,
+            drop_furniture=drop_furniture,
+            allow_table_figures=True,
         )
         return fused_md if fused else None
     spans = [(start, end) for start, end, _, _ in _chandra_figures(raw_chandra)]
@@ -398,7 +419,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         from docparse.fixes.formatting import needs_decorations, needs_styles
 
         decorations, styles = needs_decorations(config.format_options), needs_styles(config.format_options)
-    layer = bool(config.verify_pdf or config.tier2_tables)  # the Tier-2 table gate checks the text layer's health
+    layer = bool(config.verify_pdf or config.tier2_tables or config.form_options.get("route_blanks"))
     if config.text_options:
         from docparse.fixes.text import needs_layer
 
@@ -455,9 +476,23 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     and _is_form_page(ch_read.raw_answer, full_ch_md, pdf_bytes, index, config.tier2_form_options)
                 )
                 verify_needed, verify_reason = needs_pdf_verification(full_ch_md, rp, table_geo=use_tgeo)
+            use_form_route = bool(
+                ch_ok
+                and config.reader == "chandra_hybrid"
+                and config.form_options.get("route_blanks")
+                and not vlm_specialists.has_chart_figure(ch_read.raw_answer)
+                and not _MATH.search(ch_read.raw_answer)
+            )
+            if use_form_route and not full_ch_md:
+                full_ch_md = (
+                    vlm_specialists.chandra_markdown(ch_read.raw_answer, drop_furniture=False)
+                    if config.strip_furniture
+                    else ch_read.markdown
+                )
             need_ocria = (
                 not ch_ok
                 or verify_needed
+                or use_form_route
                 or (config.reader == "chandra_hybrid" and vlm_specialists.has_chart_figure(ch_read.raw_answer))
                 or config.layout == "ground"
             )
@@ -466,6 +501,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             ch_read = None
             ch_ok = False
             verify_needed, verify_reason = (False, "")
+            use_form_route = False
             result = client.get(call, blobs, meta)
 
         detections = regions2 = pp_res = None
@@ -514,18 +550,47 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     continue
                 attention = read_attention(attention)
 
+        sec_md_cached: str | None = None
+        routed_form = False
         if use_chandra and ch_ok and ch_read is not None and verify_needed and read is not None:
             from docparse.fixes.verify import secondary_improves
 
-            sec_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
+            sec_md_cached, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
             if secondary_improves(
                 full_ch_md or ch_read.markdown,
-                sec_md,
+                sec_md_cached,
                 rp,
                 verify_reason,
                 table_geo=bool(config.table_options.get("table_geo")),
             ):
                 ch_ok = False
+        if use_chandra and ch_ok and ch_read is not None and use_form_route and read is not None:
+            from docparse.fixes.fallback import has_math
+            from docparse.fixes.layout_refine import words_in_points
+            from docparse.fixes.verify import (
+                TABLE_MAX_MAP_ERRORS,
+                TABLE_MIN_WORDS,
+                has_healthy_text_layer,
+                pdf_word_recall,
+            )
+
+            pp_min = float(config.tier2_chart_options.get("pp_chart_score", 0.40))
+            pp_has_chart = pp_chart is not None and any(
+                d.label == "chart" for d in ppdoclayout.read_raw_detections(pp_chart, pp_min)
+            )
+            ch_cmp = full_ch_md or ch_read.markdown
+            if not pp_has_chart and not has_math(ch_cmp) and _data_table_count(ch_cmp) == 0:
+                if sec_md_cached is None:
+                    sec_md_cached, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
+                healthy = has_healthy_text_layer(rp, min_words=TABLE_MIN_WORDS, max_map_errors=TABLE_MAX_MAP_ERRORS)
+                words = words_in_points(rp) if healthy else []
+                ch_rec = pdf_word_recall(ch_cmp, words) if healthy else 0.0
+                oc_rec = pdf_word_recall(sec_md_cached, words) if healthy else 0.0
+                oc_bl = len(_BLANK_MARK.findall(sec_md_cached))
+                ch_bl = len(_BLANK_MARK.findall(ch_cmp))
+                if oc_bl >= 3 and ch_bl == 0 and (not healthy or oc_rec >= ch_rec - 0.03):
+                    ch_ok = False
+                    routed_form = True
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
@@ -582,6 +647,8 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     # a cut-off or looping answer, or one without a table, leaves the page as read without it
                     t2_reads = [(r, qwen_tier2.read_tier2_result(r)) for r in t2_done]
                     t2_good = [(r, x) for r, x in t2_reads if x.usable and _TABLE.search(x.markdown)]
+                    if per_chart and len(t2_good) < len(t2_calls):
+                        t2_good = []
                     t2_markdown = None
                     if t2_good:
                         answer = "\n\n".join(x.markdown for _, x in t2_good)
@@ -601,6 +668,15 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 tier2_tried = True
                 from docparse.models.adapters import qwen_tier2
 
+                f_imgs = (
+                    list(
+                        qwen_tier2.make_horizontal_strips(
+                            rp.image, overlap=float(f_opts.get("strip_overlap", 0.12))
+                        )
+                    )
+                    if f_opts.get("two_strips")
+                    else None
+                )
                 f_call, f_blobs = qwen_tier2.build_form_refine_call(
                     rp.image,
                     markdown,
@@ -611,6 +687,8 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     top_k=int(f_opts["top_k"]) if "top_k" in f_opts else None,
                     presence_penalty=float(f_opts.get("presence_penalty", 1.0)),
                     max_tokens=int(f_opts.get("max_tokens", 8192)),
+                    prompt_version=str(f_opts.get("prompt_version", "v1")),
+                    images=f_imgs,
                 )
                 f_res = client.get(f_call, f_blobs, meta)
                 if isinstance(f_res, Pending):
@@ -684,9 +762,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             assert read is not None and result is not None
             markdown = read.markdown
             # Run Tier-2 strip recovery BEFORE plain-text fallback so a cut-off table keeps HTML structure
-            markdown, t_used, t_wait = _run_tier2_tables(
-                markdown, rp, read.finish_reason == "length", config, client, meta
-            )
+            t_used, t_wait = [], []
+            if not routed_form:
+                markdown, t_used, t_wait = _run_tier2_tables(
+                    markdown, rp, read.finish_reason == "length", config, client, meta
+                )
             if t_wait:
                 pending += t_wait
                 continue

@@ -143,7 +143,9 @@ def test_off_by_default_never_asks_for_tier2_and_keeps_the_config_hash():
         "tier2_form_options": {},
         "tier2_tables": False,
         "tier2_table_options": {},
-        "form_options": {k: v for k, v in frontier.form_options.items() if k not in {"checkbox_ink", "acro_clean"}},
+        "form_options": {
+            k: v for k, v in frontier.form_options.items() if k not in {"checkbox_ink", "acro_clean", "route_blanks"}
+        },
         "format_options": {k: v for k, v in frontier.format_options.items() if k != "underline_missing"},
         "table_options": {k: v for k, v in frontier.table_options.items() if k != "table_geo"},
         "layout_options": {

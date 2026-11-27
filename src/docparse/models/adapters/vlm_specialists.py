@@ -518,13 +518,20 @@ def fuse_figure_charts(
     *,
     ocria_vector_measured: bool = False,
     drop_furniture: bool = False,
+    allow_table_figures: bool = False,
 ) -> tuple[str, bool]:
     """Fuse vector-measured chart tables from a secondary reader into Chandra's chart `Figure` blocks.
 
     Keeps panels together in their chart figure and protects printed insets from unmeasured replacements.
+    When `allow_table_figures=True` (used after a chart detector already confirmed a chart on the page),
+    `Figure` blocks containing a `<table>` are also eligible even if their alt text omits chart keywords.
     """
     figures = list(_figure_divs(raw_chandra))
-    fig_matches = [figure for figure in figures if _CHART_ALT.search(figure.alt)]
+    fig_matches = [
+        figure
+        for figure in figures
+        if _CHART_ALT.search(figure.alt) or (allow_table_figures and "<table" in figure.body.lower())
+    ]
     original_tables = {figure: _TABLE.findall(figure.body) for figure in figures}
     insets = {figure: [t for t in tables if not _TABLE_HEADER.search(t)] for figure, tables in original_tables.items()}
     if not fig_matches or not ocria_tables:

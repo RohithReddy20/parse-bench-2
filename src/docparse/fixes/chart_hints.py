@@ -1118,6 +1118,7 @@ def extract_chart_hint(
     bbox: BBox | None = None,
     *,
     page_size: tuple[float, float] | None = None,
+    max_series: int = MAX_SERIES,
 ) -> dict[str, Any]:
     """Extract structured vector chart hints from PDF words and shapes.
 
@@ -1260,13 +1261,13 @@ def extract_chart_hint(
                 s["axis_side"] = z.side
             all_series.append(s)
 
-    # Prioritize legend-named and multi-point series when capping at MAX_SERIES.
+    # Prioritize legend-named and multi-point series when capping at max_series.
     total_series = len(all_series)
-    if total_series > MAX_SERIES:
+    if total_series > max_series:
         ranked = sorted(
             enumerate(all_series),
             key=lambda pair: (0 if pair[1].get("label") else 1, -len(pair[1].get("points", [])), pair[0]),
-        )[:MAX_SERIES]
+        )[:max_series]
         all_series = [s for _, s in sorted(ranked, key=lambda pair: pair[0])]
 
     # 4. Printed labels inside the plot frame(s) (excluding axis ticks and inset legend labels).
