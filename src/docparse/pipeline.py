@@ -687,7 +687,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 if rp.hidden is not None and has_healthy_text_layer(rp):
                     if prefer_alternative(ch_read.markdown, alt_md, rp, config.select_options):
                         ch_ok = False
-                elif config.select_options.get("judge") and alt_md.strip():
+                elif (
+                    config.select_options.get("judge")
+                    and alt_md.strip()
+                    and not (
+                        config.select_options.get("judge_prose_only")  # tables and forms keep the primary reading
+                        and any(_TABLE.search(m) or _CHECKBOX.search(m) for m in (ch_read.markdown, alt_md))
+                    )
+                ):
                     # no text layer to check against: a third, general reader says which reading it agrees with
                     from docparse.fixes.select import agreement
 
