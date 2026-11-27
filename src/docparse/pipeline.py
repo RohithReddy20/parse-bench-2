@@ -473,6 +473,71 @@ def _qwen_page_read(result: ModelResult):
     return PageRead(t2.markdown, None, None, "stop" if t2.usable else "length")
 
 
+def _run_tier2_forms(
+    markdown: str,
+    raw_chandra: str,
+    rp: RenderedPage,
+    pdf_bytes: bytes,
+    index: int,
+    config: Config,
+    client: ModelClient,
+    meta: dict,
+) -> tuple[str, list[ModelResult], list[str]]:
+    """`(markdown, results used, pending keys)` after the Tier-2 form step on a form page: the draft is verified
+    (`form-refine`) or rewritten as `caption: value` lines (`prompt: kv`) against the page image. The answer replaces
+    the draft only when it keeps the draft's words and data tables; a thinking read that fails falls back to a
+    plain one (`fallback_plain`). `raw_chandra` is "" when the draft comes from another reader."""
+    f_opts = config.tier2_form_options
+    if not _is_form_page(raw_chandra, markdown, pdf_bytes, index, f_opts):
+        return markdown, [], []
+    from docparse.models.adapters import qwen_tier2
+
+    kv = f_opts.get("prompt") == "kv"
+    build_form = qwen_tier2.build_form_refine_call
+    if kv:  # rewrite as `caption: value` lines, with the text layer's lines
+        from functools import partial
+
+        build_form = partial(qwen_tier2.build_form_kv_call, layer_lines=_layer_lines(rp, f_opts))
+    samplings = [
+        {
+            "enable_thinking": bool(f_opts.get("enable_thinking", False)),
+            "temperature": float(f_opts.get("temperature", 0.1)),
+            "top_p": float(f_opts.get("top_p", 0.95)),
+            "top_k": int(f_opts["top_k"]) if "top_k" in f_opts else None,
+            "presence_penalty": float(f_opts.get("presence_penalty", 1.0)),
+            "max_tokens": int(f_opts.get("max_tokens", 8192)),
+        }
+    ]
+    if samplings[0]["enable_thinking"] and f_opts.get("fallback_plain"):
+        # a thinking read that runs out of tokens or fails the guards falls back to a plain read
+        samplings.append({"enable_thinking": False, "temperature": 0.1, "top_p": 0.95, "top_k": None,
+                          "presence_penalty": 1.0, "max_tokens": 8192})  # fmt: skip
+    for sampling in samplings:
+        f_call, f_blobs = build_form(
+            rp.image, markdown, model=qwen_tier2.resolve_tier2_model(f_opts.get("model")), **sampling
+        )
+        f_res = client.get(f_call, f_blobs, meta)
+        if isinstance(f_res, Pending):
+            return markdown, [], [f_res.key]
+        f_read = qwen_tier2.read_tier2_result(f_res)
+        if kv and f_read.markdown.strip().strip("`") == qwen_tier2.NOT_A_FORM:
+            break  # the model looked and saw no form: the draft stands
+        if not f_read.usable:  # a cut-off or looping answer leaves the draft
+            continue
+        cand_md = f_read.markdown
+        if config.strip_furniture and raw_chandra:
+            cand_md = _drop_chandra_furniture(raw_chandra, cand_md)
+        # a refinement that drops the draft's printed text or data tables is a rewrite, not a correction
+        min_cov = float(f_opts.get("min_word_coverage", 0.93))
+        if kv:  # boxed fields drawn as small tables may become lines; real data grids must stay
+            keeps_tables = _grid_table_count(cand_md) >= _grid_table_count(markdown)
+        else:
+            keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
+        if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
+            return cand_md, [f_res], []
+    return markdown, [], []
+
+
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
     decorations = styles = False
@@ -725,65 +790,15 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         markdown = t2_markdown
                         used += [r for r, _ in t2_good]
                         tier2_chart_used = True
-            f_opts = config.tier2_form_options
-            if (
-                config.tier2_forms
-                and not tier2_chart_used  # a chart page is never escalated twice
-                and _is_form_page(ch_read.raw_answer, markdown, pdf_bytes, index, f_opts)
-            ):
-                from docparse.models.adapters import qwen_tier2
-
-                build_form = qwen_tier2.build_form_refine_call
-                if f_opts.get("prompt") == "kv":  # rewrite as `caption: value` lines, with the text layer's lines
-                    from functools import partial
-
-                    build_form = partial(qwen_tier2.build_form_kv_call, layer_lines=_layer_lines(rp, f_opts))
-                kv = f_opts.get("prompt") == "kv"
-                samplings = [
-                    {
-                        "enable_thinking": bool(f_opts.get("enable_thinking", False)),
-                        "temperature": float(f_opts.get("temperature", 0.1)),
-                        "top_p": float(f_opts.get("top_p", 0.95)),
-                        "top_k": int(f_opts["top_k"]) if "top_k" in f_opts else None,
-                        "presence_penalty": float(f_opts.get("presence_penalty", 1.0)),
-                        "max_tokens": int(f_opts.get("max_tokens", 8192)),
-                    }
-                ]
-                if samplings[0]["enable_thinking"] and f_opts.get("fallback_plain"):
-                    # a thinking read that runs out of tokens or fails the guards falls back to a plain read
-                    samplings.append({"enable_thinking": False, "temperature": 0.1, "top_p": 0.95, "top_k": None,
-                                      "presence_penalty": 1.0, "max_tokens": 8192})  # fmt: skip
-                f_wait = False
-                for sampling in samplings:
-                    f_call, f_blobs = build_form(
-                        rp.image, markdown, model=qwen_tier2.resolve_tier2_model(f_opts.get("model")), **sampling
-                    )
-                    f_res = client.get(f_call, f_blobs, meta)
-                    if isinstance(f_res, Pending):
-                        pending.append(f_res.key)
-                        f_wait = True
-                        break
-                    f_read = qwen_tier2.read_tier2_result(f_res)
-                    if kv and f_read.markdown.strip().strip("`") == qwen_tier2.NOT_A_FORM:
-                        break  # the model looked and saw no form: the draft stands
-                    if not f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
-                        continue
-                    cand_md = f_read.markdown
-                    if config.strip_furniture:
-                        cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
-                    # a refinement that drops the draft's printed text or data tables is a rewrite, not a correction
-                    min_cov = float(f_opts.get("min_word_coverage", 0.93))
-                    if kv:  # boxed fields drawn as small tables may become lines; real data grids must stay
-                        keeps_tables = _grid_table_count(cand_md) >= _grid_table_count(markdown)
-                    else:
-                        keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
-                    if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
-                        markdown = cand_md
-                        used.append(f_res)
-                        tier2_form_used = True
-                        break
+            if config.tier2_forms and not tier2_chart_used:  # a chart page is never escalated twice
+                markdown, f_used, f_wait = _run_tier2_forms(
+                    markdown, ch_read.raw_answer, rp, pdf_bytes, index, config, client, meta
+                )
                 if f_wait:
+                    pending += f_wait
                     continue
+                used += f_used
+                tier2_form_used = bool(f_used)
             if not tier2_chart_used and not tier2_form_used:  # a page a Tier-2 read already changed is left alone
                 markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
                 if t_wait:
@@ -847,7 +862,17 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             if t_wait:
                 pending += t_wait
                 continue
-            if not t_used and config.fallback_below > 0:
+            f_used: list[ModelResult] = []
+            if config.tier2_forms and not t_used and config.tier2_form_options.get("any_reader"):
+                # the form step is about the page, not about who read it: it runs on this reader's draft too
+                raw_ch = ch_read.raw_answer if ch_read is not None else ""
+                markdown, f_used, f_wait = _run_tier2_forms(
+                    markdown, raw_ch, rp, pdf_bytes, index, config, client, meta
+                )
+                if f_wait:
+                    pending += f_wait
+                    continue
+            if not t_used and not f_used and config.fallback_below > 0:
                 from docparse.fixes.fallback import (
                     MIN_TOKENS,
                     has_math,
@@ -901,7 +926,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     for region in page.regions:
                         region.selected = region.candidates[0].id
                     page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
-            billed = [result, *t_used]
+            billed = [result, *t_used, *f_used]
             page.cost = CostRecord(
                 calls=len(billed),
                 gpu_seconds=sum(r.gpu_seconds or 0.0 for r in billed),
