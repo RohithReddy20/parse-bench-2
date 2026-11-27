@@ -1,0 +1,23 @@
+docs/results/2026-11-27-fable-v4.md
+  s_6e78563db01caf::t_d8dc1714ac24a1 245-287
+configs/fable_v5_jury_standin.yaml
+  s_6e78563db01caf::t_4e00d5ed51002e 1-7
+  s_6e78563db01caf::t_b63c65a7b1e8ed 137-144
+  s_6e78563db01caf::t_4514d87373128f 8-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90c692760a5536c217a656f7c3f437c65016a724",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
