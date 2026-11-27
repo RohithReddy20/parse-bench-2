@@ -132,6 +132,20 @@ def _chandra_figures(raw: str) -> list[tuple[int, int, str, tuple[int, ...] | No
     return figures
 
 
+_PICTURE_LABEL = re.compile(r"""\bdata-label\s*=\s*(["'])(?:Figure|Image|Diagram)\1""", re.IGNORECASE)
+
+
+def _picture_words(raw: str) -> int:
+    """Words Chandra wrote for the page's pictures (Figure / Image / Diagram blocks: alt text, description, the
+    text of a diagram). Text inside a picture is in no text layer and the other readers do not transcribe it."""
+    n = 0
+    for m in _CHANDRA_DIV.finditer(raw):
+        if _PICTURE_LABEL.search(m[1]):
+            alt = " ".join(a[2] for a in _IMG_ALT.finditer(m[2]))
+            n += len(re.findall(r"\w+", alt + " " + re.sub(r"<[^>]+>", " ", m[2])))
+    return n
+
+
 def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
     """`(crop, box_pt)`: the union of the chart `boxes` (page pixels) padded by CHART_PAD and clipped to the page, as
     a crop of the page image (None when it covers too little or nearly all of the page) and in PDF points."""
@@ -682,7 +696,9 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.select import prefer_alternative
             from docparse.models.adapters import vlm_specialists
 
-            if not vlm_specialists.has_chart_figure(ch_read.raw_answer):  # a chart's values are not in the layer
+            # a chart's values and a picture's transcribed content are in no text layer: such pages keep Chandra
+            pictured = _picture_words(ch_read.raw_answer) >= int(config.select_options.get("picture_words", 10**9))
+            if not vlm_specialists.has_chart_figure(ch_read.raw_answer) and not pictured:
                 from docparse.fixes.verify import has_healthy_text_layer
 
                 alt_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
