@@ -966,6 +966,9 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         else:
             assert read is not None and result is not None
             markdown = scan_md if scan_md is not None else read.markdown
+            if config.strip_furniture and ch_read is not None and ch_read.finish_reason != "length":
+                # the running headers and footers Chandra labelled are dropped from whichever reading is kept
+                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
             if picture_md:
                 markdown = f"{markdown}\n\n{picture_md}"
             read_cut = scan_md is None and read.finish_reason == "length"
