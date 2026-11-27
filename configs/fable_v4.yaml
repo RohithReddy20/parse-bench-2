@@ -6,7 +6,9 @@
 # - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking, the v2b prompt (v2 plus: always
 #   estimate off the axis, one column per series), small crops enlarged to 2048 px and the full vector measurements; forms rewritten as `caption: value` lines from
 #   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
-#   must stay tables).
+#   must stay tables); the form step also runs when the selector kept OCRia-1's reading.
+# - select_options.judge: on a prose page without a text layer, a Qwen3.8 transcription decides which of the two
+#   readings to keep (it is never used as the page itself).
 # - table_options round three: duplicate/split column squeeze, currency-sign columns, missing header leaves and
 #   last columns from the text layer, stricter and wider table merging (all PDF-grounded, fail closed).
 reader: chandra_hybrid
@@ -96,6 +98,7 @@ tier2_form_options:
   model: q38
   prompt: kv
   wide: true
+  any_reader: true
   enable_thinking: true
   fallback_plain: true
   temperature: 0.6
@@ -104,7 +107,7 @@ tier2_form_options:
   presence_penalty: 1.0
   max_tokens: 12000
   min_word_coverage: 0.93
-tier2_tables: true
+tier2_tables: false  # Qwen3.8 strip re-reads cost 0.25 on the dev tables dimension
 tier2_table_options:
   model: q38
   n_strips: 3
@@ -117,3 +120,5 @@ tier2_table_options:
   min_recall_gain: 0.05
 select_options:
   layer_margin: 0.0
+  judge: true
+  judge_prose_only: true
