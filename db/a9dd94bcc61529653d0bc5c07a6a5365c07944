@@ -1,0 +1,26 @@
+tests/fixes/test_fuse_words.py
+  s_6e78563db01caf::t_a570fa4436cd2c 1-51
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_096494edb37c8d 519,526-533,760,799-802,975,1073
+  s_6e78563db01caf::t_5a154c278dd507 520-523,971,1071
+  s_6e78563db01caf::t_c8a289b7c34dc0 524-525,534-536,966-970,972-974,1065-1070,1072
+src/docparse/fixes/select.py
+  s_6e78563db01caf::t_096494edb37c8d 161-166,169,186,191-199
+  s_6e78563db01caf::t_2fb57c759af78f 147-160,167-168,170-185,187-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dba9dd94bcc61529653d0bc5c07a6a5365c07944",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
