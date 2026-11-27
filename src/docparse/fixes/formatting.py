@@ -228,6 +228,29 @@ def _strikes(page: Page, raws: list[str], words) -> list[str]:
     return out
 
 
+_TR = re.compile(r"<tr\b.*?</tr>", re.DOTALL | re.IGNORECASE)
+_TD = re.compile(r"<t[hd]\b.*?</t[hd]>", re.DOTALL | re.IGNORECASE)
+RULED_ROWS = 3  # a table with at least this many rows ...
+RULED_SHARE = 0.6  # ... most of which carry lines under two or more of their cells is a ruled table
+
+
+def _ruled_rows(raw: str, toks: list[tuple[int, int, str]], under: list[bool | None]) -> bool:
+    """Do the lines under this table's words run under several cells of most rows (row rules, not underlines)?"""
+    rows = ruled = 0
+    for row in _TR.finditer(raw):
+        cells = [(row.start() + c.start(), row.start() + c.end()) for c in _TD.finditer(row.group())]
+        if len(cells) < 2:
+            continue
+        hit = sum(1 for a, b in cells if any(u and a <= s < b for (s, _, _), u in zip(toks, under, strict=True)))
+        lo, hi = cells[0][0], cells[-1][1]
+        aligned = any(u is not None and lo <= s < hi for (s, _, _), u in zip(toks, under, strict=True))
+        if not aligned:
+            continue
+        rows += 1
+        ruled += hit >= 2
+    return rows >= RULED_ROWS and ruled >= RULED_SHARE * rows
+
+
 def _underlines(page: Page, raws: list[str], words) -> list[str]:
     pdf_keys, pdf_under = _pdf_tokens(words, "u")
     if not any(pdf_under):
@@ -241,6 +264,8 @@ def _underlines(page: Page, raws: list[str], words) -> list[str]:
         under = [None if j < 0 else pdf_under[j] for j in mine]
         if not any(under):
             continue
+        if region.kind == "table" and _ruled_rows(raw, toks, under):
+            continue  # a line under the cells of row after row is the table's ruling, not an underline
         spans = [(m.start(), m.end()) for m in _UNDER_SPAN.finditer(raw)]
         blocked = [any(a <= s < b for a, b in spans) for s, _, _ in toks]
         new = raw
