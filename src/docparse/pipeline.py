@@ -833,7 +833,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 fix_tables(page, rp, config.table_options)
             if (
                 config.chart_options.get("measure")
-                and not tier2_chart_used
+                and (not tier2_chart_used or config.chart_options.get("after_tier2"))
                 and any(r.kind == "table" for r in page.regions)
             ):
                 from docparse.fixes.charts import correct_tables

@@ -61,6 +61,7 @@ FORM_OPTIONS = frozenset(
 CHART_OPTIONS = frozenset(
     {
         "measure",
+        "after_tier2",  # the vector measurements also correct a Tier-2 chart read
         "agree",
         "agree_tol",
         "replace_min",
