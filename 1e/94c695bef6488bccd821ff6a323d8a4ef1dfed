@@ -1,0 +1,37 @@
+src/docparse/core/config.py
+  s_6e78563db01caf::t_7d6300ede83b24 20,41
+src/docparse/fixes/formatting.py
+  s_6e78563db01caf::t_f47f4a1d718fd1 27-29,53-58,238,246,325-326
+src/docparse/fixes/layout_kdl.py
+  s_6e78563db01caf::t_87e83cfc1c750c 234-239
+src/docparse/fixes/layout_refine.py
+  s_6e78563db01caf::t_b0451ba20b4483 195,199-204
+src/docparse/models/adapters/vlm_specialists.py
+  s_6e78563db01caf::t_101e02c499a130 341-345,374-375,386-396
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_2642f67223320c 381-388,439,453-457,521-527,722-723,789
+tests/fixes/test_phase3_zero_gpu.py
+  s_6e78563db01caf::t_b63b841ed07cab 1-151
+configs/frontier_v3.yaml
+  s_6e78563db01caf::t_d38d472fef998f 38-39,50,53,68
+src/docparse/fixes/verify.py
+  s_6e78563db01caf::t_cd2a7b3a042d2e 26-29,35-39,41,89-163,169-170,175-194,198,200-201,203-206,212-213,225-227,238,249,252-254,262,268-279
+tests/test_tier2_charts.py
+  s_6e78563db01caf::t_871adb0f748fee 146-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e94c695bef6488bccd821ff6a323d8a4ef1dfed",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
