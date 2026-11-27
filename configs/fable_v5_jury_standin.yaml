@@ -1,0 +1,144 @@
+# fable_v4 + a jury on pages without a text layer (STAND-IN, not yet a validated configuration):
+# on a non-tabular page with no healthy text layer, the reading (Chandra's or OCRia-1's) that the jurors' readings
+# resemble more is kept (select_options.jury; similarity = F1 of words, of tokens with digits and of neighbouring
+# word pairs). The jurors here are the readings six other open-weight models published for the benchmark pages
+# (imported with evalkit.standin.import_juror), so this config only runs on benchmark pages; running the juror
+# models ourselves and the outside benchmarks are still to do. See docs/results/2026-11-27-fable-v4.md, section 7.
+#
+# frontier_v3 + (fable-push90, 2026-11-27):
+# - select_options: on a page with a healthy PDF text layer, the OCRia-1 reading replaces Chandra's when it agrees
+#   with the layer better (mean of word F1 and number F1; a 0-0.06 margin sweep on the dev fold favoured no margin).
+# - format_options.underline: PDF-drawn underlines (lines that overrun their text, span three columns or are dashed
+#   are rules, not underlines).
+# - Tier-2 reads move to Qwen/Qwen3.8-27B-FP8 (one 96 GB GPU): charts with thinking, the v2b prompt (v2 plus: always
+#   estimate off the axis, one column per series), small crops enlarged to 2048 px, the full vector measurements,
+#   and three independent reads voted cell by cell (median); forms rewritten as `caption: value` lines from
+#   the page image, the draft and the text layer's lines (wider trigger; the model may answer NOT_A_FORM; data grids
+#   must stay tables); the form step also runs when the selector kept OCRia-1's reading.
+# - The selector never acts on a page with formulas, and when OCRia-1's reading is kept, what Chandra transcribed
+#   from the page's pictures (25 words or more) is carried over as image alt text. A Qwen3.8 "judge" for pages
+#   without a text layer (select_options.judge) is implemented but off: +0.6 on ParseBench text, -0.2 on both
+#   outside benchmarks.
+# - table_options round three: duplicate/split column squeeze, currency-sign columns, missing header leaves and
+#   last columns from the text layer, stricter and wider table merging (all PDF-grounded, fail closed).
+reader: chandra_hybrid
+strip_furniture: false
+verify_pdf: true
+chandra_model:
+  repo: datalab-to/chandra-ocr-2
+  revision: af93b47dba1b47b6640c86ccf487ed2260ab9a09
+  dtype: bf16
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: dae83aa51ecd0a8574d415d929a4d9e79348fd2a
+  dtype: bf16
+page_runtime: vllm-0.34.0
+prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38
+dpi: 300
+fallback_below: 0.5
+upright_read: true
+layout: ground
+layout_attention: always
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+  pp_arbiter: true
+  pp_keep_pictures: true
+  pp_add: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+  leaf: true
+  leaf_mode: 3
+  dedupe: true
+  complete_extent: true
+  squeeze: true
+  sign: true
+  head_fill: true
+  last_column: true
+  merge_apart: true
+  merge_strict: true
+form_options:
+  acroform: true
+  checkbox_ink: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
+  lost: true
+  legend: true
+  titles: true
+  legend_min: 2
+  legend_override: true
+  panel_override: true
+format_options:
+  cell_strike: true
+  strike: true
+  underline: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true
+tier2_charts: true
+tier2_chart_options:
+  model: q38
+  prompt: v2b
+  crop_zoom_to: 2048
+  hint_chars: 10000
+  fallback_plain: true
+  samples: 3
+  enable_thinking: true
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 20000
+  use_ppdoclayout: true
+  pp_chart_score: 0.40
+  per_chart_crops: true
+  per_chart_min_union: 0.32
+  per_chart_max_boxes: 6
+tier2_forms: true
+tier2_form_options:
+  model: q38
+  prompt: kv
+  wide: true
+  any_reader: true
+  enable_thinking: true
+  fallback_plain: true
+  temperature: 0.6
+  top_k: 20
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 12000
+  min_word_coverage: 0.93
+tier2_tables: false  # Qwen3.8 strip re-reads cost 0.25 on the dev tables dimension
+tier2_table_options:
+  model: q38
+  n_strips: 3
+  strip_overlap: 0.14
+  max_tokens: 16384
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  min_recall_trigger: 0.78
+  min_recall_gain: 0.05
+select_options:
+  layer_margin: 0.0
+  skip_math: true
+  keep_pictures: 25
+  fuse_words: true  # the other reader's plain words where the text layer sides with them (text +0.1 on dev and check)
+  jury_scope: scans
+  jury:
+    - lightonocr3_4b_vllm
+    - dots_ocr_1_5_parse
+    - infinity_parser2_pro_deep
+    - surya2_sdk
+    - mineru2605pro_vllm
+    - qwen3_8_27b_thinking_parse_with_layout
