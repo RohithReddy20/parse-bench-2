@@ -144,3 +144,56 @@ def prefer_alternative(primary_md: str, alt_md: str, rendered: RenderedPage, opt
     a = fit_score(layer_fit(primary_md, rendered, with_tables=False))
     b = fit_score(layer_fit(alt_md, rendered, with_tables=False))
     return b > a + margin
+
+
+# --------------------------------------------------------------------------- fusing the two readings
+
+_PIECE = re.compile(r"\s+|\S+")
+_MARKUP = re.compile(r"[<>|*_#~`$\\\[\]]")
+
+
+def _word_pieces(markdown: str) -> tuple[list[str], list[int]]:
+    """The reading split into alternating blank / non-blank pieces, and the indexes of the non-blank ones."""
+    parts = _PIECE.findall(markdown)
+    return parts, [i for i, t in enumerate(parts) if not t.isspace()]
+
+
+def fuse_witness_words(kept_md: str, other_md: str, witness: Counter) -> tuple[str, int]:
+    """Where the two readings disagree on plain words and a third witness (the text layer's tokens, or a third
+    reader's) sides with the other reading, the kept reading takes the other one's words: every word of the
+    other's variant is known to the witness and some word of the kept variant is not. Two witnesses against one;
+    markup, table cells with tags and formulas are never touched, and nothing is inserted or deleted.
+    Returns the reading and the number of swaps."""
+    import difflib
+
+    if not kept_md.strip() or not other_md.strip() or not witness:
+        return kept_md, 0
+    parts, widx = _word_pieces(kept_md)
+    a = [parts[i] for i in widx]
+    b = [t for t in _PIECE.findall(other_md) if not t.isspace()]
+    ka, kb = [reading_tokens(w) for w in a], [reading_tokens(w) for w in b]
+    sa, sb = [" ".join(k) for k in ka], [" ".join(k) for k in kb]
+    swaps = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, sa, sb, autojunk=False).get_opcodes():
+        if op != "replace":
+            continue
+        ak = [k for ks in ka[i1:i2] for k in ks]
+        bk = [k for ks in kb[j1:j2] for k in ks]
+        if not ak or not bk:
+            continue
+        if any(_MARKUP.search(w) for w in a[i1:i2]) or any(_MARKUP.search(w) for w in b[j1:j2]):
+            continue
+        if all(witness[k] for k in bk) and any(not witness[k] for k in ak):
+            swaps.append((i1, i2, j1, j2))
+    for i1, i2, j1, j2 in sorted(swaps, reverse=True):
+        parts[widx[i1] : widx[i2 - 1] + 1] = [" ".join(b[j1:j2])]
+    return "".join(parts), len(swaps)
+
+
+def fuse_layer_words(kept_md: str, other_md: str, rendered: RenderedPage) -> tuple[str, int]:
+    """`fuse_witness_words` with the page's healthy text layer as the witness (no layer, no change)."""
+    from docparse.fixes.verify import has_healthy_text_layer
+
+    if rendered.hidden is None or not has_healthy_text_layer(rendered):
+        return kept_md, 0
+    return fuse_witness_words(kept_md, other_md, Counter(layer_tokens(words_in_points(rendered))))

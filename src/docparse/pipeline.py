@@ -516,6 +516,24 @@ def _layer_lines(rp: RenderedPage, opts: dict) -> str:
     return "\n".join(out)[: int(opts.get("layer_chars", 12000))]
 
 
+def _fuse_other(markdown: str, other_md: str, rp: RenderedPage, options: dict, witness_md: str = "") -> str:
+    """The kept reading with the other reading's plain words wherever a third witness sides with them
+    (`select_options.fuse_words`: the witness is the text layer; with `fuse_scan`, on a page without one, the general
+    reader's transcription when it was asked for)."""
+    from docparse.fixes.select import fuse_layer_words
+
+    if options.get("fuse_words"):
+        markdown, n = fuse_layer_words(markdown, other_md, rp)
+        if not n and witness_md and options.get("fuse_scan"):
+            # no text layer: a third reader's transcription is the witness between the two readings
+            from collections import Counter
+
+            from docparse.fixes.select import fuse_witness_words, reading_tokens
+
+            markdown, _ = fuse_witness_words(markdown, other_md, Counter(reading_tokens(witness_md)))
+    return markdown
+
+
 def _qwen_page_call(rp: RenderedPage, config: Config) -> tuple[ModelCall, dict[str, bytes]]:
     """The general-VLM transcription of the page (`qwen_page_options`: model alias and sampling)."""
     from docparse.models.adapters import qwen_tier2
@@ -739,6 +757,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             if secondary_improves(ch_read.markdown, sec_md, rp, verify_reason):
                 ch_ok = False
         scan_md, scan_res = None, None  # a scan reader's page, when the judge preferred it
+        witness_md = ""  # the general reader's transcription of a page without a text layer, when it was asked
         picture_md = ""  # Chandra's picture transcriptions, carried over when another reading is kept
         if (
             use_chandra
@@ -777,7 +796,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if isinstance(q_res, Pending):
                         pending.append(q_res.key)
                         continue
-                    q_md = _qwen_page_read(q_res).markdown
+                    q_read = _qwen_page_read(q_res)
+                    q_md = q_read.markdown
+                    if q_read.finish_reason != "length":
+                        witness_md = q_md
                     margin = float(config.select_options.get("judge_margin", 0.0))
                     others = [("ocria", alt_md, None)]
                     if config.select_options.get("scan_reader") == "lighton":  # a third small reader for scans
@@ -941,6 +963,16 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 if t_used and config.strip_furniture:
                     markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
                 used += t_used
+            if (
+                not tier2_chart_used
+                and not tier2_form_used
+                and read is not None
+                and read.finish_reason != "length"
+                and config.select_options.get("fuse_words")
+            ):
+                # the other reading still helps the kept one: words the text layer confirms, underlines it marked
+                other_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
+                markdown = _fuse_other(markdown, other_md, rp, config.select_options, witness_md)
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
             if config.form_options:
                 from docparse.fixes.forms import repair
@@ -1030,6 +1062,15 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     keep_math = has_math(markdown) and recall >= 0.20
                     if len(words) >= MIN_TOKENS and recall < config.fallback_below and not keep_math:
                         markdown = text_dump(words)
+            if (
+                not t_used
+                and not f_used
+                and scan_md is None
+                and ch_read is not None
+                and ch_read.finish_reason != "length"
+                and config.select_options.get("fuse_words")
+            ):
+                markdown = _fuse_other(markdown, ch_read.markdown, rp, config.select_options, witness_md)
             if config.form_options:
                 from docparse.fixes.forms import repair
                 from docparse.pdf.overlay import overlay_fonts
