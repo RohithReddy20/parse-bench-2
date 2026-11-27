@@ -146,6 +146,30 @@ def _picture_words(raw: str) -> int:
     return n
 
 
+def _picture_notes(raw: str, min_words: int) -> str:
+    """Chandra's transcription of the page's pictures (Figure / Diagram blocks that are not data charts and hold no
+    table) as `![...]()` lines, for a page whose text comes from another reader: that reader does not describe
+    pictures, and what a picture shows is in no text layer. Blocks under `min_words` words are left out."""
+    from docparse.models.adapters.vlm_specialists import _CHART_ALT
+
+    notes = []
+    for m in _CHANDRA_DIV.finditer(raw):
+        if not re.search(r"""\bdata-label\s*=\s*(["'])(?:Figure|Diagram)\1""", m[1], re.IGNORECASE):
+            continue
+        if "<table" in m[2].lower():
+            continue
+        alt = " ".join(a[2] for a in _IMG_ALT.finditer(m[2]))
+        if _CHART_ALT.search(alt):
+            continue
+        rest = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", re.sub(r"<img\b[^>]*>", " ", m[2]))).split())
+        text = f"{html.unescape(alt)} {rest}".strip()
+        if len(re.findall(r"\w+", text)) < min_words:
+            continue
+        text = text[:1500].replace("[", "(").replace("]", ")").replace("\n", " ")
+        notes.append(f"![{text}]()")
+    return "\n\n".join(notes)
+
+
 def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
     """`(crop, box_pt)`: the union of the chart `boxes` (page pixels) padded by CHART_PAD and clipped to the page, as
     a crop of the page image (None when it covers too little or nearly all of the page) and in PDF points."""
@@ -693,6 +717,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             if secondary_improves(ch_read.markdown, sec_md, rp, verify_reason):
                 ch_ok = False
         scan_md, scan_res = None, None  # a scan reader's page, when the judge preferred it
+        picture_md = ""  # Chandra's picture transcriptions, carried over when another reading is kept
         if (
             use_chandra
             and ch_ok
@@ -753,6 +778,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                             ch_ok = False
                             if best[0] != "ocria":
                                 scan_md, scan_res = best[1], best[2]
+        if (
+            use_chandra
+            and not ch_ok
+            and ch_read is not None
+            and ch_read.finish_reason != "length"
+            and config.select_options.get("keep_pictures")
+        ):
+            picture_md = _picture_notes(ch_read.raw_answer, int(config.select_options["keep_pictures"]))
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
@@ -933,6 +966,8 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         else:
             assert read is not None and result is not None
             markdown = scan_md if scan_md is not None else read.markdown
+            if picture_md:
+                markdown = f"{markdown}\n\n{picture_md}"
             read_cut = scan_md is None and read.finish_reason == "length"
             # Run Tier-2 strip recovery BEFORE plain-text fallback so a cut-off table keeps HTML structure
             markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, read_cut, config, client, meta)
