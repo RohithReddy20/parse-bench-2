@@ -338,6 +338,11 @@ _FURNITURE_DIV = re.compile(
     _FLAGS,
 )
 _IMAGE_DIV = re.compile(r'<div\b[^>]*data-label="Image"[^>]*>(.*?)</div>', _FLAGS)
+_FURN_IMG_DIV = re.compile(r'<div\b[^>]*data-label="(Page-Header|Page-Footer)"[^>]*>(.*?)</div>', _FLAGS)
+_LOGO_ESSAY = re.compile(
+    r"\b(?:logo|image|photo|illustration|icon|depicts|consists of|positioned|stylized)\b",
+    re.IGNORECASE,
+)
 _SEC_HDR_DIV = re.compile(r'<div\b[^>]*data-label="Section-Header"[^>]*>(.*?)</div>', _FLAGS)
 _IMG_TAG = re.compile(r"<img\b[^>]*>", _FLAGS)
 _HEADING_OR_BLOCK = re.compile(r"<(?:h[1-6]|p|div|table|ul|ol|li|img|pre|hr|blockquote)\b", _FLAGS)
@@ -366,7 +371,8 @@ def _promote_section_headers(raw_html: str) -> str:
 
 def _trim_image_div_essays(raw_html: str) -> str:
     """Inside `<div data-label="Image">` blocks that contain `<img>` and no `<table>`, keep the `<img>` tags
-    (preserving `![alt]()`) and drop Chandra's verbose visual description essays of logos/photos/QR codes."""
+    (preserving `![alt]()`) and drop Chandra's verbose visual description essays of logos/photos/QR codes.
+    Also strips visual logo essays immediately following `<img>` inside `Page-Header` / `Page-Footer` blocks."""
 
     def _repl(m: re.Match) -> str:
         inner = m.group(1)
@@ -377,7 +383,17 @@ def _trim_image_div_essays(raw_html: str) -> str:
             return m.group(0)
         return '<div data-label="Image">' + "\n".join(imgs) + "</div>"
 
-    return _IMAGE_DIV.sub(_repl, raw_html)
+    def _repl_furn(m: re.Match) -> str:
+        lbl, inner = m.group(1), m.group(2)
+        if "<table" in inner.lower() or not inner.lstrip().lower().startswith("<img"):
+            return m.group(0)
+        imgs = _IMG_TAG.findall(inner)
+        rest = re.sub(r"<[^>]+>", " ", _IMG_TAG.sub("", inner)).strip()
+        if imgs and len(rest) >= 40 and _LOGO_ESSAY.search(rest):
+            return f'<div data-label="{lbl}">' + "\n".join(imgs) + "</div>"
+        return m.group(0)
+
+    return _FURN_IMG_DIV.sub(_repl_furn, _IMAGE_DIV.sub(_repl, raw_html))
 
 
 _CHANDRA_DIV_BLOCK = re.compile(r"<div\b([^>]*)>(.*?)</div>", _FLAGS)

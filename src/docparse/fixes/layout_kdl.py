@@ -231,6 +231,12 @@ def apply_kdl(
     if options.get("kdl_pictures"):
         items = split_pictures(items, regions, words)
     if not words:
+        if options.get("kdl_arbiter") and options.get("scan_arbiter"):
+            keep = frozenset(
+                t for t, k in (("Picture", "kdl_keep_pictures"), ("Table", "kdl_keep_tables")) if options.get(k)
+            )
+            voters = chandra_regions if options.get("chandra_arbiter") else None
+            items = arbitrate(items, regions, keep, extra_regions=voters)
         return items
     if options.get("kdl_replace"):
         from docparse.fixes.layout import ground

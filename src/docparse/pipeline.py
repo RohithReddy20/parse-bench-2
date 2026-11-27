@@ -378,6 +378,14 @@ def _run_tier2_tables(
     if rec_old is not None:
         rec_new = pdf_word_recall(merged, words)
         taken = (truncated and rec_new >= rec_old) or rec_new >= rec_old + float(t_opts.get("min_recall_gain", 0.05))
+        if taken and not truncated:
+            from docparse.fixes.verify import table_alignment_stats
+
+            old_nt, _, _, old_found = table_alignment_stats(markdown, rp)
+            if old_nt >= 1 and old_found >= 0.80:
+                new_nt, _, _, new_found = table_alignment_stats(merged, rp)
+                if new_nt < 1 or new_found < old_found - 0.12 or new_nt > old_nt + 1:
+                    taken = False
     else:
         taken = truncated
     return (merged, done, []) if taken else (markdown, [], [])
@@ -428,6 +436,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 ch_read.finish_reason != "length" and bool(ch_read.markdown.strip()) and not looped(ch_read.markdown)
             )
             verify_needed, verify_reason = (False, "")
+            full_ch_md = ""
             if (
                 ch_ok
                 and config.reader == "chandra_hybrid"
@@ -441,7 +450,11 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if config.strip_furniture
                     else ch_read.markdown
                 )
-                verify_needed, verify_reason = needs_pdf_verification(full_ch_md, rp)
+                use_tgeo = bool(config.table_options.get("table_geo")) and not (
+                    config.tier2_forms
+                    and _is_form_page(ch_read.raw_answer, full_ch_md, pdf_bytes, index, config.tier2_form_options)
+                )
+                verify_needed, verify_reason = needs_pdf_verification(full_ch_md, rp, table_geo=use_tgeo)
             need_ocria = (
                 not ch_ok
                 or verify_needed
@@ -505,7 +518,13 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.verify import secondary_improves
 
             sec_md, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
-            if secondary_improves(ch_read.markdown, sec_md, rp, verify_reason):
+            if secondary_improves(
+                full_ch_md or ch_read.markdown,
+                sec_md,
+                rp,
+                verify_reason,
+                table_geo=bool(config.table_options.get("table_geo")),
+            ):
                 ch_ok = False
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
@@ -700,6 +719,8 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 from docparse.fixes.text import empty_read
 
                 markdown = empty_read(markdown, rp) or markdown
+            if use_chandra and ch_read is not None and config.strip_furniture:
+                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
             page = parse_page(markdown, index=index, call_key=call.key())
             if config.text_options:
                 from docparse.fixes.text import refine_text
@@ -765,6 +786,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 "kdl_arbiter": bool(config.layout_options.get("pp_arbiter")),
                 "kdl_keep_pictures": bool(config.layout_options.get("pp_keep_pictures")),
                 "kdl_add": bool(config.layout_options.get("pp_add")),
+                "scan_arbiter": bool(config.layout_options.get("pp_scan_arbiter")),
             }
             page.layout = apply_kdl(
                 page.layout, rp, ppdoclayout.read_detections(pp_res, min_score=pp_min), pp_opts, markdown

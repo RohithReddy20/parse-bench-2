@@ -24,7 +24,9 @@ import re
 from docparse.core.ir import Candidate, Page, Provenance, Region
 from docparse.fixes.align_text import TOKEN, key, match, tokens
 
-FORMAT_OPTIONS = frozenset({"cell_strike", "strike", "underline", "unbold", "list_marker", "drop_underline"})
+FORMAT_OPTIONS = frozenset(
+    {"cell_strike", "strike", "underline", "underline_missing", "unbold", "list_marker", "drop_underline"}
+)
 READER = "fix.formatting"
 PROSE = frozenset({"paragraph", "list", "heading"})
 MIN_STRUCK = 0.5  # share of a PDF token's characters a line must cross
@@ -48,7 +50,12 @@ def _visible_tokens(raw: str) -> list[tuple[int, int, str]]:
 
 def needs_decorations(options: dict) -> bool:
     """Does the fix need the strikethrough / underline marks of the text layer?"""
-    return bool(options.get("strike") or options.get("underline") or options.get("drop_underline"))
+    return bool(
+        options.get("strike")
+        or options.get("underline")
+        or options.get("underline_missing")
+        or options.get("drop_underline")
+    )
 
 
 def needs_styles(options: dict) -> bool:
@@ -228,7 +235,7 @@ def _strikes(page: Page, raws: list[str], words) -> list[str]:
     return out
 
 
-def _underlines(page: Page, raws: list[str], words) -> list[str]:
+def _underlines(page: Page, raws: list[str], words, *, prose_only: bool = False) -> list[str]:
     pdf_keys, pdf_under = _pdf_tokens(words, "u")
     if not any(pdf_under):
         return raws
@@ -236,7 +243,7 @@ def _underlines(page: Page, raws: list[str], words) -> list[str]:
     by_region = _align_with_reordered_recovery(per_region, pdf_keys, pdf_under)
     out = list(raws)
     for r, (region, raw, toks, mine) in enumerate(zip(page.regions, raws, per_region, by_region, strict=True)):
-        if region.kind not in PROSE and region.kind != "table":
+        if region.kind not in PROSE and (prose_only or region.kind != "table"):
             continue
         under = [None if j < 0 else pdf_under[j] for j in mine]
         if not any(under):
@@ -315,6 +322,8 @@ def refine_format(page: Page, rendered, options: dict) -> None:
         new = _strikes(page, new, words)
     if options.get("underline") and words:
         new = _underlines(page, new, words)
+    elif options.get("underline_missing") and words and not any(_UNDER_SPAN.search(r) for r in new):
+        new = _underlines(page, new, words, prose_only=True)
     if options.get("unbold") and words:
         new = _unbold(page, new, words)
     if options.get("drop_underline") and words:

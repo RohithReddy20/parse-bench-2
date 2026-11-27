@@ -192,9 +192,16 @@ def refine(
     native = bool(options.get("native_text"))
     split_gap = float(options.get("split_gap") or 0.0)
     pad = float(options.get("tighten_pad") or 0.0)
+    blank_drop = bool(options.get("blank_drop"))
     page = (rendered.width_pt, rendered.height_pt)
     words = words_in_points(rendered)
     orphans = bool(options.get("orphans"))
+    if blank_drop and rendered.image is not None:
+        items = [
+            it
+            for it in items
+            if it.bbox.width <= 1.0 or it.bbox.height <= 1.0 or has_ink(rendered, it.bbox, contrast=24)
+        ]
     if not words or not (tighten or native or split_gap or orphans):
         return items
     owned = assign_words(items, words)

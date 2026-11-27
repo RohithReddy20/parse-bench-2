@@ -35,6 +35,8 @@ layout_options:
   pp_arbiter: true
   pp_keep_pictures: true
   pp_add: true
+  pp_scan_arbiter: true
+  blank_drop: true
 table_options:
   regrid: true
   regrid_wide: true
@@ -45,8 +47,10 @@ table_options:
   leaf_mode: 3
   dedupe: true
   complete_extent: true
+  table_geo: true
 form_options:
   acroform: true
+  acro_clean: true
   checkbox_ink: true
 chart_options:
   measure: true
@@ -61,6 +65,7 @@ chart_options:
 format_options:
   cell_strike: true
   strike: true
+  underline_missing: true
   unbold: true
   list_marker: true
 text_options:
