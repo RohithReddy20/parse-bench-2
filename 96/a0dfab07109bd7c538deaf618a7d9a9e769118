@@ -1,0 +1,22 @@
+src/docparse/pipeline.py
+  s_6e78563db01caf::t_5622a928c99326 673,710-731,911-912,914,939,982
+src/docparse/models/adapters/lighton.py
+  s_6e78563db01caf::t_5622a928c99326 33-35
+  s_6e78563db01caf::t_0c618f4df02252 1-32,36-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "96a0dfab07109bd7c538deaf618a7d9a9e769118",
+  "prompts": {},
+  "sessions": {
+    "s_6e78563db01caf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62fb4538-7962-4ff1-a298-561b1b1ded59",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
