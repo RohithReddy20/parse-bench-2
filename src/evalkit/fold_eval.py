@@ -73,7 +73,9 @@ def _gt_view(base: Path, ids: list[str]) -> Path:
         sub, stem = split_example_id(eid)
         (view / sub).mkdir(parents=True, exist_ok=True)
         for src in (paths.gt_dir() / sub).glob(f"{stem}.*"):
-            (view / sub / src.name).symlink_to(src)
+            dst = view / sub / src.name
+            if not dst.is_symlink():  # one stem can be the prefix of another (`x` and `x.test`)
+                dst.symlink_to(src)
     return view
 
 
