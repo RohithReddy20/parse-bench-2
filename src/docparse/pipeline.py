@@ -39,6 +39,8 @@ _FIGURE_LABEL = re.compile(r"""\bdata-label\s*=\s*(["'])Figure\1""", re.IGNORECA
 _BBOX = re.compile(r'\bdata-bbox\s*=\s*"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"')
 _IMG_ALT = re.compile(r"""<img\b[^>]*?\salt\s*=\s*(["'])(.*?)\1""", _FLAGS)
 _MATH = re.compile(r"\$\$|\\frac|\\begin\{equation\}|<math", re.IGNORECASE)
+# display or inline formulas in either reader's dialect (Chandra `<math>`, LaTeX `$...$`, `\\(...\\)`)
+_ANY_MATH = re.compile(r"\$\$|\\frac|\\begin\{|<math|\\\(|\$[^$\n]{0,80}[\\^_][^$\n]{0,80}\$", re.IGNORECASE)
 _FORM_LABEL = re.compile(r"""<div\b[^>]*\bdata-label\s*=\s*(["'])Form\1""", re.IGNORECASE)
 _CHECKBOX = re.compile(r"\[[ xX]\]|<input\b")
 CHART_PAD = 0.06  # share of the page width / height added around the chart boxes before cropping
@@ -745,7 +747,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             and read is not None
             and config.select_options
             and read.finish_reason != "length"
-            and not (config.select_options.get("skip_math") and _MATH.search(ch_read.raw_answer + read.markdown))
+            and not (config.select_options.get("skip_math") and _ANY_MATH.search(ch_read.raw_answer + read.markdown))
         ):
             from docparse.fixes.select import prefer_alternative
             from docparse.models.adapters import vlm_specialists
