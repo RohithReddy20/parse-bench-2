@@ -1,0 +1,35 @@
+src/docparse/pipeline.py
+  s_ef057a9acaf73d::t_3c00b1e66dc0e0 336-341,344-345,358,906-913,925,983-984,989-994
+  s_ef057a9acaf73d::t_13687e4e58e840 702-708,711,1005-1006,1009-1013,1016-1018
+  s_ef057a9acaf73d::t_ee072ca2c307ea 1000,1002-1004,1007-1008,1015,1021-1023
+  s_ef057a9acaf73d::t_b76a8becc6deee 351
+  s_ef057a9acaf73d::t_96b01df3a349ef 1001,1014,1019-1020
+tests/test_tier2_charts.py
+  s_ef057a9acaf73d::t_f702568cf8d4fe 423-468
+configs/mixed_v4.yaml
+  s_ef057a9acaf73d::t_96b01df3a349ef 129
+  s_ef057a9acaf73d::t_53900db7c71b19 102-103
+src/evalkit/fold_eval.py
+  s_ef057a9acaf73d::t_6385a73e0a545f 1-190
+src/evalkit/ext_eval.py
+  s_ef057a9acaf73d::t_6385a73e0a545f 1-204
+src/docparse/core/config.py
+  s_ef057a9acaf73d::t_3c00b1e66dc0e0 104
+  s_ef057a9acaf73d::t_ee072ca2c307ea 113,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "338d9d4b0d56b735ed6c97f8fc0d6ece9050fbbd",
+  "prompts": {},
+  "sessions": {
+    "s_ef057a9acaf73d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8447984f-41e7-44af-8fdd-4a5d9cd27e1d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
