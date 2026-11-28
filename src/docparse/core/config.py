@@ -39,6 +39,13 @@ TABLE_OPTIONS = frozenset(
         "leaf_mode",
         "complete_extent",
         "table_geo",
+        # round three (PDF-grounded column and merge repairs)
+        "squeeze",
+        "sign",
+        "head_fill",
+        "last_column",
+        "merge_apart",
+        "merge_strict",
     }
 )  # fixes/tables.py
 FORM_OPTIONS = frozenset(
@@ -55,6 +62,7 @@ FORM_OPTIONS = frozenset(
 CHART_OPTIONS = frozenset(
     {
         "measure",
+        "after_tier2",  # the vector measurements also correct a Tier-2 chart read
         "agree",
         "agree_tol",
         "replace_min",
@@ -86,13 +94,14 @@ CHART_OPTIONS = frozenset(
         "panel_override",  # round two: ... and a binding to another panel than the titled one moves to it
     }
 )
-# Tier-2 reads with Qwen3.5 (pipeline.py, models/adapters/qwen_tier2.py); `model` is a `TIER2_MODELS` alias
-# ("27b", "122b") or repo id, Qwen3.5-27B-FP8 when unset
+# Tier-2 reads with Qwen3.5/3.8 (pipeline.py, models/adapters/qwen_tier2.py); `model` is a `TIER2_MODELS` alias
+# ("27b", "122b", "q38") or repo id, Qwen3.5-27B-FP8 when unset
 TIER2_CHART_OPTIONS = frozenset(
     {
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "use_ppdoclayout", "pp_chart_score", "per_chart_crops", "per_chart_min_union", "per_chart_max_boxes",
-        "hint_max_chars", "hint_max_series",
+        "hint_max_chars", "hint_max_series", "prompt", "crop_zoom_to", "hint_chars", "fallback_plain", "samples",
+        "seed",
     }
 )  # fmt: skip
 # Tier-2 draft-guided form refinement
@@ -100,7 +109,8 @@ TIER2_FORM_OPTIONS = frozenset(
     {
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "min_word_coverage", "min_checkboxes", "min_acro_widgets",
-        "prompt_version", "two_strips", "strip_overlap",
+        "prompt_version", "two_strips", "strip_overlap", "prompt", "layer", "layer_chars", "wide", "fallback_plain",
+        "any_reader",
     }
 )  # fmt: skip
 # Tier-2 strip re-read of dense table pages
@@ -121,6 +131,9 @@ class Config(BaseModel):
     # - "chandra": single-model Chandra-OCR-2 layout-HTML read (with OCRia-1 fallback on length/loop)
     # - "chandra_hybrid": Chandra-OCR-2 primary + OCRia-1 fallback on length/loop & vector-chart Figure fusion
     reader: Literal["ocria", "chandra", "chandra_hybrid"] = "ocria"
+    # choosing between the page's independent readings (fixes/select.py): `layer_margin` = how much better the
+    # other reading must agree with a healthy PDF text layer to replace the primary one; empty = no selection
+    select_options: dict[str, Any] = Field(default_factory=dict)
     chandra_model: ModelRef | None = None
     # Drop Page-Header and Page-Footer blocks when the reader tags page furniture (e.g. Chandra layout blocks)
     strip_furniture: bool = False
@@ -180,7 +193,7 @@ class Config(BaseModel):
         # the Tier-2 fields enter the hash only when set, so configs that predate them keep their hash
         tier2 = (
             "tier2_charts", "tier2_chart_options", "tier2_forms", "tier2_form_options",
-            "tier2_tables", "tier2_table_options",
+            "tier2_tables", "tier2_table_options", "select_options",
         )  # fmt: skip
         unset = {name for name in tier2 if not getattr(self, name)}
         return sha256_hex(canonical_json(self.model_dump(mode="json", exclude=unset)))[:16]

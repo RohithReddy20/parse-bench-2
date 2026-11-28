@@ -132,7 +132,9 @@ def test_off_by_default_never_asks_for_tier2_and_keeps_the_config_hash():
     assert not client.of(TIER2) and not client.of(PP)
     assert "31.7" in write_document(doc)  # hybrid_v2's OCRia-1 chart fusion
     hybrid = Config.load("configs/hybrid_v2.yaml")
-    dump = {k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_")}
+    dump = {
+        k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_") and k != "select_options"
+    }
     assert not hybrid.tier2_charts and hybrid.config_hash() == sha256_hex(canonical_json(dump))[:16]
     frontier = Config.load("configs/frontier_v3.yaml")
     assert frontier.tier2_charts and frontier.config_hash() != hybrid.config_hash()
@@ -281,7 +283,9 @@ def test_strip_furniture_drops_the_page_header_and_footer_the_refined_copy_repea
 
 def test_tier2_forms_off_keeps_the_hybrid_v2_hash_and_unknown_options_fail():
     hybrid = Config.load("configs/hybrid_v2.yaml")
-    old = {k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_")}
+    old = {
+        k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_") and k != "select_options"
+    }
     assert not hybrid.tier2_forms and not hybrid.tier2_form_options
     assert hybrid.config_hash() == sha256_hex(canonical_json(old))[:16]
     assert hybrid.model_copy(update={"tier2_forms": True}).config_hash() != hybrid.config_hash()
@@ -293,7 +297,9 @@ def test_tier2_forms_off_keeps_the_hybrid_v2_hash_and_unknown_options_fail():
 
 def test_tier2_tables_off_keeps_the_hybrid_v2_hash_and_unknown_options_fail():
     hybrid = Config.load("configs/hybrid_v2.yaml")
-    old = {k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_")}
+    old = {
+        k: v for k, v in hybrid.model_dump(mode="json").items() if not k.startswith("tier2_") and k != "select_options"
+    }
     assert not hybrid.tier2_tables and hybrid.config_hash() == sha256_hex(canonical_json(old))[:16]
     assert hybrid.model_copy(update={"tier2_tables": True}).config_hash() != hybrid.config_hash()
     assert V3.tier2_tables and V3.tier2_table_options["n_strips"] == 3
@@ -332,7 +338,10 @@ def test_several_large_charts_are_read_one_zoomed_crop_each():
 
 
 def test_charts_covering_little_of_the_page_keep_one_read_of_their_union():
-    pp = [{"label": "chart", "score": 0.9, "box": [100, 200, 400, 400]}, {"label": "chart", "score": 0.9, "box": [450, 200, 750, 400]}]
+    pp = [
+        {"label": "chart", "score": 0.9, "box": [100, 200, 400, 400]},
+        {"label": "chart", "score": 0.9, "box": [450, 200, 750, 400]},
+    ]
     client = ScriptedClient(MISSED_CHART_PAGE, tier2=f"Revenue by quarter\n{QWEN_TABLE}", pp=pp)
     md = write_document(parse(PAGE, FRONTIER, client).document)
     (call,) = client.of(TIER2)

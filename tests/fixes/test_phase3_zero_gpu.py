@@ -5,6 +5,7 @@
 - scan-mode `pp_scan_arbiter` (`layout_kdl.py`) and `blank_drop` (`layout_refine.py`)
 - `hybrid_v2.yaml` config_hash invariance
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -153,11 +154,15 @@ def test_hybrid_v2_config_hash_unchanged_with_new_optional_fields():
 
 
 def test_weak_table_skips_math_pages():
-    words = [Word(f"w{i}", (10 + (i % 5) * 60, 10 + (i // 5) * 20, 50 + (i % 5) * 60, 22 + (i // 5) * 20)) for i in range(30)]
+    words = [
+        Word(f"w{i}", (10 + (i % 5) * 60, 10 + (i // 5) * 20, 50 + (i % 5) * 60, 22 + (i // 5) * 20)) for i in range(30)
+    ]
     rp = _page_with_words(words)
-    math_md = "$$E = mc^2$$\n\n<table><tr><th>A</th><th>B</th></tr>" + "".join(
-        f"<tr><td>x{i}</td><td>y{i}</td></tr>" for i in range(6)
-    ) + "</table>"
+    math_md = (
+        "$$E = mc^2$$\n\n<table><tr><th>A</th><th>B</th></tr>"
+        + "".join(f"<tr><td>x{i}</td><td>y{i}</td></tr>" for i in range(6))
+        + "</table>"
+    )
     need, _ = needs_pdf_verification(math_md, rp, table_geo=True)
     assert not need
 
@@ -247,3 +252,15 @@ def test_route_blanks_prefers_ocria_when_chandra_omits_blank_fields():
     )
     doc_no_t2 = parse(page_png, cfg_t2, NoT2TableClient()).document
     assert doc_no_t2 is not None and not any("hard-html" in pid for pid in seen_t2)
+
+
+def test_mixed_v4_config_loads_and_preserves_hybrid_v2_hash():
+    m4 = Config.load("configs/mixed_v4.yaml")
+    assert m4.table_options["table_geo"] is True
+    assert m4.table_options["squeeze"] is True
+    assert m4.select_options["layer_margin"] == 0.0
+    assert m4.select_options["table_margin"] == 0.05
+    assert m4.format_options["underline_missing"] is True
+    assert m4.tier2_tables is True
+    assert m4.tier2_chart_options["model"] == "q38"
+    assert m4.tier2_form_options["prompt"] == "kv"

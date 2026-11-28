@@ -12,6 +12,7 @@ import hashlib
 import io
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from docparse.core.errors import ParseError
 
@@ -329,11 +330,34 @@ def render_pages(
             pdf.close()
 
 
-def pixel_hash(image) -> str:
-    """Identity of a rendered page: its pixels, not its PNG bytes (PNG encoding varies across zlib builds)."""
+_PIXEL_ALIAS: dict[str, str] | None = None
+
+
+def _pixel_alias() -> dict[str, str]:
+    """`$DOCPARSE_PIXEL_ALIAS`: a JSON map from this machine's hash of a page image to the hash the cache knows the
+    page by. PDFium rasterises some fonts a shade differently on Linux and macOS (the pages look the same), and a
+    cache filled on one must still answer on the other; `evalkit.pixel_alias` builds the map from page identity
+    (document hash, page number, derivation)."""
+    global _PIXEL_ALIAS
+    if _PIXEL_ALIAS is None:
+        import json
+        import os
+
+        path = os.environ.get("DOCPARSE_PIXEL_ALIAS")
+        _PIXEL_ALIAS = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
+    return _PIXEL_ALIAS
+
+
+def raw_pixel_hash(image) -> str:
     h = hashlib.sha256(f"{image.mode}:{image.width}x{image.height}:".encode())
     h.update(image.tobytes())
     return h.hexdigest()
+
+
+def pixel_hash(image) -> str:
+    """Identity of a rendered page: its pixels, not its PNG bytes (PNG encoding varies across zlib builds)."""
+    digest = raw_pixel_hash(image)
+    return _pixel_alias().get(digest, digest)
 
 
 def png_bytes(image) -> bytes:

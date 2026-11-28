@@ -34,7 +34,12 @@ QWEN35_122B_A10B_FP8 = ModelRef(
     revision="a099dee70ccfcd8d5dda56aaa0b60cb8ecadabc9",
     dtype="fp8",
 )
-TIER2_MODELS = {"27b": QWEN35_27B_FP8, "122b": QWEN35_122B_A10B_FP8}
+QWEN38_27B_FP8 = ModelRef(
+    repo="Qwen/Qwen3.8-27B-FP8",
+    revision="c3a462cc3d38cf351f3b26cbd763469eeb74ef81",
+    dtype="fp8",
+)
+TIER2_MODELS = {"27b": QWEN35_27B_FP8, "122b": QWEN35_122B_A10B_FP8, "q38": QWEN38_27B_FP8}
 
 
 def resolve_tier2_model(spec: str | None) -> ModelRef:
@@ -85,9 +90,7 @@ placeholders like "Series 1" or "Value" when an axis label or legend name is pri
 colspan/rowspan as needed). When a chart has multiple panels or subplots, emit one separate <table> per panel/subplot. \
 No markdown code fences or commentary."""
 CHART_THINK_RULE = (
-    "\n6. Keep your internal reasoning concise (under 400 words): verify the axis scale/units, match each legend "
-    "label/color to its exact vector series, compute stacked bar segment values (`top - base`) if needed, and "
-    "confirm every panel/category is included; then immediately output ONLY the final HTML table(s)."
+    "\n6. Keep your internal reasoning concise (under 400 words), then immediately output the final HTML table(s)."
 )
 SINGLE_CHART_PROMPT = """\
 Focus ONLY on the single chart/plot shown in the second (zoomed crop) image (use the first image only for \
@@ -115,6 +118,76 @@ axis measurements verified visually against the zoomed crop.
 4. Keep exact units, signs (negative `-` values), percentages, and decimal precision. Preserve \
 full category/legend names.
 5. Output ONLY the short title line and HTML `<table>...</table>` (no code fences, prose paragraphs, or commentary)."""
+CHART_V2B_PROMPT_ID = "qwen/chart-v2b"
+SINGLE_CHART_V2B_PROMPT_ID = "qwen/chart-single-v2b"
+CHART_V2B_RULES = """
+Also:
+- Every plotted mark needs a number: copy a printed data label; else use the vector measurements; else read the \
+value off the axis from its position between the nearest gridlines or tick labels. An estimate read from the axis \
+is expected, so never leave a cell empty or write "N/A" because a value is not printed. For a dense line or area \
+with more points than x-axis labels, give each series' value at every labelled x-axis tick.
+- One row per category or x value and one column per series: never put two series' values in one cell."""
+CHART_V3_PROMPT_ID = "qwen/chart-v3"
+SINGLE_CHART_V3_PROMPT_ID = "qwen/chart-single-v3"
+_CHART_V3_RULES = """\
+How to read a chart:
+1. Each chart, and each panel or subplot of a chart, gets its own HTML `<table>`, preceded by one line with its \
+printed title (the title above or beside that chart; a panel's own heading for a panel).
+2. Table shape: one row per category or x-axis value, in axis order, with the label exactly as printed in the first \
+column; one column per data series, named exactly as in the legend (or by the value axis title when there is a \
+single series). Never put two series in one cell, never merge two panels into one table, and never use placeholder \
+names such as "Series 1" when a legend or axis names the series.
+3. Values: copy a printed data label exactly. Where the measurements give a value for a mark, use it. Otherwise read \
+the value off the axis: find the gridlines or tick labels on either side of the mark and estimate where it sits \
+between them (a bar ending 40% of the way from 20 to 30 is 24). Every plotted mark needs a value: an estimate read \
+from the axis is what is asked for, so never leave a cell empty or write "N/A" because a value is not printed. Leave \
+a cell empty only where the series has no mark at that category.
+4. A line or area chart with more points than x-axis labels: one row per labelled x-axis tick, with each series' \
+value at that tick.
+5. Stacked bars: one column per segment with that segment's own size, not the running total. Pie or donut: one row \
+per slice.
+6. Keep signs, decimal precision, units and percent signs as the chart prints them. Do not add totals, averages, \
+rows or series that are not plotted.
+7. Output only the title lines and tables: no commentary, no code fences."""
+CHART_V3_PROMPT = (
+    """\
+Extract the data behind EVERY chart on this document page as HTML tables.
+
+You are given the full page image (and, when present, a zoomed crop of the chart region), measurements read from \
+the PDF's vector drawing (exact wherever they correspond to a plotted bar, line or marker):
+<measurements>
+{hint}
+</measurements>
+and draft table(s) from an OCR model (often incomplete or misread: a starting point, not a source):
+<draft_tables>
+{draft}
+</draft_tables>
+
+"""
+    + _CHART_V3_RULES
+)
+SINGLE_CHART_V3_PROMPT = (
+    """\
+Extract the data behind the ONE chart shown in the second image (a zoomed crop) as HTML tables. The first image is \
+the whole page: use it only for the chart's title, caption, units and legend.
+
+Measurements read from the PDF's vector drawing for this chart region (exact wherever they correspond to a plotted \
+bar, line or marker; empty for a raster chart):
+<measurements>
+{hint}
+</measurements>
+Draft table(s) from an OCR model for the whole page (often incomplete, misread, or mixing charts: a starting point, \
+not a source):
+<draft_tables>
+{draft}
+</draft_tables>
+
+"""
+    + _CHART_V3_RULES
+)
+CHART_V3_THINK_RULE = (
+    "\n8. Before answering, work out the axis scale and then each series in turn; keep the reasoning to the point."
+)
 MAX_IMAGE_SIDE = 2048  # keeps visual token count in Qwen3.5's optimal regime (~3-4k tokens) and 4x smaller manifests
 
 FORM_PROMPT = """\
@@ -192,13 +265,24 @@ def build_chart_call(
     top_k: int | None = 20,
     presence_penalty: float = 1.5,
     max_tokens: int = 10240,
+    prompt: str = "v2",
+    seed: int | None = None,
 ) -> tuple[ModelCall, dict[str, bytes]]:
-    """Full page (plus an optional zoomed chart crop) with vector measurements and the draft tables to verify."""
+    """Full page (plus an optional zoomed chart crop) with vector measurements and the draft tables to verify.
+    `seed` asks for another independent read of the same chart."""
     images = [page_image] if crop_image is None else [page_image, crop_image]
-    template = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT
+    if prompt == "v3":
+        template, prompt_id = CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else ""), CHART_V3_PROMPT_ID
+    elif prompt == "v2b":
+        template = CHART_PROMPT + (CHART_THINK_RULE if enable_thinking else "") + CHART_V2B_RULES
+        prompt_id = CHART_V2B_PROMPT_ID
+    else:
+        template, prompt_id = CHART_PROMPT + CHART_THINK_RULE if enable_thinking else CHART_PROMPT, CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
     params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
-    return _call(images, CHART_PROMPT_ID, template, user, model, runtime, params)
+    if seed is not None:
+        params["seed"] = seed
+    return _call(images, prompt_id, template, user, model, runtime, params)
 
 
 def build_single_chart_call(
@@ -215,12 +299,24 @@ def build_single_chart_call(
     top_k: int | None = None,
     presence_penalty: float = 1.0,
     max_tokens: int = 10240,
+    prompt: str = "v2",
+    seed: int | None = None,
 ) -> tuple[ModelCall, dict[str, bytes]]:
     """One chart of a page with several: the page for context, the chart's zoomed crop, and its vector hint."""
-    template = SINGLE_CHART_PROMPT + CHART_THINK_RULE if enable_thinking else SINGLE_CHART_PROMPT
+    if prompt == "v3":
+        template = SINGLE_CHART_V3_PROMPT + (CHART_V3_THINK_RULE if enable_thinking else "")
+        prompt_id = SINGLE_CHART_V3_PROMPT_ID
+    elif prompt == "v2b":
+        template = SINGLE_CHART_PROMPT + (CHART_THINK_RULE if enable_thinking else "") + CHART_V2B_RULES
+        prompt_id = SINGLE_CHART_V2B_PROMPT_ID
+    else:
+        template = SINGLE_CHART_PROMPT + CHART_THINK_RULE if enable_thinking else SINGLE_CHART_PROMPT
+        prompt_id = SINGLE_CHART_PROMPT_ID
     user = template.format(hint=vector_hint.strip() or "(none)", draft=draft_tables.strip() or "(none)")
     params = _chart_params(enable_thinking, temperature, top_p, top_k, presence_penalty, max_tokens)
-    return _call([page_image, crop_image], SINGLE_CHART_PROMPT_ID, template, user, model, runtime, params)
+    if seed is not None:
+        params["seed"] = seed
+    return _call([page_image, crop_image], prompt_id, template, user, model, runtime, params)
 
 
 def _chart_params(
@@ -560,3 +656,72 @@ def read_tier2_result(result: ModelResult) -> Tier2Read:
     markdown = answer.strip()
     usable = finish == "stop" and bool(markdown) and not _looped(markdown)
     return Tier2Read(markdown, reasoning.strip(), finish, usable)
+
+
+FORM_KV_PROMPT_ID = "qwen/form-kv-v2"
+NOT_A_FORM = "NOT_A_FORM"
+FORM_KV_PROMPT = """\
+Rewrite this form page as clean Markdown that keeps every printed word and pairs each field with what was filled in.
+
+You are given the page image and a draft transcription from an OCR model. Its words are mostly right, but it may \
+detach a value from its field, lay fields out as loose table cells, flip or miss checkboxes, or split \
+character-box values:
+<draft>
+{draft}
+</draft>
+{layer}
+Rules:
+1. One field per line, written `caption: value`. The caption is the field's printed label with its printed box or \
+line number/code in front when it has one (for example `3.99 Plant, machinery and motor vehicles: £27,525`). A \
+printed number or code that only identifies a box belongs to the caption and is never a value.
+2. A field left empty on the page keeps its caption and gets `[___]` as its value. Never put a printed hint, example, \
+instruction, unit label or box number into a value, and never guess a value.
+3. Checkboxes and radio buttons: `[x]` when ticked, crossed or filled and `[ ]` when empty, written directly before \
+the option's label, one option per line under its question, with every printed option listed.
+4. Copy values exactly as the page shows them (digits, signs, separators, spelling). A date, number or code written \
+one character per box is joined into one value.
+5. A real grid (several rows that share the same column captions) stays an HTML `<table>` with the column captions \
+in a header row and each row's caption in its first cell. Do not use a table for anything else.
+6. Keep all other printed text (titles, section headings as `#`/`##`, instructions, notes, page furniture) in \
+reading order, and keep the draft's wording wherever it matches the page.
+7. Output only the Markdown: no code fences, no commentary.
+8. If the page is not a form (it has no fields, boxes or blanks for a person to fill in: for example a report, a \
+letter, a statement or a plain data table), output exactly `NOT_A_FORM` and nothing else."""
+FORM_KV_LAYER = """
+The PDF's own text layer, line by line from top to bottom (exact characters of the typed text; trust it for \
+spelling and digits, and use the image to decide which value belongs to which field):
+<text_layer>
+{lines}
+</text_layer>
+"""
+
+
+def build_form_kv_call(
+    page_image: Image.Image,
+    draft_markdown: str,
+    layer_lines: str = "",
+    *,
+    model: ModelRef = QWEN38_27B_FP8,
+    runtime: str = RUNTIME,
+    enable_thinking: bool = False,
+    temperature: float = 0.1,
+    top_p: float = 0.95,
+    top_k: int | None = None,
+    presence_penalty: float = 1.0,
+    max_tokens: int = 8192,
+) -> tuple[ModelCall, dict[str, bytes]]:
+    """Rewrite a form page as `caption: value` lines from the page image, the draft and (when the page has one)
+    the PDF text layer."""
+    layer = FORM_KV_LAYER.format(lines=layer_lines.strip()) if layer_lines.strip() else ""
+    user = FORM_KV_PROMPT.format(draft=draft_markdown.strip() or "(none)", layer=layer)
+    params: dict[str, Any] = {
+        "enable_thinking": enable_thinking,
+        "temperature": temperature,
+        "top_p": top_p,
+        "presence_penalty": presence_penalty,
+        "max_tokens": max_tokens,
+    }
+    if top_k is not None:
+        params["top_k"] = top_k
+    template = FORM_KV_PROMPT + FORM_KV_LAYER
+    return _call([page_image], FORM_KV_PROMPT_ID, template, user, model, runtime, params)

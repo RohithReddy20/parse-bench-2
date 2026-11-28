@@ -122,6 +122,8 @@ def _make_vlm_executor(base_url: str, served_model: str, default_system: str, gp
                     body[key] = float(call.params[key])
             if "top_k" in call.params:
                 body["top_k"] = int(call.params["top_k"])
+            if "seed" in call.params:
+                body["seed"] = int(call.params["seed"])
             resp = client.post("/chat/completions", json=body)
             if resp.status_code == 400 and attempt < 2:
                 pngs = [_downscale_png(png, 0.7) for png in pngs]
@@ -197,7 +199,7 @@ def run(
         raise RuntimeError(f"manifest {manifest!r} is empty")
     if len(calls) > max_calls:
         raise RuntimeError(f"safety cap: manifest has {len(calls)} calls > max_calls={max_calls}")
-    if not reasoning_parser and ("Qwen3.5" in repo or "Qwen3-VL" in repo):
+    if not reasoning_parser and ("Qwen3.5" in repo or "Qwen3.8" in repo or "Qwen3-VL" in repo):
         reasoning_parser = "qwen3"
     # never serve fewer images per prompt than the manifest's multi-image calls need
     limit_mm_images = max(limit_mm_images, max(int(call.params.get("n_images", 1)) for call in calls))

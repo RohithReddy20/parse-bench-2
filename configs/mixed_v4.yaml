@@ -1,0 +1,132 @@
+# mixed_v4: best of frontier_v3 (parsebench-v2-research) + fable_v4 (fable-push90).
+# - Tables: keeps our PDF-geometry routing (`table_geo`) + 122B 3-strip `tier2_tables` with alignment guard,
+#   stacked with Fable's PDF-grounded round-3 table repairs (`squeeze`, `sign`, `head_fill`, `last_column`,
+#   `merge_apart`, `merge_strict`) and `select_options.skip_tables` so bag-of-words selection never overrides
+#   table-geometry routing on data tables.
+# - Text & reader selection: Fable's born-digital `select_options` (`layer_margin: 0`, `skip_math`,
+#   `keep_pictures: 25`, `fuse_words`) + loose edge-line furniture stripping on OCRia-1 reads.
+# - Formatting: Fable's dashed/overhang/3-column rule filter (`pdf/drawings.py`) + `_ruled_rows` table guard.
+# - Charts: Fable's Qwen3.8-27B thinking `v2b` prompt + `crop_zoom_to: 2048` + `hint_chars: 10000` +
+#   `fallback_plain` + 3-sample cell-by-cell median vote (`chart_vote.py`), plus our `allow_table_figures` &
+#   `all_crops_ok` guards.
+# - Forms: Fable's Qwen3.8-27B thinking `FORM_KV` (`caption: value` + `<text_layer>` + `wide` + `any_reader` +
+#   `fallback_plain`) + our `acro_clean` (and optional `route_blanks`).
+# - Layout: keeps our `pp_scan_arbiter` + `blank_drop` on top of Heron + PP-DocLayoutV3 + OCRia-1 attention.
+reader: chandra_hybrid
+strip_furniture: false
+verify_pdf: true
+chandra_model:
+  repo: datalab-to/chandra-ocr-2
+  revision: af93b47dba1b47b6640c86ccf487ed2260ab9a09
+  dtype: bf16
+page_model:
+  repo: llamaindex/OCRia-1
+  revision: dae83aa51ecd0a8574d415d929a4d9e79348fd2a
+  dtype: bf16
+page_runtime: vllm-0.34.0
+prompt_sha: 907944f61490bf666cc93129d93d1537d9d6f872cc285c371c7889700b6f3e38
+dpi: 300
+fallback_below: 0.5
+upright_read: true
+layout: ground
+layout_attention: always
+layout_options:
+  tighten: true
+  tighten_pad: 0.15
+  native_text: true
+  orphans: true
+  orphan_ink: true
+  pp_arbiter: true
+  pp_keep_pictures: true
+  pp_add: true
+  pp_scan_arbiter: true
+  blank_drop: true
+table_options:
+  regrid: true
+  regrid_wide: true
+  complete: true
+  merge: true
+  extend: true
+  leaf: true
+  leaf_mode: 3
+  dedupe: true
+  complete_extent: true
+  table_geo: true
+  squeeze: true
+  sign: true
+  head_fill: true
+  last_column: true
+  merge_apart: true
+  merge_strict: true
+form_options:
+  acroform: true
+  acro_clean: true
+  checkbox_ink: true
+chart_options:
+  measure: true
+  labels: true
+  panels: true
+  lost: true
+  legend: true
+  titles: true
+  legend_min: 2
+  legend_override: true
+  panel_override: true
+format_options:
+  cell_strike: true
+  strike: true
+  underline_missing: true
+  unbold: true
+  list_marker: true
+text_options:
+  respell: true
+  empty_read: true
+tier2_charts: true
+tier2_chart_options:
+  model: q38
+  prompt: v2b
+  crop_zoom_to: 2048
+  hint_chars: 10000
+  fallback_plain: true
+  samples: 3
+  enable_thinking: true
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 20000
+  use_ppdoclayout: true
+  pp_chart_score: 0.40
+  per_chart_crops: true
+  per_chart_min_union: 0.32
+  per_chart_max_boxes: 6
+tier2_forms: true
+tier2_form_options:
+  model: q38
+  prompt: kv
+  wide: true
+  any_reader: true
+  enable_thinking: true
+  fallback_plain: true
+  temperature: 0.6
+  top_k: 20
+  top_p: 0.95
+  presence_penalty: 1.0
+  max_tokens: 12000
+  min_word_coverage: 0.93
+tier2_tables: true
+tier2_table_options:
+  model: 122b
+  n_strips: 3
+  strip_overlap: 0.14
+  max_tokens: 16384
+  temperature: 0.1
+  top_p: 0.95
+  presence_penalty: 1.0
+  min_recall_trigger: 0.78
+  min_recall_gain: 0.05
+select_options:
+  layer_margin: 0.0
+  table_margin: 0.05
+  skip_math: true
+  keep_pictures: 25
+  fuse_words: true

@@ -39,6 +39,8 @@ _FIGURE_LABEL = re.compile(r"""\bdata-label\s*=\s*(["'])Figure\1""", re.IGNORECA
 _BBOX = re.compile(r'\bdata-bbox\s*=\s*"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"')
 _IMG_ALT = re.compile(r"""<img\b[^>]*?\salt\s*=\s*(["'])(.*?)\1""", _FLAGS)
 _MATH = re.compile(r"\$\$|\\frac|\\begin\{equation\}|<math", re.IGNORECASE)
+# display or inline formulas in either reader's dialect (Chandra `<math>`, LaTeX `$...$`, `\\(...\\)`)
+_ANY_MATH = re.compile(r"\$\$|\\frac|\\begin\{|<math|\\\(|\$[^$\n]{0,80}[\\^_][^$\n]{0,80}\$", re.IGNORECASE)
 _FORM_LABEL = re.compile(r"""<div\b[^>]*\bdata-label\s*=\s*(["'])Form\1""", re.IGNORECASE)
 _CHECKBOX = re.compile(r"\[[ xX]\]|<input\b")
 _BLANK_MARK = re.compile(r"\[[ \t]*_{2,}[ \t]*\]")
@@ -133,6 +135,44 @@ def _chandra_figures(raw: str) -> list[tuple[int, int, str, tuple[int, ...] | No
     return figures
 
 
+_PICTURE_LABEL = re.compile(r"""\bdata-label\s*=\s*(["'])(?:Figure|Image|Diagram)\1""", re.IGNORECASE)
+
+
+def _picture_words(raw: str) -> int:
+    """Words Chandra wrote for the page's pictures (Figure / Image / Diagram blocks: alt text, description, the
+    text of a diagram). Text inside a picture is in no text layer and the other readers do not transcribe it."""
+    n = 0
+    for m in _CHANDRA_DIV.finditer(raw):
+        if _PICTURE_LABEL.search(m[1]):
+            alt = " ".join(a[2] for a in _IMG_ALT.finditer(m[2]))
+            n += len(re.findall(r"\w+", alt + " " + re.sub(r"<[^>]+>", " ", m[2])))
+    return n
+
+
+def _picture_notes(raw: str, min_words: int) -> str:
+    """Chandra's transcription of the page's pictures (Figure / Diagram blocks that are not data charts and hold no
+    table) as `![...]()` lines, for a page whose text comes from another reader: that reader does not describe
+    pictures, and what a picture shows is in no text layer. Blocks under `min_words` words are left out."""
+    from docparse.models.adapters.vlm_specialists import _CHART_ALT
+
+    notes = []
+    for m in _CHANDRA_DIV.finditer(raw):
+        if not re.search(r"""\bdata-label\s*=\s*(["'])(?:Figure|Diagram)\1""", m[1], re.IGNORECASE):
+            continue
+        if "<table" in m[2].lower():
+            continue
+        alt = " ".join(a[2] for a in _IMG_ALT.finditer(m[2]))
+        if _CHART_ALT.search(alt):
+            continue
+        rest = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", re.sub(r"<img\b[^>]*>", " ", m[2]))).split())
+        text = f"{html.unescape(alt)} {rest}".strip()
+        if len(re.findall(r"\w+", text)) < min_words:
+            continue
+        text = text[:1500].replace("[", "(").replace("]", ")").replace("\n", " ")
+        notes.append(f"![{text}]()")
+    return "\n\n".join(notes)
+
+
 def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
     """`(crop, box_pt)`: the union of the chart `boxes` (page pixels) padded by CHART_PAD and clipped to the page, as
     a crop of the page image (None when it covers too little or nearly all of the page) and in PDF points."""
@@ -148,6 +188,20 @@ def _chart_crop(rp: RenderedPage, boxes: list[tuple[float, ...]]):
     if lo <= (x1 - x0) * (y1 - y0) / (w * h) <= hi:
         crop = rp.image.crop((round(x0), round(y0), round(x1), round(y1)))
     return crop, (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
+
+
+def _zoom_crop(crop, opts: dict):
+    """A chart crop enlarged so its longer side reaches `crop_zoom_to` pixels (small charts keep their tick labels
+    and thin marks legible to the reader); unchanged when larger already or the option is unset."""
+    target = int(opts.get("crop_zoom_to", 0) or 0)
+    if crop is None or not target or max(crop.size) >= target:
+        return crop
+    from PIL import Image
+
+    scale = target / max(crop.size)
+    return crop.resize(
+        (max(1, round(crop.width * scale)), max(1, round(crop.height * scale))), Image.Resampling.LANCZOS
+    )
 
 
 def _chart_hint(
@@ -213,6 +267,8 @@ def _chart_sampling(opts: dict) -> dict:
         "top_k": int(opts["top_k"]) if "top_k" in opts else (20 if thinking else None),
         "presence_penalty": float(opts.get("presence_penalty", 1.0)),
         "max_tokens": int(opts.get("max_tokens", 10240)),
+        "prompt": str(opts.get("prompt", "v2")),
+        "seed": int(opts["seed"]) if opts.get("seed") is not None else None,
     }
 
 
@@ -235,12 +291,12 @@ def _tier2_chart_call(
     figures = [b for _, _, alt, b in _chandra_figures(raw_chandra) if b and _CHART_ALT.search(alt)]
     boxes = pp_boxes or [(b[0] * w / 1000, b[1] * h / 1000, b[2] * w / 1000, b[3] * h / 1000) for b in figures]
     crop, box_pt = _chart_crop(rp, boxes)
-    h_chars = int(opts.get("hint_max_chars", 2500))
+    h_chars = int(opts.get("hint_chars", opts.get("hint_max_chars", 2500)))
     h_series = int(opts.get("hint_max_series", 12))
     hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt, max_chars=h_chars, max_series=h_series)
     return qwen_tier2.build_chart_call(
         rp.image,
-        crop_image=crop,
+        crop_image=_zoom_crop(crop, opts),
         vector_hint=hint,
         draft_tables="\n\n".join(drafts or _TABLE.findall(raw_chandra)),
         model=model or qwen_tier2.resolve_tier2_model(opts.get("model")),
@@ -268,11 +324,11 @@ def _tier2_single_chart_call(
         x0, y0, x1, y1 = max(0.0, box[0]), max(0.0, box[1]), min(w, box[2]), min(h, box[3])
         crop = rp.image.crop((round(x0), round(y0), round(x1), round(y1)))
         box_pt = (x0 * rp.scale, y0 * rp.scale, x1 * rp.scale, y1 * rp.scale)
-    h_chars = int(opts.get("hint_max_chars", 2500))
+    h_chars = int(opts.get("hint_chars", opts.get("hint_max_chars", 2500)))
     h_series = int(opts.get("hint_max_series", 12))
     hint = "" if turn else _chart_hint(pdf_bytes, index, rp, box_pt, max_chars=h_chars, max_series=h_series)
     return qwen_tier2.build_single_chart_call(
-        rp.image, crop, vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
+        rp.image, _zoom_crop(crop, opts), vector_hint=hint, draft_tables=draft, model=model, **_chart_sampling(opts)
     )
 
 
@@ -313,9 +369,36 @@ def _is_form_page(raw_chandra: str, markdown: str, pdf_bytes: bytes, index: int,
         return False
     if _FORM_LABEL.search(raw_chandra) or len(_CHECKBOX.findall(markdown)) >= int(opts.get("min_checkboxes", 4)):
         return True
+    if opts.get("wide") and _looks_like_form(markdown):  # the rewrite itself may still answer "not a form"
+        return True
     from docparse.fixes.forms_acro import acroform_widgets
 
     return acroform_widgets(pdf_bytes, index)[0] >= int(opts.get("min_acro_widgets", 3))
+
+
+_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", _FLAGS)
+_ROW = re.compile(r"<tr\b", re.IGNORECASE)
+_BLANK_RUN = re.compile(r"_{4,}|\.{6,}")
+
+
+def _looks_like_form(markdown: str) -> bool:
+    """Signs of a form in a reading that carries no `Form` block: a checkbox, runs of blanks to write on, or several
+    one- or two-row tables (boxed fields)."""
+    if _CHECKBOX.search(markdown) or len(_BLANK_RUN.findall(markdown)) >= 3:
+        return True
+    return sum(1 for t in _TABLE.findall(markdown) if len(_ROW.findall(t)) <= 2) >= 3
+
+
+def _grid_table_count(markdown: str) -> int:
+    """Data tables a form rewrite must keep: a header, three or more rows, no checkbox, and mostly filled cells
+    (boxed fields and half-empty form grids drawn as tables may become `caption: value` lines)."""
+    n = 0
+    for t in _TABLE.findall(markdown):
+        cells = _CELL.findall(t)
+        empty = sum(1 for c in cells if not re.sub(r"<[^>]+>|&nbsp;|\s", "", c))
+        grid = "<th" in t.lower() and len(_ROW.findall(t)) >= 3 and not _CHECKBOX.search(t)
+        n += grid and empty < 0.25 * max(1, len(cells))
+    return n
 
 
 def _data_table_count(markdown: str) -> int:
@@ -333,9 +416,13 @@ def _line_key(line: str) -> str:
     return " ".join(re.sub(r"[#*_]", " ", html.unescape(re.sub(r"<[^>]+>", " ", line))).split()).casefold()
 
 
-def _drop_chandra_furniture(raw_chandra: str, candidate_md: str) -> str:
+EDGE_LINES = 4  # lines at the top and at the bottom of a page where a running header or footer can stand
+
+
+def _drop_chandra_furniture(raw_chandra: str, candidate_md: str, edges: bool = False) -> str:
     """`candidate_md` without the lines that repeat Chandra's Page-Header / Page-Footer text (a line the page body
-    shows too is kept)."""
+    shows too is kept). With `edges`, one of the first or last `EDGE_LINES` lines also goes when its words are the
+    furniture's words (85% of them) and cover most of one furniture block (60%)."""
     from docparse.models.adapters.vlm_specialists import _FURNITURE_DIV, chandra_markdown
 
     def keys(md: str) -> set[str]:
@@ -346,7 +433,23 @@ def _drop_chandra_furniture(raw_chandra: str, candidate_md: str) -> str:
     furniture -= keys(chandra_markdown(raw_chandra, drop_furniture=True)) | {""}
     if not furniture:
         return candidate_md
-    kept = [line for line in candidate_md.splitlines() if _line_key(line) not in furniture]
+    lines = candidate_md.splitlines()
+    drop = {i for i, line in enumerate(lines) if _line_key(line) in furniture}
+    if edges:  # another reader words a running header a little differently: match the page's edge lines loosely
+        body = keys(chandra_markdown(raw_chandra, drop_furniture=True))
+        blocks_tok = [t for t in (set(re.findall(r"[a-z0-9]+", k)) for k in furniture) if t]
+        union = set().union(*blocks_tok) if blocks_tok else set()
+        filled = [i for i, line in enumerate(lines) if line.strip()]
+        for i in [*filled[:EDGE_LINES], *filled[-EDGE_LINES:]]:
+            k = _line_key(lines[i])
+            toks = set(re.findall(r"[a-z0-9]+", k))
+            if i in drop or not toks or len(toks) > 30 or k in body:
+                continue
+            inside = len(toks & union) >= 0.85 * len(toks)
+            covers = any(len(toks & b) >= 0.6 * len(b) for b in blocks_tok)
+            if inside and covers:
+                drop.add(i)
+    kept = [line for i, line in enumerate(lines) if i not in drop]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
@@ -412,6 +515,115 @@ def _run_tier2_tables(
     return (merged, done, []) if taken else (markdown, [], [])
 
 
+def _layer_lines(rp: RenderedPage, opts: dict) -> str:
+    """The text layer of a born-digital page as lines, top to bottom (words of a line separated by their gaps:
+    a wide gap becomes ` | `); "" when the layer is unhealthy, absent, or `layer` is off."""
+    if not opts.get("layer", True):
+        return ""
+    from docparse.fixes.layout_refine import lines_of, words_in_points
+    from docparse.fixes.verify import has_healthy_text_layer
+
+    if rp.hidden is None or not has_healthy_text_layer(rp):
+        return ""
+    out = []
+    for line in lines_of(words_in_points(rp)):
+        parts, prev = [], None
+        for w in line:
+            height = max(1.0, w.y1 - w.y0)
+            if prev is not None:
+                parts.append(" | " if w.x0 - prev.x1 > 1.5 * height else " ")
+            parts.append(w.text)
+            prev = w
+        text = "".join(parts).strip()
+        if text:
+            out.append(text)
+    return "\n".join(out)[: int(opts.get("layer_chars", 12000))]
+
+
+def _fuse_other(markdown: str, other_md: str, rp: RenderedPage, options: dict) -> str:
+    """The kept reading with the other reading's plain words wherever the healthy text layer sides with them."""
+    if options.get("fuse_words"):
+        from docparse.fixes.select import fuse_layer_words
+
+        markdown, _ = fuse_layer_words(markdown, other_md, rp)
+    return markdown
+
+
+def _run_tier2_forms(
+    markdown: str,
+    raw_chandra: str,
+    rp: RenderedPage,
+    pdf_bytes: bytes,
+    index: int,
+    config: Config,
+    client: ModelClient,
+    meta: dict,
+) -> tuple[str, list[ModelResult], list[str]]:
+    """`(markdown, results used, pending keys)` after the Tier-2 form step on a form page: the draft is verified
+    (`form-refine`) or rewritten as `caption: value` lines (`prompt: kv`) against the page image. The answer replaces
+    the draft only when it keeps the draft's words and data tables; a thinking read that fails falls back to a
+    plain one (`fallback_plain`). `raw_chandra` is "" when the draft comes from another reader."""
+    f_opts = config.tier2_form_options
+    if not _is_form_page(raw_chandra, markdown, pdf_bytes, index, f_opts):
+        return markdown, [], []
+    from functools import partial
+
+    from docparse.models.adapters import qwen_tier2
+
+    kv = f_opts.get("prompt") == "kv"
+    if kv:  # rewrite as `caption: value` lines, with the text layer's lines
+        build_form = partial(qwen_tier2.build_form_kv_call, layer_lines=_layer_lines(rp, f_opts))
+    else:
+        f_imgs = (
+            list(qwen_tier2.make_horizontal_strips(rp.image, overlap=float(f_opts.get("strip_overlap", 0.12))))
+            if f_opts.get("two_strips")
+            else None
+        )
+        build_form = partial(
+            qwen_tier2.build_form_refine_call,
+            prompt_version=str(f_opts.get("prompt_version", "v1")),
+            images=f_imgs,
+        )
+    samplings = [
+        {
+            "enable_thinking": bool(f_opts.get("enable_thinking", False)),
+            "temperature": float(f_opts.get("temperature", 0.1)),
+            "top_p": float(f_opts.get("top_p", 0.95)),
+            "top_k": int(f_opts["top_k"]) if "top_k" in f_opts else None,
+            "presence_penalty": float(f_opts.get("presence_penalty", 1.0)),
+            "max_tokens": int(f_opts.get("max_tokens", 8192)),
+        }
+    ]
+    if samplings[0]["enable_thinking"] and f_opts.get("fallback_plain"):
+        # a thinking read that runs out of tokens or fails the guards falls back to a plain read
+        samplings.append({"enable_thinking": False, "temperature": 0.1, "top_p": 0.95, "top_k": None,
+                          "presence_penalty": 1.0, "max_tokens": 8192})  # fmt: skip
+    for sampling in samplings:
+        f_call, f_blobs = build_form(
+            rp.image, markdown, model=qwen_tier2.resolve_tier2_model(f_opts.get("model")), **sampling
+        )
+        f_res = client.get(f_call, f_blobs, meta)
+        if isinstance(f_res, Pending):
+            return markdown, [], [f_res.key]
+        f_read = qwen_tier2.read_tier2_result(f_res)
+        if kv and f_read.markdown.strip().strip("`") == qwen_tier2.NOT_A_FORM:
+            break  # the model looked and saw no form: the draft stands
+        if not f_read.usable:  # a cut-off or looping answer leaves the draft
+            continue
+        cand_md = f_read.markdown
+        if config.strip_furniture and raw_chandra:
+            cand_md = _drop_chandra_furniture(raw_chandra, cand_md)
+        # a refinement that drops the draft's printed text or data tables is a rewrite, not a correction
+        min_cov = float(f_opts.get("min_word_coverage", 0.93))
+        if kv:  # boxed fields drawn as small tables may become lines; real data grids must stay
+            keeps_tables = _grid_table_count(cand_md) >= _grid_table_count(markdown)
+        else:
+            keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
+        if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
+            return cand_md, [f_res], []
+    return markdown, [], []
+
+
 def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
     """Parse a PDF (or a page image). Raises `ParseError` on unreadable bytes."""
     decorations = styles = False
@@ -419,7 +631,9 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         from docparse.fixes.formatting import needs_decorations, needs_styles
 
         decorations, styles = needs_decorations(config.format_options), needs_styles(config.format_options)
-    layer = bool(config.verify_pdf or config.tier2_tables or config.form_options.get("route_blanks"))
+    layer = bool(
+        config.verify_pdf or config.tier2_tables or config.form_options.get("route_blanks") or config.select_options
+    )
     if config.text_options:
         from docparse.fixes.text import needs_layer
 
@@ -453,6 +667,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
             from docparse.fixes.fallback import looped
 
             ch_read = vlm_specialists.read_chandra_result(chandra_res, drop_furniture=config.strip_furniture)
+            if config.text_options.get("picture_alt"):
+                folded = vlm_specialists.fold_picture_text(ch_read.raw_answer)
+                if folded != ch_read.raw_answer:  # what Chandra wrote about a picture belongs in its alt text
+                    ch_read = vlm_specialists.SpecialistRead(
+                        vlm_specialists.chandra_markdown(folded, drop_furniture=config.strip_furniture),
+                        folded,
+                        ch_read.finish_reason,
+                    )
             ch_ok = (
                 ch_read.finish_reason != "length" and bool(ch_read.markdown.strip()) and not looped(ch_read.markdown)
             )
@@ -471,9 +693,10 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if config.strip_furniture
                     else ch_read.markdown
                 )
+                strict_form_opts = {**config.tier2_form_options, "wide": False}
                 use_tgeo = bool(config.table_options.get("table_geo")) and not (
                     config.tier2_forms
-                    and _is_form_page(ch_read.raw_answer, full_ch_md, pdf_bytes, index, config.tier2_form_options)
+                    and _is_form_page(ch_read.raw_answer, full_ch_md, pdf_bytes, index, strict_form_opts)
                 )
                 verify_needed, verify_reason = needs_pdf_verification(full_ch_md, rp, table_geo=use_tgeo)
             use_form_route = bool(
@@ -495,6 +718,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 or use_form_route
                 or (config.reader == "chandra_hybrid" and vlm_specialists.has_chart_figure(ch_read.raw_answer))
                 or config.layout == "ground"
+                or bool(config.select_options)
             )
             result = client.get(call, blobs, meta) if need_ocria else None
         else:
@@ -552,6 +776,8 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
         sec_md_cached: str | None = None
         routed_form = False
+        selected_alt = False
+        picture_md = ""
         if use_chandra and ch_ok and ch_read is not None and verify_needed and read is not None:
             from docparse.fixes.verify import secondary_improves
 
@@ -564,6 +790,35 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 table_geo=bool(config.table_options.get("table_geo")),
             ):
                 ch_ok = False
+        if (
+            use_chandra
+            and ch_ok
+            and ch_read is not None
+            and read is not None
+            and config.select_options
+            and read.finish_reason != "length"
+            and not (config.select_options.get("skip_math") and _ANY_MATH.search(ch_read.raw_answer + read.markdown))
+        ):
+            from docparse.fixes.select import prefer_alternative
+            from docparse.models.adapters import vlm_specialists
+
+            ch_cmp = full_ch_md or ch_read.markdown
+            pictured = _picture_words(ch_read.raw_answer) >= int(config.select_options.get("picture_words", 10**9))
+            is_tgeo = verify_reason.startswith("table_geo:")
+            skip_tbl = (bool(config.select_options.get("skip_tables")) and _data_table_count(ch_cmp) > 0) or (
+                bool(config.select_options.get("respect_table_geo")) and is_tgeo
+            )
+            if not vlm_specialists.has_chart_figure(ch_read.raw_answer) and not pictured and not skip_tbl:
+                if sec_md_cached is None:
+                    sec_md_cached, _, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)
+                sel_opts = (
+                    {**config.select_options, "layer_margin": float(config.select_options["table_margin"])}
+                    if is_tgeo and "table_margin" in config.select_options
+                    else config.select_options
+                )
+                if prefer_alternative(ch_read.markdown, sec_md_cached, rp, sel_opts):
+                    ch_ok = False
+                    selected_alt = True
         if use_chandra and ch_ok and ch_read is not None and use_form_route and read is not None:
             from docparse.fixes.fallback import has_math
             from docparse.fixes.layout_refine import words_in_points
@@ -591,6 +846,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 if oc_bl >= 3 and ch_bl == 0 and (not healthy or oc_rec >= ch_rec - 0.03):
                     ch_ok = False
                     routed_form = True
+        if (
+            use_chandra
+            and not ch_ok
+            and ch_read is not None
+            and ch_read.finish_reason != "length"
+            and config.select_options.get("keep_pictures")
+        ):
+            picture_md = _picture_notes(ch_read.raw_answer, int(config.select_options["keep_pictures"]))
         if use_chandra and ch_ok and ch_read is not None:
             from docparse.models.adapters import vlm_specialists
 
@@ -609,7 +872,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 )
                 if fused:
                     used.append(result)
-            tier2_chart_used = tier2_tried = False
+            tier2_chart_used = tier2_form_used = tier2_tried = False
             if config.tier2_charts:
                 from docparse.models.adapters import qwen_tier2
 
@@ -628,25 +891,76 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         and 2 <= len(pp_boxes) <= int(opts.get("per_chart_max_boxes", 6))
                         and _union_share(rp, pp_boxes) >= float(opts.get("per_chart_min_union", 0.32))
                     )
-                    if per_chart:  # several large charts: one zoomed read of each, all asked for at once
-                        draft = "\n\n".join(ocria_tables or _TABLE.findall(ch_read.raw_answer))
-                        t2_calls = [
-                            _tier2_single_chart_call(pdf_bytes, index, rp, turn, bx, draft, opts, chart_model)
-                            for bx in pp_boxes
+                    draft = "\n\n".join(ocria_tables or _TABLE.findall(ch_read.raw_answer))
+
+                    def chart_calls(
+                        o: dict,
+                        per_chart=per_chart,
+                        index=index,
+                        rp=rp,
+                        turn=turn,
+                        draft=draft,
+                        chart_model=chart_model,
+                        raw=ch_read.raw_answer,
+                        pp_boxes=pp_boxes,
+                        ocria_tables=ocria_tables,
+                    ) -> list:
+                        if per_chart:  # several large charts: one zoomed read of each, all asked for at once
+                            return [
+                                _tier2_single_chart_call(pdf_bytes, index, rp, turn, bx, draft, o, chart_model)
+                                for bx in pp_boxes
+                            ]
+                        return [
+                            _tier2_chart_call(pdf_bytes, index, rp, turn, raw, pp_boxes, ocria_tables, o, chart_model)
                         ]
-                    else:
-                        t2_call = _tier2_chart_call(
-                            pdf_bytes, index, rp, turn, ch_read.raw_answer, pp_boxes, ocria_tables, opts, chart_model
-                        )
-                        t2_calls = [t2_call]
+
+                    t2_calls = chart_calls(opts)
                     t2_results = [client.get(c, b, meta) for c, b in t2_calls]
                     t2_done = [r for r in t2_results if not isinstance(r, Pending)]
                     if len(t2_done) < len(t2_results):
                         pending += list(dict.fromkeys(r.key for r in t2_results if isinstance(r, Pending)))
                         continue
-                    # a cut-off or looping answer, or one without a table, leaves the page as read without it
                     t2_reads = [(r, qwen_tier2.read_tier2_result(r)) for r in t2_done]
-                    t2_good = [(r, x) for r, x in t2_reads if x.usable and _TABLE.search(x.markdown)]
+                    if opts.get("fallback_plain") and opts.get("enable_thinking"):
+                        # a thinking read that ran out of tokens, looped or wrote no table is read again plainly
+                        bad = [i for i, (_, x) in enumerate(t2_reads) if not (x.usable and _TABLE.search(x.markdown))]
+                        if bad:
+                            plain = {**opts, "enable_thinking": False, "temperature": 0.1, "max_tokens": 10240}
+                            plain.pop("top_k", None)
+                            again = chart_calls(plain)
+                            retried = [client.get(*again[i], meta) for i in bad]
+                            if any(isinstance(r, Pending) for r in retried):
+                                pending += list(dict.fromkeys(r.key for r in retried if isinstance(r, Pending)))
+                                continue
+                            for i, r in zip(bad, retried, strict=True):
+                                t2_reads[i] = (r, qwen_tier2.read_tier2_result(r))
+                    extra_reads: list[list] = [[] for _ in t2_reads]
+                    n_samples = int(opts.get("samples", 1))
+                    if n_samples > 1:  # more independent reads of each chart: the numbers are voted cell by cell
+                        waiting_more = False
+                        for seed in range(2, n_samples + 1):
+                            more = [client.get(c, b, meta) for c, b in chart_calls({**opts, "seed": seed})]
+                            if any(isinstance(r, Pending) for r in more):
+                                pending += list(dict.fromkeys(r.key for r in more if isinstance(r, Pending)))
+                                waiting_more = True
+                                continue
+                            for slot, r in zip(extra_reads, more, strict=True):
+                                slot.append(qwen_tier2.read_tier2_result(r))
+                        if waiting_more:
+                            continue
+                    # a cut-off or looping answer, or one without a table, leaves the page as read without it
+                    t2_good = []
+                    for (r, x), others in zip(t2_reads, extra_reads, strict=True):
+                        if not (x.usable and _TABLE.search(x.markdown)):
+                            continue
+                        peers = [o.markdown for o in others if o.usable and _TABLE.search(o.markdown)]
+                        if peers:
+                            from dataclasses import replace
+
+                            from docparse.fixes.chart_vote import fuse_reads
+
+                            x = replace(x, markdown=fuse_reads([x.markdown, *peers]))
+                        t2_good.append((r, x))
                     if per_chart and len(t2_good) < len(t2_calls):
                         t2_good = []
                     t2_markdown = None
@@ -659,60 +973,40 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         markdown = t2_markdown
                         used += [r for r, _ in t2_good]
                         tier2_chart_used = True
-            f_opts = config.tier2_form_options
-            if (
-                config.tier2_forms
-                and not tier2_tried  # a page already escalated to Tier-2 is never escalated twice
-                and _is_form_page(ch_read.raw_answer, markdown, pdf_bytes, index, f_opts)
-            ):
-                tier2_tried = True
-                from docparse.models.adapters import qwen_tier2
-
-                f_imgs = (
-                    list(
-                        qwen_tier2.make_horizontal_strips(
-                            rp.image, overlap=float(f_opts.get("strip_overlap", 0.12))
-                        )
-                    )
-                    if f_opts.get("two_strips")
-                    else None
-                )
-                f_call, f_blobs = qwen_tier2.build_form_refine_call(
-                    rp.image,
-                    markdown,
-                    model=qwen_tier2.resolve_tier2_model(f_opts.get("model")),
-                    enable_thinking=bool(f_opts.get("enable_thinking", False)),
-                    temperature=float(f_opts.get("temperature", 0.1)),
-                    top_p=float(f_opts.get("top_p", 0.95)),
-                    top_k=int(f_opts["top_k"]) if "top_k" in f_opts else None,
-                    presence_penalty=float(f_opts.get("presence_penalty", 1.0)),
-                    max_tokens=int(f_opts.get("max_tokens", 8192)),
-                    prompt_version=str(f_opts.get("prompt_version", "v1")),
-                    images=f_imgs,
-                )
-                f_res = client.get(f_call, f_blobs, meta)
-                if isinstance(f_res, Pending):
-                    pending.append(f_res.key)
-                    continue
-                f_read = qwen_tier2.read_tier2_result(f_res)
-                if f_read.usable:  # a cut-off or looping answer leaves Chandra's draft
-                    cand_md = f_read.markdown
-                    if config.strip_furniture:
-                        cand_md = _drop_chandra_furniture(ch_read.raw_answer, cand_md)
-                    # a refinement that drops the draft's printed text or data tables is a rewrite, not a correction
-                    min_cov = float(f_opts.get("min_word_coverage", 0.93))
-                    keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
-                    if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
-                        markdown = cand_md
-                        used.append(f_res)
-            if not tier2_tried:  # at most one Tier-2 escalation per page (keeps planning single-pass too)
+            if not tier2_tried:  # recover truncated / low-recall data tables before form rewriting
                 markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
                 if t_wait:
                     pending += t_wait
                     continue
-                if t_used and config.strip_furniture:
-                    markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
-                used += t_used
+                if t_used:
+                    if config.strip_furniture:
+                        markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
+                    used += t_used
+                    tier2_tried = True
+            if config.tier2_forms and not tier2_tried:  # a page already escalated to Tier-2 is never escalated twice
+                markdown, f_used, f_wait = _run_tier2_forms(
+                    markdown, ch_read.raw_answer, rp, pdf_bytes, index, config, client, meta
+                )
+                if f_wait:
+                    pending += f_wait
+                    continue
+                used += f_used
+                tier2_form_used = bool(f_used)
+                if tier2_form_used:
+                    tier2_tried = True
+            if (
+                not tier2_chart_used
+                and not tier2_form_used
+                and read is not None
+                and read.finish_reason != "length"
+                and config.select_options.get("fuse_words")
+            ):
+                other_md = (
+                    sec_md_cached
+                    if sec_md_cached is not None
+                    else _ocria_markdown(pdf_bytes, index, rp, read, call.key(), config)[0]
+                )
+                markdown = _fuse_other(markdown, other_md, rp, config.select_options)
             # Run the same PDF-grounded corrector stack (AcroForm widgets, text respell, formatting, tables, charts)
             if config.form_options:
                 from docparse.fixes.forms import repair
@@ -739,7 +1033,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 fix_tables(page, rp, config.table_options)
             if (
                 config.chart_options.get("measure")
-                and not tier2_chart_used
+                and (not tier2_chart_used or config.chart_options.get("after_tier2"))
                 and any(r.kind == "table" for r in page.regions)
             ):
                 from docparse.fixes.charts import correct_tables
@@ -761,16 +1055,31 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         else:
             assert read is not None and result is not None
             markdown = read.markdown
+            if use_chandra and config.strip_furniture and ch_read is not None and ch_read.finish_reason != "length":
+                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown, edges=True)
+            if picture_md:
+                markdown = f"{markdown}\n\n{picture_md}"
             # Run Tier-2 strip recovery BEFORE plain-text fallback so a cut-off table keeps HTML structure
             t_used, t_wait = [], []
-            if not routed_form:
+            raw_ch = ch_read.raw_answer if ch_read is not None else ""
+            if not routed_form and not selected_alt:
                 markdown, t_used, t_wait = _run_tier2_tables(
                     markdown, rp, read.finish_reason == "length", config, client, meta
                 )
             if t_wait:
                 pending += t_wait
                 continue
-            if not t_used and config.fallback_below > 0:
+            if t_used and use_chandra and config.strip_furniture and ch_read is not None:
+                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown, edges=True)
+            f_used: list[ModelResult] = []
+            if config.tier2_forms and not t_used and config.tier2_form_options.get("any_reader"):
+                markdown, f_used, f_wait = _run_tier2_forms(
+                    markdown, raw_ch, rp, pdf_bytes, index, config, client, meta
+                )
+                if f_wait:
+                    pending += f_wait
+                    continue
+            if not t_used and not f_used and config.fallback_below > 0:
                 from docparse.fixes.fallback import (
                     MIN_TOKENS,
                     has_math,
@@ -790,6 +1099,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     keep_math = has_math(markdown) and recall >= 0.20
                     if len(words) >= MIN_TOKENS and recall < config.fallback_below and not keep_math:
                         markdown = text_dump(words)
+            if (
+                not t_used
+                and not f_used
+                and ch_read is not None
+                and ch_read.finish_reason != "length"
+                and config.select_options.get("fuse_words")
+            ):
+                markdown = _fuse_other(markdown, ch_read.markdown, rp, config.select_options)
             if config.form_options:
                 from docparse.fixes.forms import repair
                 from docparse.pdf.overlay import overlay_fonts
@@ -799,8 +1116,6 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                 from docparse.fixes.text import empty_read
 
                 markdown = empty_read(markdown, rp) or markdown
-            if use_chandra and ch_read is not None and config.strip_furniture:
-                markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
             page = parse_page(markdown, index=index, call_key=call.key())
             if config.text_options:
                 from docparse.fixes.text import refine_text
@@ -826,7 +1141,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     for region in page.regions:
                         region.selected = region.candidates[0].id
                     page.findings.append(Finding(check="charts.vector", evidence=f"{type(exc).__name__}: {exc}"))
-            billed = [result, *t_used]
+            billed = [result, *t_used, *f_used]
             page.cost = CostRecord(
                 calls=len(billed),
                 gpu_seconds=sum(r.gpu_seconds or 0.0 for r in billed),
@@ -874,9 +1189,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
         if chandra_regions and page.layout is not None:
             from docparse.fixes.layout_kdl import apply_chandra_layout
 
-            page.layout = apply_chandra_layout(
-                page.layout, rp, chandra_regions, config.layout_options, chandra_texts
-            )
+            page.layout = apply_chandra_layout(page.layout, rp, chandra_regions, config.layout_options, chandra_texts)
         if config.layout_options and page.layout and read is not None:
             from docparse.fixes.layout_refine import refine
 
