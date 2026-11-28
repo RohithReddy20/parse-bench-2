@@ -333,23 +333,29 @@ def _tier2_single_chart_call(
 
 
 def _tier2_markdown(
-    raw_chandra: str, markdown: str, answer: str, chart_figure: bool, drop_furniture: bool
+    raw_chandra: str,
+    markdown: str,
+    answer: str,
+    chart_figure: bool,
+    drop_furniture: bool,
+    table_figures: bool = True,
 ) -> str | None:
     """The page with the Tier-2 chart tables: in Chandra's chart `Figure` blocks, or (for charts only PP-DocLayoutV3
-    saw) appended with their titles, minus the tables Chandra already read. None when the answer changes nothing."""
+    saw) appended with their titles, minus the tables Chandra already read. None when the answer changes nothing.
+    With `table_figures`, a `Figure` block holding a table also takes them (the chart was confirmed by a detector)."""
     from docparse.models.adapters import vlm_specialists
 
     tables = _TABLE.findall(answer)
     if not tables:
         return None
-    has_tbl_fig = any("<table" in f.body.lower() for f in vlm_specialists._figure_divs(raw_chandra))
+    has_tbl_fig = table_figures and any("<table" in f.body.lower() for f in vlm_specialists._figure_divs(raw_chandra))
     if chart_figure or has_tbl_fig:
         fused_md, fused = vlm_specialists.fuse_figure_charts(
             raw_chandra,
             tables,
             ocria_vector_measured=True,
             drop_furniture=drop_furniture,
-            allow_table_figures=True,
+            allow_table_figures=table_figures,
         )
         return fused_md if fused else None
     spans = [(start, end) for start, end, _, _ in _chandra_figures(raw_chandra)]
@@ -693,10 +699,16 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                     if config.strip_furniture
                     else ch_read.markdown
                 )
-                strict_form_opts = {**config.tier2_form_options, "wide": False}
+                # table geometry routes every page but a form page (by the strict form trigger, unless
+                # `wide_blocks_geo` lets the wider one decide)
+                geo_form_opts = (
+                    config.tier2_form_options
+                    if config.tier2_form_options.get("wide_blocks_geo")
+                    else {**config.tier2_form_options, "wide": False}
+                )
                 use_tgeo = bool(config.table_options.get("table_geo")) and not (
                     config.tier2_forms
-                    and _is_form_page(ch_read.raw_answer, full_ch_md, pdf_bytes, index, strict_form_opts)
+                    and _is_form_page(ch_read.raw_answer, full_ch_md, pdf_bytes, index, geo_form_opts)
                 )
                 verify_needed, verify_reason = needs_pdf_verification(full_ch_md, rp, table_geo=use_tgeo)
             use_form_route = bool(
@@ -891,7 +903,14 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         and 2 <= len(pp_boxes) <= int(opts.get("per_chart_max_boxes", 6))
                         and _union_share(rp, pp_boxes) >= float(opts.get("per_chart_min_union", 0.32))
                     )
-                    draft = "\n\n".join(ocria_tables or _TABLE.findall(ch_read.raw_answer))
+                    chart_drafts = ocria_tables
+                    if opts.get("draft_format") and ocria_tables:
+                        # the chart model's draft tables under other format options than the page's own
+                        d_cfg = config.model_copy(
+                            update={"format_options": {**config.format_options, **opts["draft_format"]}}
+                        )
+                        _, chart_drafts, _ = _ocria_markdown(pdf_bytes, index, rp, read, call.key(), d_cfg)
+                    draft = "\n\n".join(chart_drafts or _TABLE.findall(ch_read.raw_answer))
 
                     def chart_calls(
                         o: dict,
@@ -903,7 +922,7 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
                         chart_model=chart_model,
                         raw=ch_read.raw_answer,
                         pp_boxes=pp_boxes,
-                        ocria_tables=ocria_tables,
+                        ocria_tables=chart_drafts,
                     ) -> list:
                         if per_chart:  # several large charts: one zoomed read of each, all asked for at once
                             return [
@@ -961,39 +980,47 @@ def parse(pdf_bytes: bytes, config: Config, client: ModelClient) -> ParseResult:
 
                             x = replace(x, markdown=fuse_reads([x.markdown, *peers]))
                         t2_good.append((r, x))
-                    if per_chart and len(t2_good) < len(t2_calls):
-                        t2_good = []
+                    if per_chart and opts.get("all_crops", True) and len(t2_good) < len(t2_calls):
+                        t2_good = []  # one chart of several unread: the page keeps its own reading of them all
                     t2_markdown = None
                     if t2_good:
                         answer = "\n\n".join(x.markdown for _, x in t2_good)
                         t2_markdown = _tier2_markdown(
-                            ch_read.raw_answer, markdown, answer, ch_has_chart, config.strip_furniture
+                            ch_read.raw_answer,
+                            markdown,
+                            answer,
+                            ch_has_chart,
+                            config.strip_furniture,
+                            table_figures=bool(opts.get("table_figures", True)),
                         )
                     if t2_markdown is not None:
                         markdown = t2_markdown
                         used += [r for r, _ in t2_good]
                         tier2_chart_used = True
-            if not tier2_tried:  # recover truncated / low-recall data tables before form rewriting
-                markdown, t_used, t_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
-                if t_wait:
-                    pending += t_wait
-                    continue
-                if t_used:
-                    if config.strip_furniture:
-                        markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
-                    used += t_used
-                    tier2_tried = True
-            if config.tier2_forms and not tier2_tried:  # a page already escalated to Tier-2 is never escalated twice
-                markdown, f_used, f_wait = _run_tier2_forms(
-                    markdown, ch_read.raw_answer, rp, pdf_bytes, index, config, client, meta
-                )
-                if f_wait:
-                    pending += f_wait
-                    continue
-                used += f_used
-                tier2_form_used = bool(f_used)
-                if tier2_form_used:
-                    tier2_tried = True
+            # Tier-2 forms, then tables (or tables first with `before_forms`); a page already escalated to Tier-2
+            # (a form page, or a table re-read that was kept) is never escalated twice
+            t2_wait: list[str] = []
+            for step in ("tables", "forms") if config.tier2_table_options.get("before_forms") else ("forms", "tables"):
+                if tier2_tried or t2_wait:
+                    break
+                if step == "tables":  # recover truncated / low-recall data tables
+                    markdown, t_used, t2_wait = _run_tier2_tables(markdown, rp, False, config, client, meta)
+                    if t_used and not t2_wait:
+                        if config.strip_furniture:
+                            markdown = _drop_chandra_furniture(ch_read.raw_answer, markdown)
+                        used += t_used
+                        tier2_tried = True
+                elif config.tier2_forms:
+                    fired = _is_form_page(ch_read.raw_answer, markdown, pdf_bytes, index, config.tier2_form_options)
+                    markdown, f_used, t2_wait = _run_tier2_forms(
+                        markdown, ch_read.raw_answer, rp, pdf_bytes, index, config, client, meta
+                    )
+                    used += f_used
+                    tier2_form_used = bool(f_used)
+                    tier2_tried = fired
+            if t2_wait:
+                pending += t2_wait
+                continue
             if (
                 not tier2_chart_used
                 and not tier2_form_used

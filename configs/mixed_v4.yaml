@@ -99,6 +99,8 @@ tier2_chart_options:
   per_chart_crops: true
   per_chart_min_union: 0.32
   per_chart_max_boxes: 6
+  draft_format:  # fable_v4's chart request: draft tables keep PDF-drawn underlines in cells too
+    underline: true
 tier2_forms: true
 tier2_form_options:
   model: q38
@@ -124,6 +126,7 @@ tier2_table_options:
   presence_penalty: 1.0
   min_recall_trigger: 0.78
   min_recall_gain: 0.05
+  before_forms: true
 select_options:
   layer_margin: 0.0
   table_margin: 0.05

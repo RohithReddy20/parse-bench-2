@@ -420,3 +420,49 @@ def test_a_page_already_escalated_to_tier2_charts_is_not_re_escalated_to_tier2_t
     assert len(client.of(TIER2)) == 1
     assert len(client.of(STRIP)) == 0
     assert "Item 10" in write_document(doc) and "Item 15" not in write_document(doc)
+
+
+def _chart_opts(**extra) -> Config:
+    return FRONTIER.model_copy(update={"tier2_chart_options": {**V3.tier2_chart_options, **extra}})
+
+
+def test_draft_format_formats_only_the_chart_models_draft(monkeypatch):
+    import docparse.pipeline as pipeline
+
+    real = pipeline._ocria_markdown
+
+    def ocria_md(pdf_bytes, index, rp, read, key, config):  # a cell the PDF draws a line under
+        md, tables, measured = real(pdf_bytes, index, rp, read, key, config)
+        if config.format_options.get("underline"):
+            tables = [t.replace("<td>Q1</td>", "<td><u>Q1</u></td>") for t in tables]
+        return md, tables, measured
+
+    monkeypatch.setattr(pipeline, "_ocria_markdown", ocria_md)
+    for opts, underlined in (({}, False), ({"draft_format": {"underline": True}}, True)):
+        client = ScriptedClient(CHART_PAGE, tier2=f"Revenue by quarter\n{QWEN_TABLE}")
+        md = write_document(parse(PAGE, _chart_opts(**opts), client).document)
+        (call,) = client.of(TIER2)
+        assert ("<u>Q1</u>" in client.blobs[call.key()][call.inputs[-1]].decode()) is underlined
+        assert "<u>" not in md and "12.5" in md  # the page itself keeps its own format options
+
+
+def test_all_crops_off_keeps_the_charts_that_were_read():
+    answers = (f"Revenue by quarter\n{QWEN_TABLE}", "Decorative diagram without numeric values.")
+    for opts, kept in (({}, False), ({"all_crops": False}, True)):
+        client = ScriptedClient(MISSED_CHART_PAGE, pp=TWO_CHARTS, singles=answers)
+        md = write_document(parse(PAGE, _chart_opts(**opts), client).document)
+        assert len(client.of(SINGLE)) == 2
+        assert ("12.5" in md) is kept
+
+
+def test_table_figures_off_leaves_a_figure_without_chart_words_alone():
+    page = (
+        f'<div data-bbox="50 40 950 120" data-label="Text"><p>{PROSE_TOP}</p></div>'
+        '<div data-bbox="100 200 900 600" data-label="Figure"><img alt="Quarterly figures"/>'
+        "<table><tr><th>Quarter</th><th>Revenue</th></tr><tr><td>Q1</td><td>77.7</td></tr></table></div>"
+    )
+    pp = [{"label": "chart", "score": 0.9, "box": [85, 220, 765, 660]}]
+    for opts, replaced in (({}, True), ({"table_figures": False}, False)):
+        client = ScriptedClient(page, tier2=f"Revenue by quarter\n{QWEN_TABLE}", pp=pp)
+        md = write_document(parse(PAGE, _chart_opts(**opts), client).document)
+        assert "12.5" in md and ("77.7" not in md) is replaced

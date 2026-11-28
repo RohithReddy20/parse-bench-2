@@ -101,7 +101,7 @@ TIER2_CHART_OPTIONS = frozenset(
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "use_ppdoclayout", "pp_chart_score", "per_chart_crops", "per_chart_min_union", "per_chart_max_boxes",
         "hint_max_chars", "hint_max_series", "prompt", "crop_zoom_to", "hint_chars", "fallback_plain", "samples",
-        "seed",
+        "seed", "draft_format", "table_figures", "all_crops",
     }
 )  # fmt: skip
 # Tier-2 draft-guided form refinement
@@ -110,14 +110,14 @@ TIER2_FORM_OPTIONS = frozenset(
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "min_word_coverage", "min_checkboxes", "min_acro_widgets",
         "prompt_version", "two_strips", "strip_overlap", "prompt", "layer", "layer_chars", "wide", "fallback_plain",
-        "any_reader",
+        "any_reader", "wide_blocks_geo",
     }
 )  # fmt: skip
 # Tier-2 strip re-read of dense table pages
 TIER2_TABLE_OPTIONS = frozenset(
     {
         "model", "n_strips", "strip_overlap", "max_tokens", "temperature", "top_p", "presence_penalty",
-        "min_recall_trigger", "min_recall_gain",
+        "min_recall_trigger", "min_recall_gain", "before_forms",
     }
 )  # fmt: skip
 
