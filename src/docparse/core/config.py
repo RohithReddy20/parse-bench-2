@@ -110,7 +110,7 @@ TIER2_FORM_OPTIONS = frozenset(
         "model", "enable_thinking", "temperature", "top_p", "top_k", "presence_penalty", "max_tokens",
         "min_word_coverage", "min_checkboxes", "min_acro_widgets",
         "prompt_version", "two_strips", "strip_overlap", "prompt", "layer", "layer_chars", "wide", "fallback_plain",
-        "any_reader", "wide_blocks_geo",
+        "any_reader", "wide_blocks_geo", "clear_grid_blanks",
     }
 )  # fmt: skip
 # Tier-2 strip re-read of dense table pages

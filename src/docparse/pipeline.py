@@ -407,6 +407,22 @@ def _grid_table_count(markdown: str) -> int:
     return n
 
 
+_BLANK_CELL = re.compile(r"(<t[dh]\b[^>]*>)\s*(?:\[\s*_{2,}\s*\]|_{3,})\s*(</t[dh]>)", re.IGNORECASE)
+
+
+def _clear_grid_blanks(markdown: str) -> str:
+    """In each data grid (a header row, three or more rows, no checkbox), a cell holding only a blank-field marker
+    (`[___]`, `____`) becomes an empty cell: a grid's empty cells are part of the table, not fields to fill in."""
+
+    def grid(m: re.Match) -> str:
+        t = m[0]
+        if "<th" not in t.lower() or len(_ROW.findall(t)) < 3 or _CHECKBOX.search(t):
+            return t
+        return _BLANK_CELL.sub(r"\1\2", t)
+
+    return _TABLE.sub(grid, markdown)
+
+
 def _data_table_count(markdown: str) -> int:
     """HTML tables with `<th>` headers and no form checkboxes (true data tables, not `<table border=0>` form grids)."""
     return sum(1 for t in _TABLE.findall(markdown) if "<th" in t.lower() and not _CHECKBOX.search(t))
@@ -626,6 +642,8 @@ def _run_tier2_forms(
         else:
             keeps_tables = _data_table_count(cand_md) >= _data_table_count(markdown)
         if keeps_tables and _word_coverage(markdown, cand_md) >= min_cov:
+            if f_opts.get("clear_grid_blanks"):
+                cand_md = _clear_grid_blanks(cand_md)
             return cand_md, [f_res], []
     return markdown, [], []
 

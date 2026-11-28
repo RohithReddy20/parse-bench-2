@@ -466,3 +466,41 @@ def test_table_figures_off_leaves_a_figure_without_chart_words_alone():
         client = ScriptedClient(page, tier2=f"Revenue by quarter\n{QWEN_TABLE}", pp=pp)
         md = write_document(parse(PAGE, _chart_opts(**opts), client).document)
         assert "12.5" in md and ("77.7" not in md) is replaced
+
+
+@pytest.mark.parametrize("tables_first", [False, True])
+def test_a_form_page_with_a_low_recall_table_is_escalated_once_in_the_configured_order(monkeypatch, tables_first):
+    from docparse.fixes import verify
+
+    monkeypatch.setattr(verify, "has_healthy_text_layer", lambda rp: True)
+    monkeypatch.setattr(verify, "pdf_word_recall", _item_recall)
+    page = (
+        '<div data-bbox="50 20 950 300" data-label="Form"><p>Applicant name: Jane Doe</p>'
+        '<p><input type="checkbox"/> Married <input type="checkbox" checked/> Single</p></div>'
+        f'<div data-bbox="50 320 950 900" data-label="Table">{_ledger(1, 10)}</div>'
+    )
+    t_opts = {**V3.tier2_table_options, "before_forms": tables_first}
+    cfg = FORMS.model_copy(update={"tier2_tables": True, "tier2_table_options": t_opts})
+    client = ScriptedClient(
+        page, form="Applicant name: Jane Doe", strips=(_ledger(1, 6), _ledger(5, 10), _ledger(10, 15))
+    )
+    md = write_document(parse(STRIPED, cfg, client).document)
+    # forms first: the form page is escalated to the form step, whose short rewrite fails the word guard, and that
+    # is its one escalation; tables first: the strips recover the ledger and the form step never runs
+    assert (len(client.of(STRIP)), len(client.of(FORM))) == ((3, 0) if tables_first else (0, 1))
+    assert ("Item 15" in md) is tables_first and "Item 10" in md
+
+
+def test_grid_blanks_are_cleared_only_in_data_grids():
+    from docparse.pipeline import _clear_grid_blanks
+
+    grid = (
+        "<table><tr><th>Line</th><th>2023</th></tr><tr><td>(1)</td><td>1,268</td></tr>"
+        "<tr><td>(2)</td><td>[___]</td></tr><tr><td>[ ___ ]</td><td>____</td></tr></table>"
+    )
+    boxes = "<table><tr><td>Name</td><td>[___]</td></tr></table>"  # boxed fields: no header row
+    ticks = grid.replace("<td>(1)</td>", "<td>[x] (1)</td>")  # a grid of checkboxes is a form grid
+    md = _clear_grid_blanks(f"Policy number: [___]\n\n{grid}\n\n{boxes}\n\n{ticks}")
+    assert md.startswith("Policy number: [___]") and boxes in md and ticks in md  # left as they were
+    cleared = md.split("\n\n")[1]
+    assert "<td>(2)</td><td></td>" in cleared and "<tr><td></td><td></td></tr>" in cleared and "_" not in cleared

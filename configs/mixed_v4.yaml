@@ -1,17 +1,19 @@
-# mixed_v4: best of frontier_v3 (parsebench-v2-research) + fable_v4 (fable-push90).
-# - Tables: keeps our PDF-geometry routing (`table_geo`) + 122B 3-strip `tier2_tables` with alignment guard,
-#   stacked with Fable's PDF-grounded round-3 table repairs (`squeeze`, `sign`, `head_fill`, `last_column`,
-#   `merge_apart`, `merge_strict`) and `select_options.skip_tables` so bag-of-words selection never overrides
-#   table-geometry routing on data tables.
-# - Text & reader selection: Fable's born-digital `select_options` (`layer_margin: 0`, `skip_math`,
-#   `keep_pictures: 25`, `fuse_words`) + loose edge-line furniture stripping on OCRia-1 reads.
-# - Formatting: Fable's dashed/overhang/3-column rule filter (`pdf/drawings.py`) + `_ruled_rows` table guard.
-# - Charts: Fable's Qwen3.8-27B thinking `v2b` prompt + `crop_zoom_to: 2048` + `hint_chars: 10000` +
-#   `fallback_plain` + 3-sample cell-by-cell median vote (`chart_vote.py`), plus our `allow_table_figures` &
-#   `all_crops_ok` guards.
-# - Forms: Fable's Qwen3.8-27B thinking `FORM_KV` (`caption: value` + `<text_layer>` + `wide` + `any_reader` +
-#   `fallback_plain`) + our `acro_clean` (and optional `route_blanks`).
-# - Layout: keeps our `pp_scan_arbiter` + `blank_drop` on top of Heron + PP-DocLayoutV3 + OCRia-1 attention.
+# mixed_v4: frontier_v3 (parsebench-v2-research, 1e7e312) + fable_v4 (fable-push90, 6234238).
+# From frontier_v3: PDF-geometry table routing (`table_geo`), the Qwen3.5-122B 3-strip table re-read
+#   (`tier2_tables`), `pp_scan_arbiter` + `blank_drop` layout, prose-only `underline_missing`, `acro_clean`, and
+#   chart figures holding a table taking the chart read (`tier2_chart_options.table_figures`, dev charts +0.32).
+# From fable_v4: the Qwen3.8-27B chart stack (`v2b`, crops zoomed to 2048 px, full vector hint, plain re-read,
+#   three reads voted cell by cell), the `caption: value` form rewrite (`prompt: kv`, wide trigger, any reader),
+#   the text-layer reader selector (`select_options`, with fuse_words and picture carry-over) and the round-3
+#   table repairs except `merge_strict`.
+# Merge fixes (docs/results/2026-11-28-mixed-v4.md):
+# - `draft_format`: the chart model's draft tables carry the PDF-drawn underlines as in fable_v4's request, so
+#   fable_v4's measured chart reads are the ones replayed (the page itself keeps `underline_missing`).
+# - Tier-2 forms run before Tier-2 tables, and a page the wide form trigger fires on is not routed by table
+#   geometry (`wide_blocks_geo`); tables-first and the strict trigger ask for model calls neither parent made.
+# - `clear_grid_blanks`: blank-field markers the form rewrite writes into a data grid's empty cells are removed.
+# - `merge_strict` off (dev tables +0.20, insurance +0.34, dense -0.07); frontier_v3's `all_crops` guard off
+#   (no page changed on dev).
 reader: chandra_hybrid
 strip_furniture: false
 verify_pdf: true
@@ -57,7 +59,6 @@ table_options:
   head_fill: true
   last_column: true
   merge_apart: true
-  merge_strict: true
 form_options:
   acroform: true
   acro_clean: true
@@ -101,12 +102,16 @@ tier2_chart_options:
   per_chart_max_boxes: 6
   draft_format:  # fable_v4's chart request: draft tables keep PDF-drawn underlines in cells too
     underline: true
+  table_figures: true
+  all_crops: false
 tier2_forms: true
 tier2_form_options:
   model: q38
   prompt: kv
   wide: true
   any_reader: true
+  wide_blocks_geo: true
+  clear_grid_blanks: true
   enable_thinking: true
   fallback_plain: true
   temperature: 0.6
@@ -126,7 +131,6 @@ tier2_table_options:
   presence_penalty: 1.0
   min_recall_trigger: 0.78
   min_recall_gain: 0.05
-  before_forms: true
 select_options:
   layer_margin: 0.0
   table_margin: 0.05
