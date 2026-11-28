@@ -1,0 +1,54 @@
+src/docparse/pdf/render.py
+  s_ef057a9acaf73d::t_dded73af81d91c 15,333-351,357-360
+  s_ef057a9acaf73d::t_320adde36a455e 361-362
+serve/modal_vlm.py
+  s_ef057a9acaf73d::t_dded73af81d91c 125-126,202
+src/docparse/fixes/text.py
+  s_ef057a9acaf73d::t_dded73af81d91c 28-29
+tests/fixes/test_fuse_words.py
+  s_ef057a9acaf73d::t_dded73af81d91c 1-51
+src/docparse/pipeline.py
+  s_ef057a9acaf73d::t_dded73af81d91c 42-43,138-175,193-206,270-271,294,299,327,331,372-373,379-403,419-422,424-425,436-452,518-626,634,636,670-677,696,699,721,779-780,793-807,811-821,849-856,875,894-914,916-917,924-963,976,981-1009,1036,1058-1061,1064-1065,1072-1082,1102-1109,1144
+  s_ef057a9acaf73d::t_0610ff4bea91a4 635,808-810,1192
+src/docparse/fixes/chart_vote.py
+  s_ef057a9acaf73d::t_dded73af81d91c 1-98
+src/docparse/pdf/drawings.py
+  s_ef057a9acaf73d::t_dded73af81d91c 12-17,35-36,85,110,172-184,213-214
+src/docparse/fixes/tables.py
+  s_ef057a9acaf73d::t_dded73af81d91c 35-53,98-99,146-161,166-167,173,177-191,309-689,890-902,907-909,916-919,939-940,1065,1067-1069
+src/docparse/models/adapters/vlm_specialists.py
+  s_ef057a9acaf73d::t_dded73af81d91c 354-380
+src/docparse/core/config.py
+  s_ef057a9acaf73d::t_dded73af81d91c 42-48,65,97-98,103-104,112-113,134-136,196
+src/docparse/fixes/select.py
+  s_ef057a9acaf73d::t_dded73af81d91c 1-328
+tests/fixes/test_phase3_zero_gpu.py
+  s_ef057a9acaf73d::t_dded73af81d91c 255-266
+  s_ef057a9acaf73d::t_0610ff4bea91a4 8,157-159,161-165
+configs/mixed_v4.yaml
+  s_ef057a9acaf73d::t_dded73af81d91c 1-132
+tests/test_tier2_charts.py
+  s_ef057a9acaf73d::t_0610ff4bea91a4 135-137,286-288,300-302,341-344
+src/docparse/models/adapters/qwen_tier2.py
+  s_ef057a9acaf73d::t_dded73af81d91c 37-42,93,121-190,268-269,271-272,274-280,283-285,302-303,306-314,317-319,659-727
+src/docparse/fixes/formatting.py
+  s_ef057a9acaf73d::t_dded73af81d91c 238-260,274-275
+tests/fixes/test_tables_round3.py
+  s_ef057a9acaf73d::t_dded73af81d91c 1-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0778c995179e1029b81d0cd8e10ce2c89f4348e",
+  "prompts": {},
+  "sessions": {
+    "s_ef057a9acaf73d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8447984f-41e7-44af-8fdd-4a5d9cd27e1d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Rohith <rohithreddyrohi18@gmail.com>"
+    }
+  }
+}
